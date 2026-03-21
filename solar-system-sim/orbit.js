@@ -24,3 +24,25 @@ export function inclinedPosition(x, z, cosN, sinN, cosI, sinI) {
         z: xn * sinN + znTilt * cosN
     };
 }
+
+export function keplerPeriod(distAU, starMass) {
+    return Math.sqrt(Math.pow(distAU, 3) / starMass);
+}
+
+export function radiusToMassEarths(radiusEarths) {
+    if (radiusEarths < 1.5) return Math.pow(radiusEarths, 3.7);
+    if (radiusEarths < 4) return 2.7 * Math.pow(radiusEarths, 1.3);
+    return 10 * Math.pow(radiusEarths / 4, 2) * 317.8;
+}
+
+export function hillRadius(distAU, planetMassEarths, starMassSolar) {
+    const massRatio = (planetMassEarths * 3e-6) / starMassSolar;
+    return distAU * Math.pow(massRatio / 3, 1 / 3);
+}
+
+export function categorizePlanet(radiusEarths) {
+    if (radiusEarths < 1.8) return 'rocky';
+    if (radiusEarths < 4) return 'subNeptune';
+    if (radiusEarths < 8) return 'iceGiant';
+    return 'gasGiant';
+}

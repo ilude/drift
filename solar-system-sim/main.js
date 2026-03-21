@@ -4,7 +4,7 @@ import { scene, camera, renderer, controls, trailGroups, cometGroup } from './sc
 import { createBodies, createComets, createAsteroidBelts, updateAsteroids, updatePositions, sharedResources } from './rendering.js';
 import { setupClickHandlers, updateFlyTo, updateFollow, updateInfoPosition } from './selection.js';
 import { buildBodyList, setupUI, updateLabels, updateHUD } from './ui.js';
-import { getSolSystem } from './system-generator.js';
+import { getSolSystem } from './sol-data.js';
 
 // ---------------------------------------------------------------------------
 // Initialize with Sol
