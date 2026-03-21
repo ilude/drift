@@ -177,26 +177,6 @@ renderer.domElement.addEventListener('wheel', (e) => {
     controls.target.z += (zoomIntersect.z - controls.target.z) * factor;
 }, { passive: false });
 
-// ---------------------------------------------------------------------------
-// Star field background
-// ---------------------------------------------------------------------------
-function createStarField() {
-    const count = 2000;
-    const positions = new Float32Array(count * 3);
-    for (let i = 0; i < count; i++) {
-        const r = 800 + Math.random() * 1200;
-        const theta = Math.random() * Math.PI * 2;
-        const phi = Math.acos(2 * Math.random() - 1);
-        positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
-        positions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
-        positions[i * 3 + 2] = r * Math.cos(phi);
-    }
-    const geom = new THREE.BufferGeometry();
-    geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    const mat = new THREE.PointsMaterial({ color: '#334433', size: 0.8, sizeAttenuation: true });
-    scene.add(new THREE.Points(geom, mat));
-}
-createStarField();
 
 // ---------------------------------------------------------------------------
 // Distance grid rings (concentric AU markers)
@@ -225,7 +205,7 @@ const ASTEROID_BELTS = [
         color: '#555544',
         size: 0.25,
         minPeriod: 3.2, maxPeriod: 5.9, // years (Kepler-ish)
-        maxInc: 20,                      // degrees — real main belt spread
+        maxInc: 3,                       // degrees — flattened for visual clarity
     },
     {
         name: 'Kuiper Belt - Cold Classical',
@@ -234,7 +214,7 @@ const ASTEROID_BELTS = [
         color: '#333344',
         size: 0.3,
         minPeriod: 272, maxPeriod: 332,
-        maxInc: 5,                       // cold population: low inclination, near-circular
+        maxInc: 1,                       // cold population: very flat
     },
     {
         name: 'Kuiper Belt - Hot Classical',
@@ -243,7 +223,7 @@ const ASTEROID_BELTS = [
         color: '#334455',
         size: 0.3,
         minPeriod: 164, maxPeriod: 354,
-        maxInc: 30,                      // hot population: higher inclinations
+        maxInc: 5,                       // hot population: slightly more spread
     },
     {
         name: 'Kuiper Belt - Resonant',
@@ -252,7 +232,7 @@ const ASTEROID_BELTS = [
         color: '#443355',
         size: 0.3,
         minPeriod: 244, maxPeriod: 332,
-        maxInc: 20,                      // moderate inclinations
+        maxInc: 3,                       // moderate, kept flat
     }
 ];
 
@@ -393,14 +373,14 @@ scene.add(trailGroups);
 // ---------------------------------------------------------------------------
 const COMETS = [
     // Real orbital elements: a (AU), e, period (yr), inc (deg), Ω (long. asc. node), ω (arg. perihelion)
-    { name: 'Halley',          a: 17.83,  e: 0.967,  period: 75.3,   inc: 162.26, node: 58.42,  peri: 111.33, color: '#99ccff' },
-    { name: 'Hale-Bopp',       a: 186,    e: 0.995,  period: 2533,   inc: 89.43,  node: 282.47, peri: 130.59, color: '#aaddff' },
-    { name: 'Encke',           a: 2.22,   e: 0.848,  period: 3.3,    inc: 11.78,  node: 334.57, peri: 186.55, color: '#88bbaa' },
-    { name: 'Swift-Tuttle',    a: 26.09,  e: 0.963,  period: 133.3,  inc: 113.45, node: 139.38, peri: 152.98, color: '#bbaaff' },
-    { name: 'Tempel 1',        a: 3.12,   e: 0.510,  period: 5.5,    inc: 10.47,  node: 68.76,  peri: 179.19, color: '#aa9988' },
-    { name: 'Churyumov-Ger.',  a: 3.46,   e: 0.678,  period: 6.4,    inc: 5.30,   node: 45.93,  peri: 14.52,  color: '#998877' },
-    { name: 'Hyakutake',       a: 1700,   e: 0.9998, period: 70000,  inc: 124.92, node: 188.05, peri: 130.17, color: '#ccddff' },
-    { name: 'Neowise',         a: 358.5,  e: 0.999,  period: 6800,   inc: 128.94, node: 61.01,  peri: 37.28,  color: '#ddeeff' },
+    { name: 'Halley',          a: 17.83,  e: 0.967,  period: 75.3,   inc: 4,    node: 58.42,  peri: 111.33, color: '#99ccff' },
+    { name: 'Hale-Bopp',       a: 186,    e: 0.995,  period: 2533,   inc: 3,    node: 282.47, peri: 130.59, color: '#aaddff' },
+    { name: 'Encke',           a: 2.22,   e: 0.848,  period: 3.3,    inc: 2,    node: 334.57, peri: 186.55, color: '#88bbaa' },
+    { name: 'Swift-Tuttle',    a: 26.09,  e: 0.963,  period: 133.3,  inc: 5,    node: 139.38, peri: 152.98, color: '#bbaaff' },
+    { name: 'Tempel 1',        a: 3.12,   e: 0.510,  period: 5.5,    inc: 2,    node: 68.76,  peri: 179.19, color: '#aa9988' },
+    { name: 'Churyumov-Ger.',  a: 3.46,   e: 0.678,  period: 6.4,    inc: 1,    node: 45.93,  peri: 14.52,  color: '#998877' },
+    { name: 'Hyakutake',       a: 1700,   e: 0.9998, period: 70000,  inc: 3,    node: 188.05, peri: 130.17, color: '#ccddff' },
+    { name: 'Neowise',         a: 358.5,  e: 0.999,  period: 6800,   inc: 4,    node: 61.01,  peri: 37.28,  color: '#ddeeff' },
 ];
 
 // Transform a point in the orbital plane to 3D space using Ω, i, ω
