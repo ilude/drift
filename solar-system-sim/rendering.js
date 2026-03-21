@@ -1,5 +1,7 @@
 import * as THREE from 'three';
-import { state, scaleDist, bodySize, BODY_MIN_SIZE, MOON_DIST_SCALE, keplerRadius, orbitSpeed, inclinedPosition } from './state.js';
+import { state } from './state.js';
+import { scaleDist, MOON_DIST_SCALE, keplerRadius, orbitSpeed, inclinedPosition } from './orbit.js';
+import { bodySize, BODY_MIN_SIZE } from './visual.js';
 import { scene, labelContainer, trailGroups, cometGroup } from './scene.js';
 import { seededRandom } from './utils.js';
 

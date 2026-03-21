@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { state, MAX_CLICK_DIST, easeOutCubic } from './state.js';
+import { state, MAX_CLICK_DIST } from './state.js';
+import { easeOutCubic } from './visual.js';
 import { camera, controls, renderer } from './scene.js';
 
 function animateCameraTo(entry, zoomDist) {

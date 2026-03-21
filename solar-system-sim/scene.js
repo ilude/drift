@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { scaleDist } from './state.js';
+import { scaleDist } from './orbit.js';
 
 // Scene
 export const scene = new THREE.Scene();

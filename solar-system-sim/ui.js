@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { state, MOON_LOD_ZOOM, screenRadius as calcScreenRadius, simTimeToDay, speedLabel, lodLevel } from './state.js';
+import { state, simTimeToDay, speedLabel } from './state.js';
+import { MOON_LOD_ZOOM, screenRadius as calcScreenRadius, lodLevel } from './visual.js';
 import { camera, gridGroup } from './scene.js';
 import { selectBody } from './selection.js';
 import { generateSystem } from './system-generator.js';
