@@ -12,21 +12,21 @@ export function getSolSystem() {
                 { name: 'Phobos', distance: 0.02, e: 0.015, period: 0.0008, radius: 11, color: '#887766' },
                 { name: 'Deimos', distance: 0.03, e: 0.0002, period: 0.003, radius: 6, color: '#887766' }
             ]},
-            { name: 'Jupiter', type: 'Planet', distance: 5.203, e: 0.049, period: 11.86, radius: 69911, color: '#ddaa77', moons: [
+            { name: 'Jupiter', type: 'Planet', distance: 5.203, e: 0.049, period: 11.86, radius: 69911, color: '#ddaa77', rings: { inner: 1.3, outer: 1.8, opacity: 0.15, tilt: 3.1 }, moons: [
                 { name: 'Io', distance: 0.06, e: 0.004, period: 0.00484, radius: 1822, color: '#ddcc44' },
                 { name: 'Europa', distance: 0.08, e: 0.009, period: 0.00972, radius: 1561, color: '#ccccdd' },
                 { name: 'Ganymede', distance: 0.10, e: 0.001, period: 0.01959, radius: 2634, color: '#aaaaaa' },
                 { name: 'Callisto', distance: 0.13, e: 0.007, period: 0.04570, radius: 2410, color: '#777788' }
             ]},
-            { name: 'Saturn', type: 'Planet', distance: 9.537, e: 0.054, period: 29.46, radius: 58232, color: '#ccbb77', moons: [
+            { name: 'Saturn', type: 'Planet', distance: 9.537, e: 0.054, period: 29.46, radius: 58232, color: '#ccbb77', rings: { inner: 1.2, outer: 2.3, color: '#ccbb88', tilt: 26.7 }, moons: [
                 { name: 'Titan', distance: 0.10, e: 0.029, period: 0.0437, radius: 2575, color: '#cc9944' },
                 { name: 'Enceladus', distance: 0.04, e: 0.005, period: 0.00375, radius: 252, color: '#ddddee' }
             ]},
-            { name: 'Uranus', type: 'Planet', distance: 19.19, e: 0.047, period: 84.01, radius: 25362, color: '#88bbcc', moons: [
+            { name: 'Uranus', type: 'Planet', distance: 19.19, e: 0.047, period: 84.01, radius: 25362, color: '#88bbcc', rings: { inner: 1.6, outer: 2.0, opacity: 0.12, tilt: 97.8 }, moons: [
                 { name: 'Miranda', distance: 0.04, e: 0.001, period: 0.00387, radius: 236, color: '#aabbbb' },
                 { name: 'Titania', distance: 0.08, e: 0.001, period: 0.02387, radius: 789, color: '#aaaaaa' }
             ]},
-            { name: 'Neptune', type: 'Planet', distance: 30.07, e: 0.009, period: 164.8, radius: 24622, color: '#4466cc', moons: [
+            { name: 'Neptune', type: 'Planet', distance: 30.07, e: 0.009, period: 164.8, radius: 24622, color: '#4466cc', rings: { inner: 1.7, outer: 2.5, opacity: 0.1, tilt: 28.3 }, moons: [
                 { name: 'Triton', distance: 0.06, e: 0.000, period: 0.01610, radius: 1353, color: '#99aaaa' }
             ]},
             { name: 'Ceres', type: 'Dwarf Planet', distance: 2.77, e: 0.076, period: 4.60, radius: 473, color: '#888877', moons: [] },

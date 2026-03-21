@@ -111,6 +111,50 @@ export function createBody(data, parentMesh) {
     }
     const mesh = new THREE.Mesh(geomLevels[0], mat);
 
+    // Planetary rings (e.g., Saturn, Jupiter, Uranus, Neptune)
+    let planetRing = null;
+    if (data.rings) {
+        const innerR = size * data.rings.inner;
+        const outerR = size * data.rings.outer;
+        const opacity = data.rings.opacity || 1;
+        const ringGeom = new THREE.RingGeometry(innerR, outerR, 64);
+        const canvas = document.createElement('canvas');
+        canvas.width = 256;
+        canvas.height = 1;
+        const ctx = canvas.getContext('2d');
+        const grad = ctx.createLinearGradient(0, 0, 256, 0);
+        const a = (v) => Math.round(v * opacity * 255);
+        grad.addColorStop(0.0, `rgba(180,160,120,${a(0.1) / 255})`);
+        grad.addColorStop(0.15, `rgba(200,180,140,${a(0.5) / 255})`);
+        grad.addColorStop(0.3, `rgba(160,140,100,${a(0.15) / 255})`);
+        grad.addColorStop(0.45, `rgba(210,190,150,${a(0.6) / 255})`);
+        grad.addColorStop(0.65, `rgba(190,170,130,${a(0.4) / 255})`);
+        grad.addColorStop(0.85, `rgba(170,150,110,${a(0.3) / 255})`);
+        grad.addColorStop(1.0, `rgba(150,130,100,${a(0.05) / 255})`);
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, 256, 1);
+        const ringTex = new THREE.CanvasTexture(canvas);
+        const uvAttr = ringGeom.attributes.uv;
+        const posAttr = ringGeom.attributes.position;
+        for (let i = 0; i < uvAttr.count; i++) {
+            const x = posAttr.getX(i);
+            const z = posAttr.getY(i);
+            const dist = Math.sqrt(x * x + z * z);
+            uvAttr.setXY(i, (dist - innerR) / (outerR - innerR), 0.5);
+        }
+        const ringMat = new THREE.MeshBasicMaterial({
+            map: ringTex,
+            side: THREE.DoubleSide,
+            transparent: true,
+            depthWrite: false,
+        });
+        planetRing = new THREE.Mesh(ringGeom, ringMat);
+        const tiltRad = (data.rings.tilt || 0) * Math.PI / 180;
+        planetRing.rotation.x = -Math.PI / 2 + tiltRad;
+        planetRing.visible = false;
+        mesh.add(planetRing);
+    }
+
     const selGeom = new THREE.RingGeometry(size * 1.3, size * 1.5, 24);
     const selMat = new THREE.MeshBasicMaterial({
         color: '#44ff44', transparent: true, opacity: 0, side: THREE.DoubleSide
@@ -136,7 +180,7 @@ export function createBody(data, parentMesh) {
     const trail = createTrail(data.color, 400);
 
     const entry = {
-        data, mesh, selRing, orbitLine, orbitRadius, labelDiv, trail,
+        data, mesh, selRing, planetRing, orbitLine, orbitRadius, labelDiv, trail,
         angle: Math.random() * Math.PI * 2,
         parentMesh, moons: [], isMoon, screenSize: size,
         baseSize: size,

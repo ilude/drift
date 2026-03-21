@@ -37,6 +37,13 @@ function teardownSystem() {
         }
         if (entry.mesh.material.map) entry.mesh.material.map.dispose();
         safeDispose(entry.mesh.material);
+        entry.mesh.children.forEach(child => {
+            if (child !== entry.selRing) {
+                child.geometry.dispose();
+                if (child.material.map) child.material.map.dispose();
+                child.material.dispose();
+            }
+        });
         if (entry.selRing) {
             safeDispose(entry.selRing.geometry);
             safeDispose(entry.selRing.material);
