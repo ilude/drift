@@ -200,7 +200,7 @@ export function updateLabels(camDist) {
             entry.cloudMesh.visible = sr > 15;
         }
 
-        const gap = 6;
+        const gap = Math.max(6, sr * 0.2);
         entry.labelDiv.style.transform = `translate(${cx + sr + gap}px, ${cy - 6}px)`;
         entry.labelDiv.style.display = showLabels ? '' : 'none';
     });
