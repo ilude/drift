@@ -224,15 +224,35 @@ const ASTEROID_BELTS = [
         count: 600,
         color: '#555544',
         size: 0.25,
-        minPeriod: 3.2, maxPeriod: 5.9  // years (Kepler-ish)
+        minPeriod: 3.2, maxPeriod: 5.9, // years (Kepler-ish)
+        maxInc: 20,                      // degrees — real main belt spread
     },
     {
-        name: 'Kuiper Belt',
-        minAU: 30, maxAU: 50,
-        count: 400,
+        name: 'Kuiper Belt - Cold Classical',
+        minAU: 42, maxAU: 48,           // stable region between 2:3 and 1:2 Neptune resonances
+        count: 250,
         color: '#333344',
         size: 0.3,
-        minPeriod: 164, maxPeriod: 354
+        minPeriod: 272, maxPeriod: 332,
+        maxInc: 5,                       // cold population: low inclination, near-circular
+    },
+    {
+        name: 'Kuiper Belt - Hot Classical',
+        minAU: 30, maxAU: 50,           // wider range, more eccentric
+        count: 200,
+        color: '#334455',
+        size: 0.3,
+        minPeriod: 164, maxPeriod: 354,
+        maxInc: 30,                      // hot population: higher inclinations
+    },
+    {
+        name: 'Kuiper Belt - Resonant',
+        minAU: 39, maxAU: 48,           // plutinos (3:2) and twotinos (2:1)
+        count: 100,
+        color: '#443355',
+        size: 0.3,
+        minPeriod: 244, maxPeriod: 332,
+        maxInc: 20,                      // moderate inclinations
     }
 ];
 
@@ -248,11 +268,14 @@ function seededRandom(seed) {
 const asteroidBelts = ASTEROID_BELTS.map(belt => {
     const rng = seededRandom(belt.name.length * 7919);
     const prefix = belt.name === 'Main Belt' ? 'MB' : 'KB';
+    const maxIncRad = (belt.maxInc || 0) * Math.PI / 180;
     const count = belt.count;
     const positions = new Float32Array(count * 3);
     const angles = new Float32Array(count);
     const radii = new Float32Array(count);
     const speeds = new Float32Array(count);
+    const inclinations = new Float32Array(count);
+    const nodeAngles = new Float32Array(count);
     const yOffsets = new Float32Array(count);
     const asteroids = []; // per-asteroid data
 
@@ -283,14 +306,32 @@ const asteroidBelts = ASTEROID_BELTS.map(belt => {
         const r = scaleDist(au);
         const diameter = Math.round(1 + rng() * 400); // km, procedural
 
+        // Random inclination: uniform in cos(i) for isotropic distribution
+        const inc = Math.acos(1 - rng() * (1 - Math.cos(maxIncRad)));
+        // Random node angle for the tilt direction
+        const nodeAngle = rng() * Math.PI * 2;
+
         angles[i] = angle;
         radii[i] = r;
         speeds[i] = (Math.PI * 2) / (period * 60);
-        yOffsets[i] = 0;
+        inclinations[i] = inc;
+        nodeAngles[i] = nodeAngle;
+        yOffsets[i] = 0; // unused, kept for compat
 
-        positions[i * 3] = Math.cos(angle) * r;
-        positions[i * 3 + 1] = yOffsets[i];
-        positions[i * 3 + 2] = Math.sin(angle) * r;
+        // Position with inclination applied
+        const x = Math.cos(angle) * r;
+        const z = Math.sin(angle) * r;
+        // Tilt by inclination around the node angle direction
+        const cosN = Math.cos(nodeAngle), sinN = Math.sin(nodeAngle);
+        const cosI = Math.cos(inc), sinI = Math.sin(inc);
+        // Rotate into node frame, tilt, rotate back
+        const xn = x * cosN + z * sinN;
+        const zn = -x * sinN + z * cosN;
+        const yn = zn * sinI;
+        const znTilt = zn * cosI;
+        positions[i * 3] = xn * cosN - znTilt * sinN;
+        positions[i * 3 + 1] = yn;
+        positions[i * 3 + 2] = xn * sinN + znTilt * cosN;
 
         asteroids.push({
             designation: `${prefix}-${String(i + 1).padStart(4, '0')}`,
@@ -310,15 +351,27 @@ const asteroidBelts = ASTEROID_BELTS.map(belt => {
     const points = new THREE.Points(geom, mat);
     scene.add(points);
 
-    return { belt, points, positions, angles, radii, speeds, yOffsets, count, asteroids };
+    return { belt, points, positions, angles, radii, speeds, inclinations, nodeAngles, yOffsets, count, asteroids };
 });
 
 function updateAsteroids(dt) {
-    asteroidBelts.forEach(({ positions, angles, radii, speeds, yOffsets, count, points }) => {
+    asteroidBelts.forEach(({ positions, angles, radii, speeds, inclinations, nodeAngles, count, points }) => {
         for (let i = 0; i < count; i++) {
             angles[i] += speeds[i] * dt * timeSpeed;
-            positions[i * 3] = Math.cos(angles[i]) * radii[i];
-            positions[i * 3 + 2] = Math.sin(angles[i]) * radii[i];
+            const r = radii[i];
+            const x = Math.cos(angles[i]) * r;
+            const z = Math.sin(angles[i]) * r;
+
+            // Apply inclination tilt around node angle
+            const cosN = Math.cos(nodeAngles[i]), sinN = Math.sin(nodeAngles[i]);
+            const cosI = Math.cos(inclinations[i]), sinI = Math.sin(inclinations[i]);
+            const xn = x * cosN + z * sinN;
+            const zn = -x * sinN + z * cosN;
+            const yn = zn * sinI;
+            const znTilt = zn * cosI;
+            positions[i * 3] = xn * cosN - znTilt * sinN;
+            positions[i * 3 + 1] = yn;
+            positions[i * 3 + 2] = xn * sinN + znTilt * cosN;
         }
         points.geometry.attributes.position.needsUpdate = true;
     });
