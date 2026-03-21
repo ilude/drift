@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { simTimeToDay, simTimeToDate, SIM_EPOCH, speedLabel } from './state.js';
+import { simTimeToDay, simTimeToDate, SIM_EPOCH, speedLabel, truncateDate, formatDateTime } from './state.js';
 
 describe('simTimeToDay', () => {
     it('returns 0 for simTime 0', () => {
@@ -31,6 +31,91 @@ describe('simTimeToDate', () => {
     it('rolls over months correctly', () => {
         const d = simTimeToDate(365);
         expect(d.getFullYear()).toBe(2039);
+    });
+});
+
+describe('simTimeToDate fractional days', () => {
+    it('returns noon for simTime 0.5', () => {
+        const d = simTimeToDate(0.5);
+        expect(d.getHours()).toBe(12);
+        expect(d.getMinutes()).toBe(0);
+    });
+
+    it('returns 6 AM for simTime 0.25', () => {
+        const d = simTimeToDate(0.25);
+        expect(d.getHours()).toBe(6);
+        expect(d.getMinutes()).toBe(0);
+    });
+
+    it('returns 6 PM for simTime 0.75', () => {
+        const d = simTimeToDate(0.75);
+        expect(d.getHours()).toBe(18);
+        expect(d.getMinutes()).toBe(0);
+    });
+
+    it('handles fractional hours', () => {
+        const d = simTimeToDate(1 / 24); // 1 hour into day
+        expect(d.getDate()).toBe(20);
+        expect(d.getHours()).toBe(1);
+    });
+});
+
+describe('truncateDate', () => {
+    it('preserves full precision at very slow speeds', () => {
+        const d = new Date(2038, 0, 20, 14, 30, 45);
+        truncateDate(d, 5 / 86400);
+        expect(d.getHours()).toBe(14);
+        expect(d.getMinutes()).toBe(30);
+        expect(d.getSeconds()).toBe(45);
+    });
+
+    it('zeros seconds at minute-level speeds', () => {
+        const d = new Date(2038, 0, 20, 14, 30, 45);
+        truncateDate(d, 2 / 1440);
+        expect(d.getHours()).toBe(14);
+        expect(d.getMinutes()).toBe(30);
+        expect(d.getSeconds()).toBe(0);
+    });
+
+    it('zeros minutes and seconds at hour-level speeds', () => {
+        const d = new Date(2038, 0, 20, 14, 30, 45);
+        truncateDate(d, 1 / 24);
+        expect(d.getHours()).toBe(14);
+        expect(d.getMinutes()).toBe(0);
+        expect(d.getSeconds()).toBe(0);
+    });
+
+    it('zeros hours, minutes, seconds at day-level speeds', () => {
+        const d = new Date(2038, 0, 20, 14, 30, 45);
+        truncateDate(d, 8 / 24);
+        expect(d.getHours()).toBe(0);
+        expect(d.getMinutes()).toBe(0);
+        expect(d.getSeconds()).toBe(0);
+        expect(d.getDate()).toBe(20);
+    });
+
+    it('pins day to 1st at month-level speeds', () => {
+        const d = new Date(2038, 5, 15, 14, 30, 45);
+        truncateDate(d, 30);
+        expect(d.getDate()).toBe(1);
+        expect(d.getHours()).toBe(0);
+    });
+});
+
+describe('formatDateTime', () => {
+    it('formats date with zero-padded components', () => {
+        const d = new Date(2038, 0, 5, 3, 7, 9);
+        expect(formatDateTime(d)).toBe('2038-01-05 03:07:09');
+    });
+
+    it('formats midnight as 00:00:00', () => {
+        const d = new Date(2038, 0, 20, 0, 0, 0);
+        expect(formatDateTime(d)).toBe('2038-01-20 00:00:00');
+    });
+
+    it('formats end of day correctly', () => {
+        const d = new Date(2038, 11, 31, 23, 59, 59);
+        expect(formatDateTime(d)).toBe('2038-12-31 23:59:59');
     });
 });
 

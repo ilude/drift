@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { state, simTimeToDate } from './state.js';
+import { state, simTimeToDate, truncateDate, formatDateTime } from './state.js';
 import { MOON_LOD_ZOOM, screenRadius as calcScreenRadius, lodLevel, bodyScaleFactor } from './visual.js';
 import { camera, controls, ZOOM_BASE, gridGroup } from './scene.js';
 import { selectBody, recenterOnStar } from './selection.js';
@@ -225,13 +225,8 @@ export function updateHUD() {
         fpsEl.textContent = `FPS: ${fpsValue}`;
     }
 
-    const d = simTimeToDate(state.simTime);
-    const speed = state.timeSpeed;
-    if (speed >= 30) { d.setDate(1); d.setHours(0, 0, 0, 0); }
-    else if (speed >= 8 / 24) { d.setHours(0, 0, 0, 0); }
-    else if (speed >= 1 / 24) { d.setMinutes(0, 0, 0); }
-    else if (speed >= 2 / 1440) { d.setSeconds(0, 0); }
-    const timeText = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
+    const d = truncateDate(simTimeToDate(state.simTime), state.timeSpeed);
+    const timeText = formatDateTime(d);
     if (timeText !== lastTimeText) {
         timeEl.textContent = timeText;
         lastTimeText = timeText;
