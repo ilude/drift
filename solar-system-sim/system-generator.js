@@ -409,8 +409,6 @@ function generateAsteroidBelts(rng, planets, starMass, systemName) {
                 count: rngInt(rng, 800, 1800),
                 color: rngPick(rng, beltColors),
                 size: 0.25,
-                minPeriod: Math.round(keplerPeriod(innerEdge, starMass) * 100) / 100,
-                maxPeriod: Math.round(keplerPeriod(outerEdge, starMass) * 100) / 100,
                 maxInc: rngInt(rng, 1, 3),
             });
         }
@@ -433,8 +431,6 @@ function generateAsteroidBelts(rng, planets, starMass, systemName) {
             count: rngInt(rng, 800, 1600),
             color: rngPick(rng, beltColors),
             size: 0.3,
-            minPeriod: Math.round(keplerPeriod(coldInner, starMass) * 100) / 100,
-            maxPeriod: Math.round(keplerPeriod(coldOuter, starMass) * 100) / 100,
             maxInc: rngInt(rng, 1, 2),
         });
 
@@ -446,8 +442,6 @@ function generateAsteroidBelts(rng, planets, starMass, systemName) {
             count: rngInt(rng, 600, 1400),
             color: rngPick(rng, beltColors),
             size: 0.3,
-            minPeriod: Math.round(keplerPeriod(baseInner, starMass) * 100) / 100,
-            maxPeriod: Math.round(keplerPeriod(baseOuter, starMass) * 100) / 100,
             maxInc: rngInt(rng, 3, 5),
         });
 
@@ -462,8 +456,6 @@ function generateAsteroidBelts(rng, planets, starMass, systemName) {
                 count: rngInt(rng, 300, 800),
                 color: rngPick(rng, beltColors),
                 size: 0.3,
-                minPeriod: Math.round(keplerPeriod(resInner, starMass) * 100) / 100,
-                maxPeriod: Math.round(keplerPeriod(resOuter, starMass) * 100) / 100,
                 maxInc: rngInt(rng, 2, 4),
             });
         }
@@ -479,8 +471,6 @@ function generateAsteroidBelts(rng, planets, starMass, systemName) {
             count: rngInt(rng, 500, 1000),
             color: rngPick(rng, beltColors),
             size: 0.25,
-            minPeriod: Math.round(keplerPeriod(inner, starMass) * 100) / 100,
-            maxPeriod: Math.round(keplerPeriod(outer, starMass) * 100) / 100,
             maxInc: rngInt(rng, 1, 5),
         });
     }

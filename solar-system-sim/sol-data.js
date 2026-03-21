@@ -53,10 +53,10 @@ export function getSolSystem() {
             { name: 'Neowise', a: 358.5, e: 0.999, period: 6800, inc: 4, node: 61.01, peri: 37.28, color: '#ddeeff' },
         ],
         asteroidBelts: [
-            { name: 'Main Belt', minAU: 2.1, maxAU: 3.3, count: 1387, color: '#555544', size: 0.25, minPeriod: 3.2, maxPeriod: 5.9, maxInc: 3 },
-            { name: 'Kuiper Belt - Cold Classical', minAU: 42, maxAU: 48, count: 1523, color: '#333344', size: 0.3, minPeriod: 272, maxPeriod: 332, maxInc: 1 },
-            { name: 'Kuiper Belt - Hot Classical', minAU: 30, maxAU: 50, count: 1261, color: '#334455', size: 0.3, minPeriod: 164, maxPeriod: 354, maxInc: 5 },
-            { name: 'Kuiper Belt - Resonant', minAU: 39, maxAU: 48, count: 842, color: '#443355', size: 0.3, minPeriod: 244, maxPeriod: 332, maxInc: 3 },
+            { name: 'Main Belt', minAU: 2.1, maxAU: 3.3, count: 1387, color: '#555544', size: 0.25, maxInc: 3 },
+            { name: 'Kuiper Belt - Cold Classical', minAU: 42, maxAU: 48, count: 1523, color: '#333344', size: 0.3, maxInc: 1 },
+            { name: 'Kuiper Belt - Hot Classical', minAU: 30, maxAU: 50, count: 1261, color: '#334455', size: 0.3, maxInc: 5 },
+            { name: 'Kuiper Belt - Resonant', minAU: 39, maxAU: 48, count: 842, color: '#443355', size: 0.3, maxInc: 3 },
         ],
     };
 }
