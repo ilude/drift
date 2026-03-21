@@ -13,7 +13,7 @@ export function buildBodyList() {
     bodyListEl.innerHTML = '';
 
     const groups = {};
-    const groupOrder = ['Star', 'Planet', 'Dwarf Planet', 'Detached Object', 'Comet'];
+    const groupOrder = ['Star', 'Planet', 'Dwarf Planet', 'Detached Object', 'Comet', 'Ship'];
     state.bodyMeshes.forEach(entry => {
         if (entry.isMoon) return;
         const type = entry.data.type;
@@ -26,7 +26,8 @@ export function buildBodyList() {
         'Planet': 'Planets',
         'Dwarf Planet': 'Dwarf Planets',
         'Detached Object': 'Detached Objects',
-        'Comet': 'Comets'
+        'Comet': 'Comets',
+        'Ship': 'Ships'
     };
 
     groupOrder.forEach(type => {

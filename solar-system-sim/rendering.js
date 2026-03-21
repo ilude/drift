@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { state } from './state.js';
 import { scaleDist, MOON_DIST_SCALE, keplerRadius, orbitSpeed, meanToTrue, inclinedPosition } from './orbit.js';
+import { hohmannTransfer, transferSpeed, isTransferComplete } from './transfer.js';
 import { bodySize, BODY_MIN_SIZE, moonOrbitScale, realisticSize } from './visual.js';
 import { scene, ZOOM_BASE, labelContainer, trailGroups, cometGroup } from './scene.js';
 import { seededRandom } from './utils.js';
@@ -391,6 +392,96 @@ export function createAsteroidBelts() {
     });
 }
 
+const SHIP_SIZE = BODY_MIN_SIZE * 0.5;
+const SHIP_LOCAL_ORBIT = 1.5;       // world-space radius around host planet
+const SHIP_LOCAL_SPEED = 80;        // rad/day (~90 min period visual)
+
+function findPlanetEntry(name) {
+    return state.bodyMeshes.find(e => e.data.name === name && !e.isMoon && !e.isShip);
+}
+
+export function createShip() {
+    const planets = state.BODIES.filter(b => b.type === 'Planet');
+    if (planets.length === 0) return;
+    const homePlanet = planets.find(b => b.name === 'Earth')
+        || planets.reduce((best, b) => Math.abs(b.distance - 1) < Math.abs(best.distance - 1) ? b : best);
+
+    const geom = new THREE.SphereGeometry(SHIP_SIZE, 8, 8);
+    const mat = new THREE.MeshBasicMaterial({ color: '#00ffff' });
+    const mesh = new THREE.Mesh(geom, mat);
+    scene.add(mesh);
+
+    const selGeom = new THREE.RingGeometry(SHIP_SIZE * SEL_RING_INNER, SHIP_SIZE * SEL_RING_OUTER, SEL_RING_SEGS);
+    const selMat = new THREE.MeshBasicMaterial({
+        color: '#44ff44', transparent: true, opacity: 0, side: THREE.DoubleSide
+    });
+    const selRing = new THREE.Mesh(selGeom, selMat);
+    selRing.rotation.x = -Math.PI / 2;
+    mesh.add(selRing);
+
+    const labelDiv = createLabel('Ship', '#00ffff', false);
+    const trail = createTrail('#00ffff', TRAIL_MAX_POINTS);
+
+    const entry = {
+        data: { name: 'Ship', type: 'Ship', distance: homePlanet.distance, period: 0, radius: 1, color: '#00ffff', moons: [] },
+        mesh, selRing, planetRing: null, cloudMesh: null, orbitLine: null, orbitRadius: 0,
+        labelDiv, trail,
+        angle: 0,
+        speed: SHIP_LOCAL_SPEED,
+        parentMesh: null, moons: [], isMoon: false, isShip: true,
+        screenSize: SHIP_SIZE, baseSize: SHIP_SIZE, realisticSize: SHIP_SIZE,
+        geomLevels: null, lodLevel: 0,
+        // Ship state
+        shipState: 'orbiting',
+        hostPlanetName: homePlanet.name,
+        // Heliocentric transfer fields (used only during transfer)
+        orbitA: 0,
+        orbitE: 0,
+        transferTarget: null,
+        transferStartTime: 0,
+        transferTimeDays: 0,
+    };
+
+    state.bodyMeshes.push(entry);
+    return entry;
+}
+
+function completeTransfer(entry) {
+    const target = findPlanetEntry(entry.transferTarget);
+    entry.shipState = 'orbiting';
+    entry.hostPlanetName = entry.transferTarget;
+    entry.transferTarget = null;
+    entry.angle = 0;
+    entry.speed = SHIP_LOCAL_SPEED;
+    if (target) entry.data.distance = target.data.distance;
+}
+
+export function initiateTransfer(entry, targetEntry) {
+    if (!entry.isShip || entry.shipState === 'transferring') return;
+    const host = findPlanetEntry(entry.hostPlanetName);
+    if (!host) return;
+    const r1 = host.data.distance;
+    const r2 = targetEntry.data.distance;
+    if (r1 === r2) return;
+
+    const transfer = hohmannTransfer(r1, r2);
+    entry.orbitA = transfer.a;
+    entry.orbitE = transfer.e;
+    entry.speed = transferSpeed(transfer.periodYears);
+    entry.transferStartTime = state.simTime;
+    entry.transferTimeDays = transfer.transferTimeDays;
+    entry.transferTarget = targetEntry.data.name;
+    entry.shipState = 'transferring';
+
+    // Compute heliocentric starting angle from host planet's current position
+    const px = host.mesh.position.x;
+    const pz = host.mesh.position.z;
+    const helioAngle = Math.atan2(pz, px);
+    // For outward: depart at periapsis; for inward: depart at apoapsis
+    // Offset the mean anomaly so the Kepler position matches the planet's current angle
+    entry.angle = r2 >= r1 ? helioAngle : helioAngle + Math.PI;
+}
+
 export function updateAsteroids(dt) {
     const simDt = dt * state.timeSpeed;
     if (simDt === 0) return;
@@ -421,7 +512,7 @@ export function updatePositions(dt, camDist) {
     const recordTrails = state.showTrails;
 
     state.bodyMeshes.forEach(entry => {
-        if (entry.data.distance === 0 && !entry.isComet) return;
+        if (entry.data.distance === 0 && !entry.isComet && !entry.isShip) return;
 
         // Skip invisible moons
         if (entry.isMoon && !entry.mesh.visible) {
@@ -429,7 +520,36 @@ export function updatePositions(dt, camDist) {
             return;
         }
 
-        if (entry.isComet) {
+        if (entry.isShip) {
+            entry.angle += entry.speed * simDt;
+
+            if (entry.shipState === 'transferring') {
+                const elapsed = state.simTime - entry.transferStartTime;
+                if (isTransferComplete(elapsed, entry.transferTimeDays)) {
+                    completeTransfer(entry);
+                }
+            }
+
+            if (entry.shipState === 'orbiting') {
+                // Local orbit around host planet (like ISS)
+                const host = findPlanetEntry(entry.hostPlanetName);
+                if (host) {
+                    const lx = Math.cos(entry.angle) * SHIP_LOCAL_ORBIT;
+                    const lz = Math.sin(entry.angle) * SHIP_LOCAL_ORBIT;
+                    entry.mesh.position.set(
+                        host.mesh.position.x + lx,
+                        0,
+                        host.mesh.position.z + lz
+                    );
+                }
+            } else {
+                // Heliocentric transfer orbit
+                const theta = meanToTrue(entry.angle, entry.orbitE);
+                const r = keplerRadius(entry.orbitA, entry.orbitE, theta);
+                const rScaled = scaleDist(r);
+                entry.mesh.position.set(Math.cos(theta) * rScaled, 0, Math.sin(theta) * rScaled);
+            }
+        } else if (entry.isComet) {
             const { a, e, incRad, nodeRad, periRad } = entry.data;
             entry.angle += entry.speed * simDt;
 

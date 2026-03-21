@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { state, MASTER_SEED, saveState, loadSavedState } from './state.js';
 import { seededRandom } from './utils.js';
 import { scene, camera, renderer, controls, trailGroups, cometGroup } from './scene.js';
-import { createBodies, createComets, createAsteroidBelts, updateAsteroids, updatePositions, sharedResources } from './rendering.js';
+import { createBodies, createComets, createShip, createAsteroidBelts, updateAsteroids, updatePositions, sharedResources } from './rendering.js';
 import { setupClickHandlers, updateFlyTo, updateFollow, updateInfoPosition } from './selection.js';
 import { buildBodyList, setupUI, updateLabels, updateHUD } from './ui.js';
 import { getSolSystem } from './sol-data.js';
@@ -58,6 +58,7 @@ if (saved) {
 
 createBodies();
 createComets();
+createShip();
 state.asteroidBelts = createAsteroidBelts();
 buildBodyList();
 cacheStarEntry();
@@ -133,6 +134,7 @@ function loadSystem(systemData) {
     state.ASTEROID_BELTS = systemData.asteroidBelts;
     createBodies();
     createComets();
+    createShip();
     state.asteroidBelts = createAsteroidBelts();
     buildBodyList();
     cacheStarEntry();
