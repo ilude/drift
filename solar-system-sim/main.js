@@ -118,6 +118,13 @@ function bodySize(radius, isStar) {
 const scene = new THREE.Scene();
 scene.background = new THREE.Color('#07070d');
 
+// Lighting for 3D spheres
+const ambientLight = new THREE.AmbientLight('#333333');
+scene.add(ambientLight);
+const sunLight = new THREE.PointLight('#ffffff', 2, 0, 0.5);
+sunLight.position.set(0, 0, 0); // at the sun
+scene.add(sunLight);
+
 const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 5000);
 camera.position.set(0, 120, 80);
 camera.lookAt(0, 0, 0);
@@ -240,27 +247,37 @@ function seededRandom(seed) {
 
 const asteroidBelts = ASTEROID_BELTS.map(belt => {
     const rng = seededRandom(belt.name.length * 7919);
+    const prefix = belt.name === 'Main Belt' ? 'MB' : 'KB';
     const count = belt.count;
     const positions = new Float32Array(count * 3);
     const angles = new Float32Array(count);
     const radii = new Float32Array(count);
     const speeds = new Float32Array(count);
     const yOffsets = new Float32Array(count);
+    const asteroids = []; // per-asteroid data
 
     for (let i = 0; i < count; i++) {
         const au = belt.minAU + rng() * (belt.maxAU - belt.minAU);
         const angle = rng() * Math.PI * 2;
         const period = belt.minPeriod + (au - belt.minAU) / (belt.maxAU - belt.minAU) * (belt.maxPeriod - belt.minPeriod);
         const r = scaleDist(au);
+        const diameter = Math.round(1 + rng() * 400); // km, procedural
 
         angles[i] = angle;
         radii[i] = r;
         speeds[i] = (Math.PI * 2) / (period * 60);
-        yOffsets[i] = (rng() - 0.5) * 1.5; // slight vertical scatter
+        yOffsets[i] = 0;
 
         positions[i * 3] = Math.cos(angle) * r;
         positions[i * 3 + 1] = yOffsets[i];
         positions[i * 3 + 2] = Math.sin(angle) * r;
+
+        asteroids.push({
+            designation: `${prefix}-${String(i + 1).padStart(4, '0')}`,
+            au: Math.round(au * 1000) / 1000,
+            period: Math.round(period * 100) / 100,
+            diameter
+        });
     }
 
     const geom = new THREE.BufferGeometry();
@@ -273,7 +290,7 @@ const asteroidBelts = ASTEROID_BELTS.map(belt => {
     const points = new THREE.Points(geom, mat);
     scene.add(points);
 
-    return { belt, points, positions, angles, radii, speeds, yOffsets, count };
+    return { belt, points, positions, angles, radii, speeds, yOffsets, count, asteroids };
 });
 
 function updateAsteroids(dt) {
@@ -313,158 +330,8 @@ const COMETS = [
     { name: 'Neowise',         a: 364,     e: 0.999, period: 6950,   inc: 128.9, color: '#ddeeff' },
 ];
 
-const cometEntries = [];
 const cometGroup = new THREE.Group();
 scene.add(cometGroup);
-
-// Label container already created above, we'll reuse it for comet labels
-
-COMETS.forEach(comet => {
-    const { a, e, inc, color, name, period } = comet;
-
-    // Perihelion and aphelion in scaled coords
-    const perihelionAU = a * (1 - e);
-    const aphelionAU = a * (1 + e);
-
-    // Build elliptical orbit path
-    const segments = 256;
-    const orbitPoints = [];
-    const semiMajor = scaleDist(a);
-    const semiMinor = semiMajor * Math.sqrt(1 - e * e);
-    // Focus offset — the sun is at one focus
-    const focusOffset = semiMajor * e;
-
-    // We scale each point individually from AU for better visual accuracy
-    // with our sqrt scaling
-    for (let i = 0; i <= segments; i++) {
-        const theta = (i / segments) * Math.PI * 2;
-        // Ellipse in AU
-        const r = a * (1 - e * e) / (1 + e * Math.cos(theta));
-        const rScaled = scaleDist(r);
-        const x = rScaled * Math.cos(theta);
-        const z = rScaled * Math.sin(theta);
-        // Apply inclination rotation around x-axis
-        const incRad = (inc * Math.PI) / 180;
-        const y = z * Math.sin(incRad);
-        const zRot = z * Math.cos(incRad);
-        orbitPoints.push(new THREE.Vector3(x, y, zRot));
-    }
-
-    const orbitGeom = new THREE.BufferGeometry().setFromPoints(orbitPoints);
-    const orbitMat = new THREE.LineBasicMaterial({
-        color, transparent: true, opacity: 0.2
-    });
-    const orbitLine = new THREE.Line(orbitGeom, orbitMat);
-    cometGroup.add(orbitLine);
-
-    // Comet dot
-    const dotGeom = new THREE.CircleGeometry(0.25, 12);
-    const dotMat = new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide });
-    const mesh = new THREE.Mesh(dotGeom, dotMat);
-    mesh.rotation.x = -Math.PI / 2;
-    scene.add(mesh);
-
-    // Comet tail (small triangle pointing away from sun)
-    const tailGeom = new THREE.BufferGeometry();
-    const tailPositions = new Float32Array(9); // 3 vertices
-    tailGeom.setAttribute('position', new THREE.BufferAttribute(tailPositions, 3));
-    const tailMat = new THREE.MeshBasicMaterial({
-        color, transparent: true, opacity: 0.3, side: THREE.DoubleSide
-    });
-    const tailMesh = new THREE.Mesh(tailGeom, tailMat);
-    scene.add(tailMesh);
-
-    // Label
-    const labelDiv = document.createElement('div');
-    labelDiv.textContent = name;
-    labelDiv.style.cssText = `
-        position: absolute;
-        color: ${color};
-        font-family: 'Courier New', monospace;
-        font-size: 10px;
-        white-space: nowrap;
-        text-shadow: 0 0 4px #000, 0 0 2px #000;
-        opacity: 0.7;
-    `;
-    labelContainer.appendChild(labelDiv);
-
-    // Start at random true anomaly
-    const startAngle = Math.random() * Math.PI * 2;
-
-    cometEntries.push({
-        data: comet,
-        mesh,
-        tailMesh,
-        tailPositions,
-        orbitLine,
-        labelDiv,
-        angle: startAngle, // true anomaly
-        a, e, period, inc,
-        incRad: (inc * Math.PI) / 180
-    });
-});
-
-function updateComets(dt) {
-    cometEntries.forEach(entry => {
-        const { a, e, period, incRad } = entry;
-
-        // Kepler: speed varies — faster near perihelion
-        // Mean motion
-        const n = (Math.PI * 2) / (period * 60);
-        entry.angle += n * dt * timeSpeed;
-
-        // True anomaly to radius
-        const theta = entry.angle;
-        const r = a * (1 - e * e) / (1 + e * Math.cos(theta));
-        const rScaled = scaleDist(r);
-
-        const x = rScaled * Math.cos(theta);
-        const z = rScaled * Math.sin(theta);
-        const y = z * Math.sin(incRad);
-        const zRot = z * Math.cos(incRad);
-
-        entry.mesh.position.set(x, y, zRot);
-
-        // Tail — points away from sun, longer when closer
-        const distToSun = Math.max(rScaled, 1);
-        const tailLen = Math.min(8, 80 / distToSun); // longer near sun
-        const dirX = x / distToSun;
-        const dirZ = zRot / distToSun;
-        const perpX = -dirZ;
-        const perpZ = dirX;
-        const tailWidth = tailLen * 0.3;
-
-        const tp = entry.tailPositions;
-        tp[0] = x; tp[1] = y; tp[2] = zRot; // tip (at comet)
-        tp[3] = x + dirX * tailLen + perpX * tailWidth;
-        tp[4] = y;
-        tp[5] = zRot + dirZ * tailLen + perpZ * tailWidth;
-        tp[6] = x + dirX * tailLen - perpX * tailWidth;
-        tp[7] = y;
-        tp[8] = zRot + dirZ * tailLen - perpZ * tailWidth;
-        entry.tailMesh.geometry.attributes.position.needsUpdate = true;
-
-        // Fade tail based on distance (only visible near inner system)
-        entry.tailMesh.material.opacity = Math.min(0.4, 3 / distToSun);
-    });
-}
-
-function updateCometLabels() {
-    const showLabels = labelsVisible();
-    const tempV = new THREE.Vector3();
-    cometEntries.forEach(entry => {
-        tempV.copy(entry.mesh.position);
-        tempV.project(camera);
-        if (tempV.z > 1) {
-            entry.labelDiv.style.display = 'none';
-            return;
-        }
-        const cx = (tempV.x * 0.5 + 0.5) * window.innerWidth;
-        const cy = (-tempV.y * 0.5 + 0.5) * window.innerHeight;
-        entry.labelDiv.style.transform = `translate(${cx + 12}px, ${cy - 6}px)`;
-        entry.labelDiv.style.display = showLabels ? '' : 'none';
-    });
-}
 
 // ---------------------------------------------------------------------------
 // Create celestial bodies
@@ -526,11 +393,13 @@ function createBody(data, parentMesh) {
 
     const size = isMoon ? BODY_MIN_SIZE * 0.6 : bodySize(data.radius, isStar);
 
-    // Mesh
-    const geom = new THREE.CircleGeometry(size, 24);
-    const mat = new THREE.MeshBasicMaterial({ color: data.color, side: THREE.DoubleSide });
+    // Mesh — 3D sphere
+    const segments = isStar ? 16 : (isMoon ? 8 : 12);
+    const geom = new THREE.SphereGeometry(size, segments, segments);
+    const mat = isStar
+        ? new THREE.MeshBasicMaterial({ color: data.color }) // star self-lit
+        : new THREE.MeshStandardMaterial({ color: data.color, roughness: 0.8, metalness: 0.1 });
     const mesh = new THREE.Mesh(geom, mat);
-    mesh.rotation.x = -Math.PI / 2;
 
     // Selection ring (hidden by default)
     const selGeom = new THREE.RingGeometry(size * 1.3, size * 1.5, 24);
@@ -600,6 +469,61 @@ BODIES.forEach(b => {
     if (!b.type || b.type !== 'Moon') createBody(b, null);
 });
 
+// Create comets as regular bodies with Keplerian orbit data
+COMETS.forEach(comet => {
+    const { a, e, inc, color, name, period } = comet;
+    const incRad = (inc * Math.PI) / 180;
+    const perihelionAU = a * (1 - e);
+
+    // Build elliptical orbit line
+    const segments = 256;
+    const orbitPoints = [];
+    for (let i = 0; i <= segments; i++) {
+        const theta = (i / segments) * Math.PI * 2;
+        const r = a * (1 - e * e) / (1 + e * Math.cos(theta));
+        const rScaled = scaleDist(r);
+        const ox = rScaled * Math.cos(theta);
+        const oz = rScaled * Math.sin(theta);
+        const oy = oz * Math.sin(incRad);
+        const ozRot = oz * Math.cos(incRad);
+        orbitPoints.push(new THREE.Vector3(ox, oy, ozRot));
+    }
+    const orbitGeom = new THREE.BufferGeometry().setFromPoints(orbitPoints);
+    const orbitMat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.2 });
+    const orbitLine = new THREE.Line(orbitGeom, orbitMat);
+    cometGroup.add(orbitLine);
+
+    // Comet sphere + selection ring
+    const size = BODY_MIN_SIZE * 0.7;
+    const geom = new THREE.SphereGeometry(size, 8, 8);
+    const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.9, metalness: 0 });
+    const mesh = new THREE.Mesh(geom, mat);
+
+    const selGeom = new THREE.RingGeometry(size * 1.3, size * 1.5, 24);
+    const selMat = new THREE.MeshBasicMaterial({
+        color: '#44ff44', transparent: true, opacity: 0, side: THREE.DoubleSide
+    });
+    const selRing = new THREE.Mesh(selGeom, selMat);
+    selRing.rotation.x = -Math.PI / 2;
+    mesh.add(selRing);
+    scene.add(mesh);
+
+    const labelDiv = createLabel(name, color, false);
+    const trail = createTrail(color, 400);
+
+    const entry = {
+        data: {
+            name, type: 'Comet', distance: perihelionAU, period, radius: 5,
+            color, moons: [], a, e, inc, incRad
+        },
+        mesh, selRing, orbitLine, orbitRadius: 0,
+        labelDiv, trail,
+        angle: Math.random() * Math.PI * 2,
+        parentMesh: null, moons: [], isMoon: false, isComet: true
+    };
+    bodyMeshes.push(entry);
+});
+
 // ---------------------------------------------------------------------------
 // Body list panel
 // ---------------------------------------------------------------------------
@@ -607,23 +531,87 @@ const bodyListEl = document.getElementById('body-list');
 
 function buildBodyList() {
     bodyListEl.innerHTML = '';
-    bodyMeshes.forEach(entry => {
-        if (entry.isMoon) return; // moons added under parent
-        const item = document.createElement('div');
-        item.className = 'body-list-item';
-        item.innerHTML = `<span class="body-color-dot" style="background:${entry.data.color}"></span>
-            <span class="body-list-name">${entry.data.name}</span>`;
-        item.addEventListener('click', () => selectBody(entry));
-        bodyListEl.appendChild(item);
 
-        entry.moons.forEach(moon => {
-            const mItem = document.createElement('div');
-            mItem.className = 'body-list-item moon';
-            mItem.innerHTML = `<span class="body-color-dot" style="background:${moon.data.color}"></span>
-                <span class="body-list-name">${moon.data.name}</span>`;
-            mItem.addEventListener('click', () => selectBody(moon));
-            bodyListEl.appendChild(mItem);
+    // Group bodies by type
+    const groups = {};
+    const groupOrder = ['Star', 'Planet', 'Dwarf Planet', 'Detached Object', 'Comet'];
+    bodyMeshes.forEach(entry => {
+        if (entry.isMoon) return;
+        const type = entry.data.type;
+        if (!groups[type]) groups[type] = [];
+        groups[type].push(entry);
+    });
+
+    // Pluralize group names
+    const groupLabels = {
+        'Star': 'Stars',
+        'Planet': 'Planets',
+        'Dwarf Planet': 'Dwarf Planets',
+        'Detached Object': 'Detached Objects',
+        'Comet': 'Comets'
+    };
+
+    groupOrder.forEach(type => {
+        const entries = groups[type];
+        if (!entries || entries.length === 0) return;
+
+        const section = document.createElement('div');
+        section.className = 'body-group';
+
+        const header = document.createElement('div');
+        header.className = 'body-group-header';
+        header.innerHTML = `<span class="body-group-toggle">[-]</span> ${groupLabels[type] || type} <span class="body-group-count">(${entries.length})</span>`;
+        section.appendChild(header);
+
+        const list = document.createElement('div');
+        list.className = 'body-group-list';
+        section.appendChild(list);
+
+        header.addEventListener('click', () => {
+            const collapsed = list.style.display === 'none';
+            list.style.display = collapsed ? '' : 'none';
+            header.querySelector('.body-group-toggle').textContent = collapsed ? '[-]' : '[+]';
         });
+
+        entries.forEach(entry => {
+            const hasMoons = entry.moons && entry.moons.length > 0;
+            const item = document.createElement('div');
+            item.className = 'body-list-item';
+            const toggleSpan = hasMoons ? `<span class="moon-toggle">[+]</span>` : '';
+            item.innerHTML = `<span class="body-color-dot" style="background:${entry.data.color}"></span>
+                <span class="body-list-name">${entry.data.name}</span>${toggleSpan}`;
+            item.addEventListener('click', (e) => {
+                // If clicking the toggle, expand/collapse moons instead of selecting
+                if (e.target.classList.contains('moon-toggle')) {
+                    const moonList = item.nextElementSibling;
+                    if (moonList && moonList.classList.contains('moon-sublist')) {
+                        const collapsed = moonList.style.display === 'none';
+                        moonList.style.display = collapsed ? '' : 'none';
+                        e.target.textContent = collapsed ? '[-]' : '[+]';
+                    }
+                    return;
+                }
+                selectBody(entry);
+            });
+            list.appendChild(item);
+
+            if (hasMoons) {
+                const moonList = document.createElement('div');
+                moonList.className = 'moon-sublist';
+                moonList.style.display = 'none'; // collapsed by default
+                entry.moons.forEach(moon => {
+                    const mItem = document.createElement('div');
+                    mItem.className = 'body-list-item moon';
+                    mItem.innerHTML = `<span class="body-color-dot" style="background:${moon.data.color}"></span>
+                        <span class="body-list-name">${moon.data.name}</span>`;
+                    mItem.addEventListener('click', () => selectBody(moon));
+                    moonList.appendChild(mItem);
+                });
+                list.appendChild(moonList);
+            }
+        });
+
+        bodyListEl.appendChild(section);
     });
 }
 buildBodyList();
@@ -690,8 +678,13 @@ function selectBody(entry) {
     panel.classList.remove('hidden');
     document.getElementById('info-title').textContent = entry.data.name;
     document.getElementById('info-type').textContent = entry.data.type;
-    document.getElementById('info-distance').textContent = entry.data.distance > 0
-        ? `${entry.data.distance} AU` : 'Center';
+    if (entry.isComet) {
+        document.getElementById('info-distance').textContent =
+            `Perihelion: ${entry.data.distance.toFixed(2)} AU | e: ${entry.data.e}`;
+    } else {
+        document.getElementById('info-distance').textContent = entry.data.distance > 0
+            ? `${entry.data.distance} AU` : 'Center';
+    }
     document.getElementById('info-period').textContent = entry.data.period > 0
         ? `${entry.data.period} years` : '-';
     document.getElementById('info-radius').textContent = `${entry.data.radius.toLocaleString()} km`;
@@ -706,6 +699,26 @@ function selectBody(entry) {
             el.classList.add('selected');
         }
     });
+}
+
+function selectAsteroid(hit) {
+    // Clear any body selection
+    if (selectedBody) {
+        selectedBody.selRing.material.opacity = 0;
+        selectedBody = null;
+    }
+    document.querySelectorAll('.body-list-item').forEach(el => el.classList.remove('selected'));
+
+    const { belt, asteroid } = hit;
+    const panel = document.getElementById('info-panel');
+    panel.classList.remove('hidden');
+    document.getElementById('info-title').textContent = asteroid.designation;
+    document.getElementById('info-type').textContent = `Asteroid (${belt.name})`;
+    document.getElementById('info-distance').textContent = `${asteroid.au} AU`;
+    document.getElementById('info-period').textContent = `${asteroid.period} years`;
+    document.getElementById('info-radius').textContent = `~${asteroid.diameter} km dia.`;
+    document.getElementById('info-moons').textContent = '0';
+    document.getElementById('info-position').textContent = '-';
 }
 
 document.getElementById('info-close').addEventListener('click', () => {
@@ -728,11 +741,13 @@ renderer.domElement.addEventListener('click', (event) => {
 
     let closest = null;
     let closestDist = Infinity;
+    let closestAsteroid = null;
 
+    // Check celestial bodies
     bodyMeshes.forEach(entry => {
         clickVec.copy(entry.mesh.position);
         clickVec.project(camera);
-        if (clickVec.z > 1) return; // behind camera
+        if (clickVec.z > 1) return;
 
         const sx = (clickVec.x * 0.5 + 0.5) * window.innerWidth;
         const sy = (-clickVec.y * 0.5 + 0.5) * window.innerHeight;
@@ -741,10 +756,34 @@ renderer.domElement.addEventListener('click', (event) => {
         if (dist < closestDist) {
             closestDist = dist;
             closest = entry;
+            closestAsteroid = null;
         }
     });
 
-    if (closest && closestDist < MAX_CLICK_DIST) {
+    // Check asteroids (screen-space hit detection on point cloud data)
+    const asteroidClickDist = 20; // tighter hit area for asteroids
+    asteroidBelts.forEach(beltEntry => {
+        const { positions, asteroids, count } = beltEntry;
+        for (let i = 0; i < count; i++) {
+            clickVec.set(positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2]);
+            clickVec.project(camera);
+            if (clickVec.z > 1) continue;
+
+            const sx = (clickVec.x * 0.5 + 0.5) * window.innerWidth;
+            const sy = (-clickVec.y * 0.5 + 0.5) * window.innerHeight;
+            const dist = Math.hypot(mx - sx, my - sy);
+
+            if (dist < closestDist && dist < asteroidClickDist) {
+                closestDist = dist;
+                closest = null;
+                closestAsteroid = { belt: beltEntry.belt, asteroid: asteroids[i], index: i };
+            }
+        }
+    });
+
+    if (closestAsteroid && closestDist < asteroidClickDist) {
+        selectAsteroid(closestAsteroid);
+    } else if (closest && closestDist < MAX_CLICK_DIST) {
         selectBody(closest);
     }
 });
@@ -791,27 +830,46 @@ function updatePositions(dt) {
     simTime += dt * timeSpeed;
 
     bodyMeshes.forEach(entry => {
-        if (entry.data.distance === 0) return; // star at origin
+        if (entry.data.distance === 0 && !entry.isComet) return; // star at origin
 
-        const speed = entry.data.period > 0 ? (Math.PI * 2) / (entry.data.period * 60) : 0;
-        entry.angle += speed * dt * timeSpeed;
+        // Comet: Keplerian elliptical orbit
+        if (entry.isComet) {
+            const { a, e, incRad } = entry.data;
+            const n = (Math.PI * 2) / (entry.data.period * 60);
+            entry.angle += n * dt * timeSpeed;
 
-        const r = entry.orbitRadius;
-        const x = Math.cos(entry.angle) * r;
-        const z = Math.sin(entry.angle) * r;
+            const theta = entry.angle;
+            const r = a * (1 - e * e) / (1 + e * Math.cos(theta));
+            const rScaled = scaleDist(r);
 
-        if (entry.parentMesh) {
-            // Moon: offset from parent
-            const px = entry.parentMesh.position.x;
-            const pz = entry.parentMesh.position.z;
-            entry.mesh.position.set(px + x, 0, pz + z);
+            const cx = rScaled * Math.cos(theta);
+            const cz = rScaled * Math.sin(theta);
+            const cy = cz * Math.sin(incRad);
+            const czRot = cz * Math.cos(incRad);
 
-            // Update moon orbit ring position
-            if (entry.orbitLine) {
-                entry.orbitLine.position.set(px, 0, pz);
-            }
+            entry.mesh.position.set(cx, cy, czRot);
         } else {
-            entry.mesh.position.set(x, 0, z);
+            // Circular orbit
+            const speed = entry.data.period > 0 ? (Math.PI * 2) / (entry.data.period * 60) : 0;
+            entry.angle += speed * dt * timeSpeed;
+
+            const r = entry.orbitRadius;
+            const x = Math.cos(entry.angle) * r;
+            const z = Math.sin(entry.angle) * r;
+
+            if (entry.parentMesh) {
+                // Moon: offset from parent
+                const px = entry.parentMesh.position.x;
+                const pz = entry.parentMesh.position.z;
+                entry.mesh.position.set(px + x, 0, pz + z);
+
+                // Update moon orbit ring position
+                if (entry.orbitLine) {
+                    entry.orbitLine.position.set(px, 0, pz);
+                }
+            } else {
+                entry.mesh.position.set(x, 0, z);
+            }
         }
 
         // Trail — always record, sample every ~0.02 sim-time units
@@ -966,10 +1024,8 @@ function animate() {
     updateFlyTo();
     updatePositions(dt);
     updateAsteroids(dt);
-    updateComets(dt);
     updateFollow();
     updateLabels();
-    updateCometLabels();
     updateInfoPosition();
     updateHUD();
 

@@ -187,11 +187,41 @@ body {
 }
 
 #body-list {
-    padding: 4px 0;
+    padding: 2px 0;
+}
+
+.body-group {
+    margin-bottom: 2px;
+}
+
+.body-group-header {
+    padding: 3px 8px;
+    color: #6a9a6a;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    cursor: pointer;
+    border-bottom: 1px solid #1a1a24;
+}
+
+.body-group-header:hover {
+    color: #88cc88;
+    background: #111118;
+}
+
+.body-group-toggle {
+    color: #4a6a4a;
+    font-size: 10px;
+    margin-right: 2px;
+}
+
+.body-group-count {
+    color: #3a5a3a;
+    font-size: 9px;
 }
 
 .body-list-item {
-    padding: 3px 8px;
+    padding: 3px 8px 3px 16px;
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -219,8 +249,23 @@ body {
     font-size: 11px;
 }
 
+.moon-toggle {
+    color: #4a6a4a;
+    font-size: 9px;
+    margin-left: auto;
+    cursor: pointer;
+}
+
+.moon-toggle:hover {
+    color: #88cc88;
+}
+
+.moon-sublist {
+    /* container for collapsible moons */
+}
+
 .body-list-item.moon {
-    padding-left: 22px;
+    padding-left: 30px;
 }
 
 .body-list-item.moon .body-list-name {
