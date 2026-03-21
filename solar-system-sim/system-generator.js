@@ -1,15 +1,7 @@
 // ---------------------------------------------------------------------------
 // Procedural Star System Generator
 // ---------------------------------------------------------------------------
-
-// --- Seeded RNG (same LCG as main.js) ---
-function seededRandom(seed) {
-    let s = Math.abs(seed) || 1;
-    return () => {
-        s = (s * 16807 + 0) % 2147483647;
-        return (s - 1) / 2147483646;
-    };
-}
+import { seededRandom } from './utils.js';
 
 function rngInt(rng, min, max) {
     return min + Math.floor(rng() * (max - min + 1));
