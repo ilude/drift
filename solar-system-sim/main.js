@@ -201,7 +201,7 @@ const ASTEROID_BELTS = [
     {
         name: 'Main Belt',
         minAU: 2.1, maxAU: 3.3,       // between Mars and Jupiter
-        count: 600,
+        count: 1387,
         color: '#555544',
         size: 0.25,
         minPeriod: 3.2, maxPeriod: 5.9, // years (Kepler-ish)
@@ -210,7 +210,7 @@ const ASTEROID_BELTS = [
     {
         name: 'Kuiper Belt - Cold Classical',
         minAU: 42, maxAU: 48,           // stable region between 2:3 and 1:2 Neptune resonances
-        count: 250,
+        count: 1523,
         color: '#333344',
         size: 0.3,
         minPeriod: 272, maxPeriod: 332,
@@ -219,7 +219,7 @@ const ASTEROID_BELTS = [
     {
         name: 'Kuiper Belt - Hot Classical',
         minAU: 30, maxAU: 50,           // wider range, more eccentric
-        count: 200,
+        count: 1261,
         color: '#334455',
         size: 0.3,
         minPeriod: 164, maxPeriod: 354,
@@ -228,7 +228,7 @@ const ASTEROID_BELTS = [
     {
         name: 'Kuiper Belt - Resonant',
         minAU: 39, maxAU: 48,           // plutinos (3:2) and twotinos (2:1)
-        count: 100,
+        count: 842,
         color: '#443355',
         size: 0.3,
         minPeriod: 244, maxPeriod: 332,
