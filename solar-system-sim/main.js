@@ -1018,16 +1018,16 @@ function updatePositions(dt) {
 const edgeVec = new THREE.Vector3();
 const labelsVisible = () => document.getElementById('toggle-labels').checked;
 
-// LOD thresholds — camera distance to parent body below which moons become visible
-const MOON_LOD_DIST = 25;
+// LOD thresholds — zoom factor above which moons become visible
+const MOON_LOD_ZOOM = 1.1;
 
 function updateLabels() {
     const showLabels = labelsVisible();
     bodyMeshes.forEach(entry => {
         // LOD: hide moons when camera is far from their parent
         if (entry.isMoon && entry.parentMesh) {
-            const camDist = camera.position.distanceTo(entry.parentMesh.position);
-            const visible = camDist < MOON_LOD_DIST;
+            const zoomFactor = 120 / camera.position.length();
+            const visible = zoomFactor > MOON_LOD_ZOOM;
             entry.mesh.visible = visible;
             if (entry.orbitLine) entry.orbitLine.visible = visible && document.getElementById('toggle-orbits').checked;
             if (!visible) {

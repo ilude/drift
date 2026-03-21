@@ -221,6 +221,25 @@ function generatePlanets(rng, systemClass, starMass, starLuminosity, binary) {
         planets.push(makePlanetEntry(rng, dist, rngFloat(rng, 0.8, 2.0), starMass));
     }
 
+    // Add outer dwarf planets and detached objects to ALL system types
+    const outermost = planets.reduce((max, p) => p.distance > max ? p.distance : max, 0);
+    let dwarfDist = outermost * rngFloat(rng, 1.8, 3.0);
+    const dwarfCount = rngInt(rng, 2, 5);
+    for (let i = 0; i < dwarfCount; i++) {
+        const p = makePlanetEntry(rng, dwarfDist, rngFloat(rng, 0.05, 0.35), starMass);
+        p._isDwarf = true;
+        planets.push(p);
+        dwarfDist *= rngFloat(rng, 1.3, 2.0);
+    }
+
+    // Chance of a detached object (Sedna-like) far out
+    if (rng() < 0.4) {
+        const detachedDist = dwarfDist * rngFloat(rng, 3, 10);
+        const p = makePlanetEntry(rng, detachedDist, rngFloat(rng, 0.03, 0.15), starMass);
+        p._isDetached = true;
+        planets.push(p);
+    }
+
     // Sort by distance
     planets.sort((a, b) => a.distance - b.distance);
 
@@ -296,17 +315,6 @@ function generateSolarLike(rng, planets, starMass, luminosity, snowLine, binary)
         const radius = rngFloat(rng, 3, 5);
         planets.push(makePlanetEntry(rng, dist, radius, starMass));
         dist *= Math.pow(rngFloat(rng, 2, 3), 2 / 3);
-    }
-
-    // Optional dwarf planets
-    if (rng() < 0.6) {
-        const dCount = rngInt(rng, 1, 2);
-        for (let i = 0; i < dCount; i++) {
-            dist *= Math.pow(rngFloat(rng, 1.5, 2.5), 2 / 3);
-            const p = makePlanetEntry(rng, dist, rngFloat(rng, 0.1, 0.4), starMass);
-            p._isDwarf = true;
-            planets.push(p);
-        }
     }
 
     const filtered = applyBinaryConstraints(planets, binary);
@@ -458,24 +466,59 @@ function generateAsteroidBelts(rng, planets, starMass, systemName) {
         }
     }
 
-    // Outer belt (Kuiper analog) — beyond outermost planet
+    // Outer belt complex (Kuiper analog) — beyond outermost planet
+    // Split into 2-3 sub-populations like Sol's Kuiper Belt
     const outermost = planets[planets.length - 1];
-    if (outermost && outermost.distance > 5) {
-        const kuiperInner = outermost.distance * rngFloat(rng, 1.3, 1.5);
-        const kuiperOuter = outermost.distance * rngFloat(rng, 1.6, 2.0);
+    if (outermost && outermost.distance > 3) {
+        const baseInner = outermost.distance * rngFloat(rng, 1.2, 1.4);
+        const baseOuter = outermost.distance * rngFloat(rng, 1.8, 2.5);
+
+        // Cold population — narrow, flat, densest
+        const coldInner = baseInner * rngFloat(rng, 1.0, 1.1);
+        const coldOuter = baseInner * rngFloat(rng, 1.2, 1.4);
         belts.push({
-            name: `${systemName} Outer Belt`,
-            minAU: Math.round(kuiperInner * 100) / 100,
-            maxAU: Math.round(kuiperOuter * 100) / 100,
-            count: rngInt(rng, 1000, 2000),
+            name: `${systemName} Outer Belt - Cold`,
+            minAU: Math.round(coldInner * 100) / 100,
+            maxAU: Math.round(coldOuter * 100) / 100,
+            count: rngInt(rng, 800, 1600),
             color: rngPick(rng, beltColors),
             size: 0.3,
-            minPeriod: Math.round(keplerPeriod(kuiperInner, starMass) * 100) / 100,
-            maxPeriod: Math.round(keplerPeriod(kuiperOuter, starMass) * 100) / 100,
-            maxInc: rngInt(rng, 1, 4),
+            minPeriod: Math.round(keplerPeriod(coldInner, starMass) * 100) / 100,
+            maxPeriod: Math.round(keplerPeriod(coldOuter, starMass) * 100) / 100,
+            maxInc: rngInt(rng, 1, 2),
         });
+
+        // Hot population — wider, more inclined
+        belts.push({
+            name: `${systemName} Outer Belt - Hot`,
+            minAU: Math.round(baseInner * 100) / 100,
+            maxAU: Math.round(baseOuter * 100) / 100,
+            count: rngInt(rng, 600, 1400),
+            color: rngPick(rng, beltColors),
+            size: 0.3,
+            minPeriod: Math.round(keplerPeriod(baseInner, starMass) * 100) / 100,
+            maxPeriod: Math.round(keplerPeriod(baseOuter, starMass) * 100) / 100,
+            maxInc: rngInt(rng, 3, 5),
+        });
+
+        // Resonant population — overlapping region
+        if (rng() < 0.7) {
+            const resInner = coldInner * rngFloat(rng, 0.9, 1.0);
+            const resOuter = coldOuter * rngFloat(rng, 1.0, 1.1);
+            belts.push({
+                name: `${systemName} Outer Belt - Resonant`,
+                minAU: Math.round(resInner * 100) / 100,
+                maxAU: Math.round(resOuter * 100) / 100,
+                count: rngInt(rng, 300, 800),
+                color: rngPick(rng, beltColors),
+                size: 0.3,
+                minPeriod: Math.round(keplerPeriod(resInner, starMass) * 100) / 100,
+                maxPeriod: Math.round(keplerPeriod(resOuter, starMass) * 100) / 100,
+                maxInc: rngInt(rng, 2, 4),
+            });
+        }
     } else if (!largestGiant) {
-        // No giant — place a sparse belt somewhere mid-system
+        // No giant and compact system — place a debris belt mid-system
         const midDist = outermost ? outermost.distance * 1.5 : 3;
         const inner = midDist * 0.8;
         const outer = midDist * 1.2;
@@ -549,7 +592,7 @@ export function generateSystem(seed) {
     rawPlanets.forEach((p, i) => {
         const letter = planetLetter(i);
         const name = `${systemName} ${letter}`;
-        const type = p._isDwarf ? 'Dwarf Planet' : 'Planet';
+        const type = p._isDetached ? 'Detached Object' : p._isDwarf ? 'Dwarf Planet' : 'Planet';
         const moons = generateMoons(rng, name, p._radiusEarths, p._category);
 
         bodies.push({
