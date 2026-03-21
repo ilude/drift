@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { state, MOON_LOD_ZOOM } from './state.js';
+import { state, MOON_LOD_ZOOM, screenRadius as calcScreenRadius, simTimeToDay, speedLabel, lodLevel } from './state.js';
 import { camera, gridGroup } from './scene.js';
 import { selectBody } from './selection.js';
 import { generateSystem } from './system-generator.js';
@@ -170,14 +170,12 @@ export function updateLabels() {
         const cy = (-tempVec.y * 0.5 + 0.5) * window.innerHeight;
 
         const radius = entry.screenSize || 0.3;
-        edgeVec.setFromMatrixColumn(camera.matrixWorld, 0);
-        edgeVec.multiplyScalar(radius).add(entry.mesh.position);
-        edgeVec.project(camera);
-        const screenRadius = Math.abs((edgeVec.x * 0.5 + 0.5) * window.innerWidth - cx);
+        const dist = edgeVec.copy(entry.mesh.position).sub(camera.position).length();
+        const sr = calcScreenRadius(radius, dist, camera.fov, window.innerHeight);
 
         // LOD: swap sphere geometry based on screen size
         if (entry.geomLevels) {
-            const level = screenRadius > 50 ? 2 : screenRadius > 15 ? 1 : 0;
+            const level = lodLevel(sr);
             if (level !== entry.lodLevel) {
                 entry.mesh.geometry = entry.geomLevels[level];
                 entry.lodLevel = level;
@@ -185,7 +183,7 @@ export function updateLabels() {
         }
 
         const gap = 6;
-        entry.labelDiv.style.transform = `translate(${cx + screenRadius + gap}px, ${cy - 6}px)`;
+        entry.labelDiv.style.transform = `translate(${cx + sr + gap}px, ${cy - 6}px)`;
         entry.labelDiv.style.display = showLabels ? '' : 'none';
     });
 }
@@ -211,11 +209,8 @@ export function updateHUD() {
         fpsEl.textContent = `FPS: ${fpsValue}`;
     }
 
-    const day = Math.floor(state.simTime * 365.25);
-    const speedLabel = state.timeSpeed === 0 ? 'Paused' :
-        state.timeSpeed === 0.25 ? '5-Second Increment' :
-        state.timeSpeed === 1 ? '1-Day Increment' : '30-Day Increment';
-    const timeText = `Day ${day} | ${speedLabel}`;
+    const day = simTimeToDay(state.simTime);
+    const timeText = `Day ${day} | ${speedLabel(state.timeSpeed)}`;
     if (timeText !== lastTimeText) {
         timeEl.textContent = timeText;
         lastTimeText = timeText;

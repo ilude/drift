@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { state, MAX_CLICK_DIST } from './state.js';
+import { state, MAX_CLICK_DIST, easeOutCubic } from './state.js';
 import { camera, controls, renderer } from './scene.js';
 
 function animateCameraTo(entry, zoomDist) {
@@ -22,7 +22,7 @@ export function updateFlyTo() {
     let t = (now - state.flyTo.startTime) / state.flyTo.duration;
     if (t >= 1) t = 1;
 
-    const ease = 1 - Math.pow(1 - t, 3);
+    const ease = easeOutCubic(t);
 
     const pos = state.flyTo.entry.mesh.position;
     flyEndTarget.set(pos.x, 0, pos.z);

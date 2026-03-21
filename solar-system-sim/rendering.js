@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { state, scaleDist, bodySize, BODY_MIN_SIZE, MOON_DIST_SCALE } from './state.js';
+import { state, scaleDist, bodySize, BODY_MIN_SIZE, MOON_DIST_SCALE, keplerRadius, orbitSpeed, inclinedPosition } from './state.js';
 import { scene, labelContainer, trailGroups, cometGroup } from './scene.js';
 import { seededRandom } from './utils.js';
 
@@ -270,13 +270,10 @@ export function createAsteroidBelts() {
 
             const x = Math.cos(angle) * r;
             const z = Math.sin(angle) * r;
-            const xn = x * cosN + z * sinN;
-            const zn = -x * sinN + z * cosN;
-            const yn = zn * sinI;
-            const znTilt = zn * cosI;
-            positions[i * 3] = xn * cosN - znTilt * sinN;
-            positions[i * 3 + 1] = yn;
-            positions[i * 3 + 2] = xn * sinN + znTilt * cosN;
+            const p = inclinedPosition(x, z, cosN, sinN, cosI, sinI);
+            positions[i * 3] = p.x;
+            positions[i * 3 + 1] = p.y;
+            positions[i * 3 + 2] = p.z;
 
             asteroids.push({
                 designation: `${prefix}-${String(i + 1).padStart(4, '0')}`,
@@ -308,15 +305,10 @@ export function updateAsteroids(dt) {
             const x = Math.cos(angles[i]) * r;
             const z = Math.sin(angles[i]) * r;
 
-            const cosN = cosNode[i], sinN = sinNode[i];
-            const cosI = cosInc[i], sinI = sinInc[i];
-            const xn = x * cosN + z * sinN;
-            const zn = -x * sinN + z * cosN;
-            const yn = zn * sinI;
-            const znTilt = zn * cosI;
-            positions[i * 3] = xn * cosN - znTilt * sinN;
-            positions[i * 3 + 1] = yn;
-            positions[i * 3 + 2] = xn * sinN + znTilt * cosN;
+            const p = inclinedPosition(x, z, cosNode[i], sinNode[i], cosInc[i], sinInc[i]);
+            positions[i * 3] = p.x;
+            positions[i * 3 + 1] = p.y;
+            positions[i * 3 + 2] = p.z;
         }
         points.geometry.attributes.position.needsUpdate = true;
     });
@@ -330,11 +322,10 @@ export function updatePositions(dt) {
 
         if (entry.isComet) {
             const { a, e, incRad, nodeRad, periRad } = entry.data;
-            const n = (Math.PI * 2) / (entry.data.period * 60);
-            entry.angle += n * dt * state.timeSpeed;
+            entry.angle += orbitSpeed(entry.data.period) * dt * state.timeSpeed;
 
             const theta = entry.angle;
-            const r = a * (1 - e * e) / (1 + e * Math.cos(theta));
+            const r = keplerRadius(a, e, theta);
             const rScaled = scaleDist(r);
 
             const ox = rScaled * Math.cos(theta);
@@ -343,8 +334,7 @@ export function updatePositions(dt) {
 
             entry.mesh.position.set(w.x, w.y, w.z);
         } else {
-            const speed = entry.data.period > 0 ? (Math.PI * 2) / (entry.data.period * 60) : 0;
-            entry.angle += speed * dt * state.timeSpeed;
+            entry.angle += orbitSpeed(entry.data.period) * dt * state.timeSpeed;
 
             const r = entry.orbitRadius;
             const x = Math.cos(entry.angle) * r;

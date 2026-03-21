@@ -15,6 +15,51 @@ export function bodySize(radius, isStar) {
     return Math.max(BODY_MIN_SIZE, Math.min(1.2, s));
 }
 
+export function screenRadius(worldRadius, distance, fovDeg, screenHeight) {
+    if (distance <= 0) return screenHeight;
+    const halfTan = Math.tan((fovDeg * Math.PI / 180) / 2);
+    return (worldRadius / distance) / halfTan * (screenHeight / 2);
+}
+
+export function keplerRadius(a, e, theta) {
+    return a * (1 - e * e) / (1 + e * Math.cos(theta));
+}
+
+export function orbitSpeed(period) {
+    return period > 0 ? (Math.PI * 2) / (period * 60) : 0;
+}
+
+export function inclinedPosition(x, z, cosN, sinN, cosI, sinI) {
+    const xn = x * cosN + z * sinN;
+    const zn = -x * sinN + z * cosN;
+    const yn = zn * sinI;
+    const znTilt = zn * cosI;
+    return {
+        x: xn * cosN - znTilt * sinN,
+        y: yn,
+        z: xn * sinN + znTilt * cosN
+    };
+}
+
+export function easeOutCubic(t) {
+    return 1 - Math.pow(1 - t, 3);
+}
+
+export function simTimeToDay(simTime) {
+    return Math.floor(simTime * 365.25);
+}
+
+export function speedLabel(timeSpeed) {
+    if (timeSpeed === 0) return 'Paused';
+    if (timeSpeed === 0.25) return '5-Second Increment';
+    if (timeSpeed === 1) return '1-Day Increment';
+    return '30-Day Increment';
+}
+
+export function lodLevel(screenRadius) {
+    return screenRadius > 50 ? 2 : screenRadius > 15 ? 1 : 0;
+}
+
 export const state = {
     bodyMeshes: [],
     asteroidBelts: [],
