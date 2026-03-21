@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>System Map - Sol</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="canvas-container"></div>
+
+    <div id="header-bar">
+        <span class="system-name">Sol System</span>
+        <span class="header-sep">|</span>
+        <span id="time-display">Day 0 | 5-Second Increment</span>
+        <span class="header-sep">|</span>
+        <span id="zoom-display">Zoom: 1.00x</span>
+    </div>
+
+    <div id="info-panel" class="panel hidden">
+        <div class="panel-header">
+            <span id="info-title">Select Body</span>
+            <button id="info-close">[X]</button>
+        </div>
+        <div id="info-content">
+            <div class="info-row"><span class="info-label">Type:</span><span id="info-type">-</span></div>
+            <div class="info-row"><span class="info-label">Distance:</span><span id="info-distance">-</span></div>
+            <div class="info-row"><span class="info-label">Orbital Period:</span><span id="info-period">-</span></div>
+            <div class="info-row"><span class="info-label">Radius:</span><span id="info-radius">-</span></div>
+            <div class="info-row"><span class="info-label">Moons:</span><span id="info-moons">-</span></div>
+            <div class="info-row"><span class="info-label">Position:</span><span id="info-position">-</span></div>
+        </div>
+    </div>
+
+    <div id="controls-panel" class="panel">
+        <div class="panel-header">Time Controls</div>
+        <div id="time-controls">
+            <button class="ctrl-btn" id="btn-pause">|| Pause</button>
+            <button class="ctrl-btn" id="btn-slow">|> Slow</button>
+            <button class="ctrl-btn active" id="btn-normal">>> Normal</button>
+            <button class="ctrl-btn" id="btn-fast">>>> Fast</button>
+        </div>
+        <div class="panel-header" style="margin-top: 8px;">Display</div>
+        <div id="display-controls">
+            <label class="ctrl-toggle"><input type="checkbox" id="toggle-orbits" checked> Orbital Rings</label>
+            <label class="ctrl-toggle"><input type="checkbox" id="toggle-labels" checked> Labels</label>
+            <label class="ctrl-toggle"><input type="checkbox" id="toggle-grid" checked> Distance Grid</label>
+            <label class="ctrl-toggle"><input type="checkbox" id="toggle-trails"> Orbit Trails</label>
+        </div>
+    </div>
+
+    <div id="body-list-panel" class="panel">
+        <div class="panel-header">System Bodies</div>
+        <div id="body-list"></div>
+    </div>
+
+    <script type="module" src="main.js"></script>
+</body>
+</html>
