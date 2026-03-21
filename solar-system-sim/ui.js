@@ -194,6 +194,9 @@ export function updateLabels() {
         if (entry.planetRing) {
             entry.planetRing.visible = sr > 15;
         }
+        if (entry.cloudMesh) {
+            entry.cloudMesh.visible = sr > 15;
+        }
 
         const gap = 6;
         entry.labelDiv.style.transform = `translate(${cx + sr + gap}px, ${cy - 6}px)`;

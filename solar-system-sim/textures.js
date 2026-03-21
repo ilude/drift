@@ -443,9 +443,59 @@ export function createStarMaterial(color) {
     });
 }
 
+// --- Cloud texture generator ---
+
+function generateCloudTexture(rng, category, w = 512, h = 256) {
+    const canvas = document.createElement('canvas');
+    canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    const img = ctx.createImageData(w, h);
+    const noise = createNoise3D(rng);
+
+    // Cloud parameters by category
+    let coverage, sharpness, octaves, scale;
+    switch (category) {
+        case 'gasGiant':
+            coverage = 0.35; sharpness = 2.5; octaves = 5; scale = 3; break;
+        case 'iceGiant':
+            coverage = 0.55; sharpness = 3.0; octaves = 4; scale = 2.5; break;
+        case 'subNeptune':
+            coverage = 0.5; sharpness = 2.0; octaves = 3; scale = 2; break;
+        default: // rocky with atmosphere
+            coverage = 0.5; sharpness = 2.5; octaves = 5; scale = 3; break;
+    }
+
+    for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+            const u = x / w, v = y / h;
+            const [sx, sy, sz] = uvToSphere(u, v);
+
+            let n = fbm(noise, sx * scale, sy * scale, sz * scale, octaves);
+            // Shift and sharpen to create cloud patches
+            n = clamp01((n - coverage + 0.5) * sharpness);
+
+            // Reduce clouds at poles for gas/ice giants (banded look)
+            if (category === 'gasGiant' || category === 'iceGiant') {
+                const lat = Math.abs(v - 0.5) * 2;
+                n *= 1 - lat * lat * 0.4;
+            }
+
+            const idx = (y * w + x) * 4;
+            img.data[idx] = 255;
+            img.data[idx + 1] = 255;
+            img.data[idx + 2] = 255;
+            img.data[idx + 3] = n * 180; // semi-transparent
+        }
+    }
+
+    ctx.putImageData(img, 0, 0);
+    return new THREE.CanvasTexture(canvas);
+}
+
 // --- Texture dispatcher ---
 
 const EARTH_RADIUS_KM = 6371;
+const ROCKY_CLOUD_MIN_RADIUS = 0.8; // Earth radii — smaller rocky bodies have no atmosphere
 
 function bodyCategory(data) {
     if (data._category) return data._category;
@@ -465,4 +515,18 @@ export function generateBodyTexture(data, isMoon) {
         case 'subNeptune': return generateSubNeptuneTexture(rng, data.color);
         default: return generateRockyTexture(rng, data.color);
     }
+}
+
+export function generateCloudTextureForBody(data, isMoon) {
+    if (isMoon) return null;
+
+    const category = bodyCategory(data);
+    const radiusEarths = data.radius / EARTH_RADIUS_KM;
+
+    // Rocky bodies need minimum size for atmosphere
+    if (category === 'rocky' && radiusEarths < ROCKY_CLOUD_MIN_RADIUS) return null;
+
+    const seed = hashString(data.name + '_clouds');
+    const rng = seededRandom(seed);
+    return generateCloudTexture(rng, category);
 }

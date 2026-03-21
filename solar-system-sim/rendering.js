@@ -4,7 +4,7 @@ import { scaleDist, MOON_DIST_SCALE, keplerRadius, orbitSpeed, meanToTrue, incli
 import { bodySize, BODY_MIN_SIZE, moonOrbitScale, realisticSize } from './visual.js';
 import { scene, camera, controls, ZOOM_BASE, labelContainer, trailGroups, cometGroup } from './scene.js';
 import { seededRandom } from './utils.js';
-import { generateBodyTexture, createStarMaterial } from './textures.js';
+import { generateBodyTexture, generateCloudTextureForBody, createStarMaterial } from './textures.js';
 
 // Transform orbital plane coordinates to 3D world space using Ω, i, ω
 const _orbitOut = { x: 0, y: 0, z: 0 };
@@ -163,6 +163,25 @@ export function createBody(data, parentMesh) {
         mesh.add(planetRing);
     }
 
+    // Cloud layer
+    let cloudMesh = null;
+    if (!isStar && !isMoon) {
+        const cloudTex = generateCloudTextureForBody(data, false);
+        if (cloudTex) {
+            const cloudGeom = new THREE.SphereGeometry(size * 1.02, 48, 48);
+            const cloudMat = new THREE.MeshStandardMaterial({
+                map: cloudTex,
+                transparent: true,
+                depthWrite: false,
+                roughness: 1,
+                metalness: 0,
+            });
+            cloudMesh = new THREE.Mesh(cloudGeom, cloudMat);
+            cloudMesh.visible = false;
+            mesh.add(cloudMesh);
+        }
+    }
+
     const selGeom = new THREE.RingGeometry(size * SEL_RING_INNER, size * SEL_RING_OUTER, SEL_RING_SEGS);
     const selMat = new THREE.MeshBasicMaterial({
         color: '#44ff44', transparent: true, opacity: 0, side: THREE.DoubleSide
@@ -188,7 +207,7 @@ export function createBody(data, parentMesh) {
     const trail = createTrail(data.color, TRAIL_MAX_POINTS);
 
     const entry = {
-        data, mesh, selRing, planetRing, orbitLine, orbitRadius, labelDiv, trail,
+        data, mesh, selRing, planetRing, cloudMesh, orbitLine, orbitRadius, labelDiv, trail,
         angle: Math.random() * Math.PI * 2,
         parentMesh, moons: [], isMoon, screenSize: size,
         baseSize: size,
@@ -422,6 +441,11 @@ export function updatePositions(dt) {
             } else {
                 entry.mesh.position.set(x, 0, z);
             }
+        }
+
+        // Cloud rotation
+        if (entry.cloudMesh && entry.cloudMesh.visible) {
+            entry.cloudMesh.rotation.y += dt * state.timeSpeed * 0.002;
         }
 
         // Trail recording
