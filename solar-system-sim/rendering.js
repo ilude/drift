@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { state } from './state.js';
 import { scaleDist, MOON_DIST_SCALE, keplerRadius, orbitSpeed, meanToTrue, inclinedPosition } from './orbit.js';
 import { bodySize, BODY_MIN_SIZE, moonOrbitScale, realisticSize } from './visual.js';
-import { scene, camera, controls, labelContainer, trailGroups, cometGroup } from './scene.js';
+import { scene, camera, controls, ZOOM_BASE, labelContainer, trailGroups, cometGroup } from './scene.js';
 import { seededRandom } from './utils.js';
 import { generateBodyTexture, createStarMaterial } from './textures.js';
 
@@ -31,9 +31,17 @@ export function orbitToWorld(x, z, incRad, nodeRad, periRad) {
 // LOD tiers: [low, medium, high] segment counts
 const LOD_SEGS = [8, 24, 48];
 const STAR_LOD_SEGS = [32, 48, 64];
+const MOON_SIZE = BODY_MIN_SIZE * 0.6;
+const COMET_SIZE = BODY_MIN_SIZE * 0.7;
+const SEL_RING_INNER = 1.3;
+const SEL_RING_OUTER = 1.5;
+const SEL_RING_SEGS = 24;
+const TRAIL_MAX_POINTS = 400;
+export const COMET_ORBIT_OPACITY = 0.03;
+export const COMET_ORBIT_SELECTED_OPACITY = 0.05;
 
-const sharedMoonGeoms = LOD_SEGS.map(s => new THREE.SphereGeometry(BODY_MIN_SIZE * 0.6, s, s));
-const sharedCometGeoms = LOD_SEGS.map(s => new THREE.SphereGeometry(BODY_MIN_SIZE * 0.7, s, s));
+const sharedMoonGeoms = LOD_SEGS.map(s => new THREE.SphereGeometry(MOON_SIZE, s, s));
+const sharedCometGeoms = LOD_SEGS.map(s => new THREE.SphereGeometry(COMET_SIZE, s, s));
 const sharedMoonOrbitMat = new THREE.LineBasicMaterial({ color: '#1a2a1a', transparent: true, opacity: 0.3 });
 const sharedPlanetOrbitMat = new THREE.LineBasicMaterial({ color: '#1a3a1a', transparent: true, opacity: 0.3 });
 
@@ -97,7 +105,7 @@ export function createBody(data, parentMesh) {
     const isStar = data.type === 'Star';
     const isMoon = !!parentMesh;
 
-    const size = isMoon ? BODY_MIN_SIZE * 0.6 : bodySize(data.radius, isStar);
+    const size = isMoon ? MOON_SIZE : bodySize(data.radius, isStar);
 
     const segs = isStar ? STAR_LOD_SEGS : LOD_SEGS;
     const geomLevels = isMoon ? sharedMoonGeoms :
@@ -155,7 +163,7 @@ export function createBody(data, parentMesh) {
         mesh.add(planetRing);
     }
 
-    const selGeom = new THREE.RingGeometry(size * 1.3, size * 1.5, 24);
+    const selGeom = new THREE.RingGeometry(size * SEL_RING_INNER, size * SEL_RING_OUTER, SEL_RING_SEGS);
     const selMat = new THREE.MeshBasicMaterial({
         color: '#44ff44', transparent: true, opacity: 0, side: THREE.DoubleSide
     });
@@ -177,7 +185,7 @@ export function createBody(data, parentMesh) {
     }
 
     const labelDiv = createLabel(data.name, isMoon ? '#4a6a4a' : data.color, isMoon);
-    const trail = createTrail(data.color, 400);
+    const trail = createTrail(data.color, TRAIL_MAX_POINTS);
 
     const entry = {
         data, mesh, selRing, planetRing, orbitLine, orbitRadius, labelDiv, trail,
@@ -230,15 +238,15 @@ export function createComets() {
             orbitPoints.push(new THREE.Vector3(w.x, w.y, w.z));
         }
         const orbitGeom = new THREE.BufferGeometry().setFromPoints(orbitPoints);
-        const orbitMat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.03 });
+        const orbitMat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: COMET_ORBIT_OPACITY });
         const orbitLine = new THREE.Line(orbitGeom, orbitMat);
         cometGroup.add(orbitLine);
 
-        const size = BODY_MIN_SIZE * 0.7;
+        const size = COMET_SIZE;
         const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.9, metalness: 0 });
         const mesh = new THREE.Mesh(sharedCometGeoms[0], mat);
 
-        const selGeom = new THREE.RingGeometry(size * 1.3, size * 1.5, 24);
+        const selGeom = new THREE.RingGeometry(size * SEL_RING_INNER, size * SEL_RING_OUTER, SEL_RING_SEGS);
         const selMat = new THREE.MeshBasicMaterial({
             color: '#44ff44', transparent: true, opacity: 0, side: THREE.DoubleSide
         });
@@ -248,7 +256,7 @@ export function createComets() {
         scene.add(mesh);
 
         const labelDiv = createLabel(name, color, false);
-        const trail = createTrail(color, 400);
+        const trail = createTrail(color, TRAIL_MAX_POINTS);
 
         const entry = {
             data: {
@@ -373,7 +381,7 @@ export function updateAsteroids(dt) {
 
 export function updatePositions(dt) {
     state.simTime += dt * state.timeSpeed;
-    const zoomFactor = 120 / camera.position.distanceTo(controls.target);
+    const zoomFactor = ZOOM_BASE / camera.position.distanceTo(controls.target);
     const moonScale = moonOrbitScale(zoomFactor);
 
     state.bodyMeshes.forEach(entry => {

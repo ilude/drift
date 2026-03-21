@@ -9,8 +9,10 @@ export function keplerRadius(a, e, theta) {
     return a * (1 - e * e) / (1 + e * Math.cos(theta));
 }
 
+export const DAYS_PER_YEAR = 365.25;
+
 export function orbitSpeed(period) {
-    return period > 0 ? (Math.PI * 2) / (period * 365.25) : 0;
+    return period > 0 ? (Math.PI * 2) / (period * DAYS_PER_YEAR) : 0;
 }
 
 export function meanToTrue(M, e) {

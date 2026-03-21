@@ -39,15 +39,18 @@ describe('speedLabel', () => {
         expect(speedLabel(0)).toBe('Paused');
     });
 
-    it('returns 1 day / sec for 1', () => {
+    it('shows hours for fractional days', () => {
+        expect(speedLabel(0.25)).toBe('6 hrs / sec');
+        expect(speedLabel(0.5)).toBe('12 hrs / sec');
+    });
+
+    it('shows days for 1-29', () => {
         expect(speedLabel(1)).toBe('1 day / sec');
+        expect(speedLabel(5)).toBe('5 days / sec');
     });
 
-    it('returns 6 days / sec for 6', () => {
-        expect(speedLabel(6)).toBe('6 days / sec');
-    });
-
-    it('returns 1 month / sec for 30', () => {
+    it('shows months for 30+', () => {
         expect(speedLabel(30)).toBe('1 month / sec');
+        expect(speedLabel(90)).toBe('3 months / sec');
     });
 });

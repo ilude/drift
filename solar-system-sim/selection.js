@@ -1,7 +1,13 @@
 import * as THREE from 'three';
 import { state, MAX_CLICK_DIST } from './state.js';
 import { easeOutCubic } from './visual.js';
-import { camera, controls, renderer } from './scene.js';
+import { camera, controls, ZOOM_BASE, renderer } from './scene.js';
+import { COMET_ORBIT_OPACITY, COMET_ORBIT_SELECTED_OPACITY } from './rendering.js';
+
+const ZOOM_DIST_RECENTER = ZOOM_BASE / 0.25;
+const ZOOM_DIST_STAR = 30;
+const ZOOM_DIST_PLANET = 15;
+const ZOOM_DIST_MOON = 8;
 
 function animateCameraTo(entry, zoomDist) {
     const camOffset = new THREE.Vector3().subVectors(camera.position, controls.target).normalize();
@@ -37,20 +43,31 @@ export function updateFlyTo() {
     }
 }
 
+export function recenterOnStar() {
+    const star = state.bodyMeshes.find(e => e.data.type === 'Star');
+    if (!star) return;
+    if (state.selectedBody) {
+        state.selectedBody.selRing.material.opacity = 0;
+        state.selectedBody = null;
+    }
+    document.getElementById('info-panel').classList.add('hidden');
+    animateCameraTo(star, ZOOM_DIST_RECENTER);
+}
+
 export function selectBody(entry) {
     if (state.selectedBody) {
         state.selectedBody.selRing.material.opacity = 0;
         if (state.selectedBody.isComet && state.selectedBody.orbitLine) {
-            state.selectedBody.orbitLine.material.opacity = 0.03;
+            state.selectedBody.orbitLine.material.opacity = COMET_ORBIT_OPACITY;
         }
     }
 
     state.selectedBody = entry;
     if (entry.isComet && entry.orbitLine) {
-        entry.orbitLine.material.opacity = 0.05;
+        entry.orbitLine.material.opacity = COMET_ORBIT_SELECTED_OPACITY;
     }
-    const zoomDist = entry.data.type === 'Star' ? 30 :
-                     entry.data.type === 'Moon' ? 8 : 15;
+    const zoomDist = entry.data.type === 'Star' ? ZOOM_DIST_STAR :
+                     entry.data.type === 'Moon' ? ZOOM_DIST_MOON : ZOOM_DIST_PLANET;
     animateCameraTo(entry, zoomDist);
 
     const panel = document.getElementById('info-panel');
@@ -179,7 +196,7 @@ export function setupClickHandlers() {
         if (state.selectedBody) {
             state.selectedBody.selRing.material.opacity = 0;
             if (state.selectedBody.isComet && state.selectedBody.orbitLine) {
-                state.selectedBody.orbitLine.material.opacity = 0.03;
+                state.selectedBody.orbitLine.material.opacity = COMET_ORBIT_OPACITY;
             }
             state.selectedBody = null;
         }

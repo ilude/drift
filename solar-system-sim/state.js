@@ -15,9 +15,9 @@ export function simTimeToDay(simTime) {
 
 export function speedLabel(timeSpeed) {
     if (timeSpeed === 0) return 'Paused';
-    if (timeSpeed === 1) return '1 day / sec';
-    if (timeSpeed === 6) return '6 days / sec';
-    return '1 month / sec';
+    if (timeSpeed < 1) return `${Math.round(timeSpeed * 24)} hrs / sec`;
+    if (timeSpeed < 30) return `${timeSpeed} day${timeSpeed === 1 ? '' : 's'} / sec`;
+    return `${Math.round(timeSpeed / 30)} month${timeSpeed < 60 ? '' : 's'} / sec`;
 }
 
 export const state = {
@@ -26,7 +26,7 @@ export const state = {
     selectedBody: null,
     flyTo: null,
     simTime: 0,
-    timeSpeed: 6,
+    timeSpeed: 1,
     currentSystemKey: 'sol',
     discoveredSystems: new Map(),
     BODIES: null,

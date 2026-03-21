@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { scaleDist, keplerRadius, orbitSpeed, meanToTrue, inclinedPosition, DIST_SCALE } from './orbit.js';
+import { scaleDist, keplerRadius, orbitSpeed, DAYS_PER_YEAR, meanToTrue, inclinedPosition, DIST_SCALE } from './orbit.js';
 
 describe('scaleDist', () => {
     it('returns 0 for 0 AU', () => {
@@ -64,8 +64,8 @@ describe('orbitSpeed', () => {
         expect(orbitSpeed(1)).toBeGreaterThan(orbitSpeed(10));
     });
 
-    it('computes 2*PI / (period * 365.25)', () => {
-        expect(orbitSpeed(1)).toBeCloseTo(Math.PI * 2 / 365.25);
+    it('computes 2*PI / (period * DAYS_PER_YEAR)', () => {
+        expect(orbitSpeed(1)).toBeCloseTo(Math.PI * 2 / DAYS_PER_YEAR);
     });
 });
 

@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import { state, simTimeToDate, speedLabel } from './state.js';
 import { MOON_LOD_ZOOM, screenRadius as calcScreenRadius, lodLevel, bodyScaleFactor } from './visual.js';
-import { camera, controls, gridGroup } from './scene.js';
-import { selectBody } from './selection.js';
+import { camera, controls, ZOOM_BASE, gridGroup } from './scene.js';
+import { selectBody, recenterOnStar } from './selection.js';
 import { generateSystem } from './system-generator.js';
 
 // --- Body list panel ---
@@ -146,7 +146,7 @@ export function updateLabels() {
     const showLabels = state.showLabels;
     const showOrbits = state.showOrbits;
     const camDist = camera.position.distanceTo(controls.target);
-    const zoomFactor = 120 / camDist;
+    const zoomFactor = ZOOM_BASE / camDist;
 
     state.bodyMeshes.forEach(entry => {
         if (entry.isMoon && entry.parentMesh) {
@@ -231,7 +231,7 @@ export function updateHUD() {
     }
 
     const dist = camera.position.distanceTo(controls.target);
-    const zoomText = `Zoom: ${(120 / dist).toFixed(2)}x`;
+    const zoomText = `Zoom: ${(ZOOM_BASE / dist).toFixed(2)}x`;
     if (zoomText !== lastZoomText) {
         zoomEl.textContent = zoomText;
         lastZoomText = zoomText;
@@ -269,7 +269,7 @@ export function setupUI(loadSystem) {
     });
 
     // Time controls
-    const speedMap = { pause: 0, slow: 1, normal: 6, fast: 30 };
+    const speedMap = { pause: 0, slow: 0.25, normal: 1, fast: 30 };
     ['pause', 'slow', 'normal', 'fast'].forEach(mode => {
         document.getElementById(`btn-${mode}`).addEventListener('click', () => {
             state.timeSpeed = speedMap[mode];
@@ -277,6 +277,9 @@ export function setupUI(loadSystem) {
             document.getElementById(`btn-${mode}`).classList.add('active');
         });
     });
+
+    // Recenter
+    document.getElementById('btn-recenter').addEventListener('click', recenterOnStar);
 
     // Display toggles
     document.getElementById('toggle-orbits').addEventListener('change', (e) => {
