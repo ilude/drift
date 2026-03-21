@@ -14,8 +14,10 @@ const flyEndCam = new THREE.Vector3();
 const clickVec = new THREE.Vector3();
 const infoPositionEl = document.getElementById('info-position');
 
-function animateCameraTo(entry, zoomDist) {
-    const camOffset = new THREE.Vector3().subVectors(camera.position, controls.target).normalize();
+const INITIAL_CAM_DIR = new THREE.Vector3(0, ZOOM_BASE, 80).normalize();
+
+function animateCameraTo(entry, zoomDist, overrideOffset) {
+    const camOffset = overrideOffset || new THREE.Vector3().subVectors(camera.position, controls.target).normalize();
 
     state.flyTo = {
         entry,
@@ -56,7 +58,7 @@ export function recenterOnStar() {
         state.selectedBody = null;
     }
     document.getElementById('info-panel').classList.add('hidden');
-    animateCameraTo(star, ZOOM_DIST_RECENTER);
+    animateCameraTo(star, ZOOM_DIST_RECENTER, INITIAL_CAM_DIR);
 }
 
 export function selectBody(entry) {
