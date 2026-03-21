@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { state } from './state.js';
 import { scaleDist, MOON_DIST_SCALE, keplerRadius, orbitSpeed, meanToTrue, inclinedPosition } from './orbit.js';
 import { bodySize, BODY_MIN_SIZE, moonOrbitScale, realisticSize } from './visual.js';
-import { scene, camera, controls, ZOOM_BASE, labelContainer, trailGroups, cometGroup } from './scene.js';
+import { scene, ZOOM_BASE, labelContainer, trailGroups, cometGroup } from './scene.js';
 import { seededRandom } from './utils.js';
 import { generateBodyTexture, generateCloudTextureForBody, createStarMaterial } from './textures.js';
 
@@ -217,6 +217,7 @@ export function createBody(data, parentMesh) {
     const entry = {
         data, mesh, selRing, planetRing, cloudMesh, orbitLine, orbitRadius, labelDiv, trail,
         angle: seededRandom(nameHash(data.name))() * Math.PI * 2,
+        speed: orbitSpeed(data.period),
         parentMesh, moons: [], isMoon, screenSize: size,
         baseSize: size,
         realisticSize: (isMoon || !data.radius) ? size : realisticSize(data.radius),
@@ -293,6 +294,7 @@ export function createComets() {
             mesh, selRing, orbitLine, orbitRadius: 0,
             labelDiv, trail,
             angle: seededRandom(nameHash(name))() * Math.PI * 2,
+            speed: orbitSpeed(period),
             parentMesh: null, moons: [], isMoon: false, isComet: true,
             screenSize: size, geomLevels: sharedCometGeoms, lodLevel: 0
         };
@@ -390,9 +392,12 @@ export function createAsteroidBelts() {
 }
 
 export function updateAsteroids(dt) {
+    const simDt = dt * state.timeSpeed;
+    if (simDt === 0) return;
+
     state.asteroidBelts.forEach(({ positions, angles, radii, speeds, cosInc, sinInc, cosNode, sinNode, count, points }) => {
         for (let i = 0; i < count; i++) {
-            angles[i] += speeds[i] * dt * state.timeSpeed;
+            angles[i] += speeds[i] * simDt;
             const r = radii[i];
             const x = Math.cos(angles[i]) * r;
             const z = Math.sin(angles[i]) * r;
@@ -406,17 +411,27 @@ export function updateAsteroids(dt) {
     });
 }
 
-export function updatePositions(dt) {
-    state.simTime += dt * state.timeSpeed;
-    const zoomFactor = ZOOM_BASE / camera.position.distanceTo(controls.target);
+export function updatePositions(dt, camDist) {
+    const simDt = dt * state.timeSpeed;
+    state.simTime += simDt;
+    if (simDt === 0) return;
+
+    const zoomFactor = ZOOM_BASE / camDist;
     const moonScale = moonOrbitScale(zoomFactor);
+    const recordTrails = state.showTrails;
 
     state.bodyMeshes.forEach(entry => {
         if (entry.data.distance === 0 && !entry.isComet) return;
 
+        // Skip invisible moons
+        if (entry.isMoon && !entry.mesh.visible) {
+            entry.angle += entry.speed * simDt;
+            return;
+        }
+
         if (entry.isComet) {
             const { a, e, incRad, nodeRad, periRad } = entry.data;
-            entry.angle += orbitSpeed(entry.data.period) * dt * state.timeSpeed;
+            entry.angle += entry.speed * simDt;
 
             const theta = meanToTrue(entry.angle, e);
             const r = keplerRadius(a, e, theta);
@@ -428,13 +443,12 @@ export function updatePositions(dt) {
 
             entry.mesh.position.set(w.x, w.y, w.z);
         } else {
-            entry.angle += orbitSpeed(entry.data.period) * dt * state.timeSpeed;
+            entry.angle += entry.speed * simDt;
 
             const ecc = entry.data.e || 0;
             const theta = meanToTrue(entry.angle, ecc);
-            const isMoon = !!entry.parentMesh;
             const kr = keplerRadius(entry.data.distance, ecc, theta);
-            const r = isMoon ? kr * MOON_DIST_SCALE * moonScale : scaleDist(kr);
+            const r = entry.isMoon ? kr * MOON_DIST_SCALE * moonScale : scaleDist(kr);
             const x = Math.cos(theta) * r;
             const z = Math.sin(theta) * r;
 
@@ -453,12 +467,14 @@ export function updatePositions(dt) {
 
         // Cloud rotation
         if (entry.cloudMesh && entry.cloudMesh.visible) {
-            entry.cloudMesh.rotation.y += dt * state.timeSpeed * 0.002;
+            entry.cloudMesh.rotation.y += simDt * 0.002;
         }
 
-        // Trail recording
+        // Trail recording — skip entirely when trails are hidden
+        if (!recordTrails) return;
+
         const t = entry.trail;
-        t.sampleAccum += dt * state.timeSpeed;
+        t.sampleAccum += simDt;
         if (t.sampleAccum > 0.02) {
             t.sampleAccum = 0;
             const i3 = t.index * 3;

@@ -40,16 +40,17 @@ export function meanToTrue(M, e) {
     );
 }
 
+const _incOut = { x: 0, y: 0, z: 0 };
+
 export function inclinedPosition(x, z, cosN, sinN, cosI, sinI) {
     const xn = x * cosN + z * sinN;
     const zn = -x * sinN + z * cosN;
     const yn = zn * sinI;
     const znTilt = zn * cosI;
-    return {
-        x: xn * cosN - znTilt * sinN,
-        y: yn,
-        z: xn * sinN + znTilt * cosN
-    };
+    _incOut.x = xn * cosN - znTilt * sinN;
+    _incOut.y = yn;
+    _incOut.z = xn * sinN + znTilt * cosN;
+    return _incOut;
 }
 
 export function keplerPeriod(distAU, starMass) {

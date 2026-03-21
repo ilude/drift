@@ -9,6 +9,11 @@ const ZOOM_DIST_STAR = 30;
 const ZOOM_DIST_PLANET = 15;
 const ZOOM_DIST_MOON = 8;
 
+const flyEndTarget = new THREE.Vector3();
+const flyEndCam = new THREE.Vector3();
+const clickVec = new THREE.Vector3();
+const infoPositionEl = document.getElementById('info-position');
+
 function animateCameraTo(entry, zoomDist) {
     const camOffset = new THREE.Vector3().subVectors(camera.position, controls.target).normalize();
 
@@ -126,18 +131,12 @@ export function updateFollow() {
     camera.position.z += dz;
 }
 
-const infoPositionEl = document.getElementById('info-position');
-
 export function updateInfoPosition() {
     if (state.selectedBody) {
         const pos = state.selectedBody.mesh.position;
         infoPositionEl.textContent = `${pos.x.toFixed(1)}, ${pos.z.toFixed(1)}`;
     }
 }
-
-const flyEndTarget = new THREE.Vector3();
-const flyEndCam = new THREE.Vector3();
-const clickVec = new THREE.Vector3();
 
 export function setupClickHandlers() {
     renderer.domElement.addEventListener('click', (event) => {

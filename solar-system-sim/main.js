@@ -11,6 +11,12 @@ import { generateSystem } from './system-generator.js';
 // ---------------------------------------------------------------------------
 // Initialize
 // ---------------------------------------------------------------------------
+let starEntry = null;
+
+function cacheStarEntry() {
+    starEntry = state.bodyMeshes.find(e => e.data.type === 'Star') || null;
+}
+
 state.masterRng = seededRandom(MASTER_SEED);
 
 const sol = getSolSystem();
@@ -54,6 +60,7 @@ createBodies();
 createComets();
 state.asteroidBelts = createAsteroidBelts();
 buildBodyList();
+cacheStarEntry();
 
 // Auto-save on page unload
 window.addEventListener('beforeunload', saveState);
@@ -128,6 +135,7 @@ function loadSystem(systemData) {
     createComets();
     state.asteroidBelts = createAsteroidBelts();
     buildBodyList();
+    cacheStarEntry();
     document.querySelector('.system-name').textContent = systemData.name + ' ▾';
     document.title = `System Map - ${systemData.name}`;
     state.simTime = 0;
@@ -150,19 +158,18 @@ function animate() {
 
     controls.update();
     updateFlyTo();
-    updatePositions(dt);
+    updatePositions(dt, camera.position.distanceTo(controls.target));
     updateAsteroids(dt);
     updateFollow();
-    updateLabels();
-    updateInfoPosition();
-    updateHUD();
 
-    const elapsed = clock.elapsedTime;
-    state.bodyMeshes.forEach(entry => {
-        if (entry.data.type === 'Star' && entry.mesh.material.uniforms) {
-            entry.mesh.material.uniforms.uTime.value = elapsed;
-        }
-    });
+    const camDist = camera.position.distanceTo(controls.target);
+    updateLabels(camDist);
+    if (state.selectedBody) updateInfoPosition();
+    updateHUD(camDist);
+
+    if (starEntry && starEntry.mesh.material.uniforms) {
+        starEntry.mesh.material.uniforms.uTime.value = clock.elapsedTime;
+    }
 
     renderer.render(scene, camera);
 }

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { state, simTimeToDate, truncateDate, formatDateTime } from './state.js';
 import { MOON_LOD_ZOOM, screenRadius as calcScreenRadius, lodLevel, bodyScaleFactor } from './visual.js';
-import { camera, controls, ZOOM_BASE, gridGroup } from './scene.js';
+import { camera, ZOOM_BASE, gridGroup } from './scene.js';
 import { selectBody, recenterOnStar } from './selection.js';
 import { generateSystem } from './system-generator.js';
 
@@ -142,26 +142,28 @@ function discoverSystem(seed) {
 const tempVec = new THREE.Vector3();
 const edgeVec = new THREE.Vector3();
 
-export function updateLabels() {
+export function updateLabels(camDist) {
     const showLabels = state.showLabels;
     const showOrbits = state.showOrbits;
-    const camDist = camera.position.distanceTo(controls.target);
     const zoomFactor = ZOOM_BASE / camDist;
+    const moonsVisible = zoomFactor > MOON_LOD_ZOOM;
+    const scaleFactor = bodyScaleFactor(zoomFactor);
+    const fov = camera.fov;
+    const screenH = window.innerHeight;
+    const screenW = window.innerWidth;
 
     state.bodyMeshes.forEach(entry => {
         if (entry.isMoon && entry.parentMesh) {
-            const visible = zoomFactor > MOON_LOD_ZOOM;
-            entry.mesh.visible = visible;
-            if (entry.orbitLine) entry.orbitLine.visible = visible && showOrbits;
-            if (!visible) {
+            entry.mesh.visible = moonsVisible;
+            if (entry.orbitLine) entry.orbitLine.visible = moonsVisible && showOrbits;
+            if (!moonsVisible) {
                 entry.labelDiv.style.display = 'none';
                 return;
             }
         }
 
         if (!entry.isMoon && !entry.isComet && entry.baseSize) {
-            const t = bodyScaleFactor(zoomFactor);
-            const scaledSize = entry.baseSize + t * (entry.realisticSize - entry.baseSize);
+            const scaledSize = entry.baseSize + scaleFactor * (entry.realisticSize - entry.baseSize);
             const s = scaledSize / entry.baseSize;
             entry.mesh.scale.set(s, s, s);
             entry.screenSize = scaledSize;
@@ -175,12 +177,12 @@ export function updateLabels() {
             return;
         }
 
-        const cx = (tempVec.x * 0.5 + 0.5) * window.innerWidth;
-        const cy = (-tempVec.y * 0.5 + 0.5) * window.innerHeight;
+        const cx = (tempVec.x * 0.5 + 0.5) * screenW;
+        const cy = (-tempVec.y * 0.5 + 0.5) * screenH;
 
         const radius = entry.screenSize || 0.3;
         const dist = edgeVec.copy(entry.mesh.position).sub(camera.position).length();
-        const sr = calcScreenRadius(radius, dist, camera.fov, window.innerHeight);
+        const sr = calcScreenRadius(radius, dist, fov, screenH);
 
         // LOD: swap sphere geometry based on screen size
         if (entry.geomLevels) {
@@ -215,7 +217,7 @@ let fpsValue = 0;
 let lastTimeText = '';
 let lastZoomText = '';
 
-export function updateHUD() {
+export function updateHUD(camDist) {
     fpsFrames++;
     const now = performance.now();
     if (now - fpsLastTime >= 500) {
@@ -232,8 +234,7 @@ export function updateHUD() {
         lastTimeText = timeText;
     }
 
-    const dist = camera.position.distanceTo(controls.target);
-    const zoomText = `Zoom: ${(ZOOM_BASE / dist).toFixed(2)}x`;
+    const zoomText = `Zoom: ${(ZOOM_BASE / camDist).toFixed(2)}x`;
     if (zoomText !== lastZoomText) {
         zoomEl.textContent = zoomText;
         lastZoomText = zoomText;
