@@ -58,6 +58,37 @@ const BODIES = [
         color: '#4466cc', moons: [
             { name: 'Triton', distance: 0.06, period: 0.01610, radius: 1353, color: '#99aaaa' }
         ]
+    },
+    // Dwarf planets & notable small bodies
+    {
+        name: 'Ceres', type: 'Dwarf Planet', distance: 2.77, period: 4.60, radius: 473,
+        color: '#888877', moons: []
+    },
+    {
+        name: 'Pluto', type: 'Dwarf Planet', distance: 39.48, period: 248.0, radius: 1188,
+        color: '#ccaa88', moons: [
+            { name: 'Charon', distance: 0.05, period: 0.01745, radius: 606, color: '#999988' }
+        ]
+    },
+    {
+        name: 'Haumea', type: 'Dwarf Planet', distance: 43.22, period: 284.1, radius: 816,
+        color: '#aaaaaa', moons: [
+            { name: "Hi'iaka", distance: 0.06, period: 0.1345, radius: 160, color: '#888888' }
+        ]
+    },
+    {
+        name: 'Makemake', type: 'Dwarf Planet', distance: 45.79, period: 309.9, radius: 715,
+        color: '#bb9977', moons: []
+    },
+    {
+        name: 'Eris', type: 'Dwarf Planet', distance: 67.78, period: 559.0, radius: 1163,
+        color: '#bbbbbb', moons: [
+            { name: 'Dysnomia', distance: 0.05, period: 0.04384, radius: 350, color: '#777777' }
+        ]
+    },
+    {
+        name: 'Sedna', type: 'Detached Object', distance: 506, period: 11400, radius: 498,
+        color: '#cc6644', moons: []
     }
 ];
 
@@ -100,7 +131,7 @@ const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.08;
 controls.minDistance = 5;
-controls.maxDistance = 500;
+controls.maxDistance = 5000;
 controls.maxPolarAngle = Math.PI * 0.85;
 controls.enableZoom = false; // we handle zoom manually for zoom-to-cursor
 
@@ -177,6 +208,86 @@ auMarkers.forEach(au => {
 });
 
 // ---------------------------------------------------------------------------
+// Procedural asteroid belts
+// ---------------------------------------------------------------------------
+const ASTEROID_BELTS = [
+    {
+        name: 'Main Belt',
+        minAU: 2.1, maxAU: 3.3,       // between Mars and Jupiter
+        count: 600,
+        color: '#555544',
+        size: 0.25,
+        minPeriod: 3.2, maxPeriod: 5.9  // years (Kepler-ish)
+    },
+    {
+        name: 'Kuiper Belt',
+        minAU: 30, maxAU: 50,
+        count: 400,
+        color: '#333344',
+        size: 0.3,
+        minPeriod: 164, maxPeriod: 354
+    }
+];
+
+// Seeded random for reproducibility
+function seededRandom(seed) {
+    let s = seed;
+    return () => {
+        s = (s * 16807 + 0) % 2147483647;
+        return (s - 1) / 2147483646;
+    };
+}
+
+const asteroidBelts = ASTEROID_BELTS.map(belt => {
+    const rng = seededRandom(belt.name.length * 7919);
+    const count = belt.count;
+    const positions = new Float32Array(count * 3);
+    const angles = new Float32Array(count);
+    const radii = new Float32Array(count);
+    const speeds = new Float32Array(count);
+    const yOffsets = new Float32Array(count);
+
+    for (let i = 0; i < count; i++) {
+        const au = belt.minAU + rng() * (belt.maxAU - belt.minAU);
+        const angle = rng() * Math.PI * 2;
+        const period = belt.minPeriod + (au - belt.minAU) / (belt.maxAU - belt.minAU) * (belt.maxPeriod - belt.minPeriod);
+        const r = scaleDist(au);
+
+        angles[i] = angle;
+        radii[i] = r;
+        speeds[i] = (Math.PI * 2) / (period * 60);
+        yOffsets[i] = (rng() - 0.5) * 1.5; // slight vertical scatter
+
+        positions[i * 3] = Math.cos(angle) * r;
+        positions[i * 3 + 1] = yOffsets[i];
+        positions[i * 3 + 2] = Math.sin(angle) * r;
+    }
+
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    const mat = new THREE.PointsMaterial({
+        color: belt.color,
+        size: belt.size,
+        sizeAttenuation: true
+    });
+    const points = new THREE.Points(geom, mat);
+    scene.add(points);
+
+    return { belt, points, positions, angles, radii, speeds, yOffsets, count };
+});
+
+function updateAsteroids(dt) {
+    asteroidBelts.forEach(({ positions, angles, radii, speeds, yOffsets, count, points }) => {
+        for (let i = 0; i < count; i++) {
+            angles[i] += speeds[i] * dt * timeSpeed;
+            positions[i * 3] = Math.cos(angles[i]) * radii[i];
+            positions[i * 3 + 2] = Math.sin(angles[i]) * radii[i];
+        }
+        points.geometry.attributes.position.needsUpdate = true;
+    });
+}
+
+// ---------------------------------------------------------------------------
 // Create celestial bodies
 // ---------------------------------------------------------------------------
 const bodyMeshes = [];    // { data, mesh, orbitLine, labelDiv, moons: [...] }
@@ -218,13 +329,22 @@ function createOrbitRing(radius, color) {
 function createTrail(color, maxPoints) {
     const geom = new THREE.BufferGeometry();
     const positions = new Float32Array(maxPoints * 3);
+    const colors = new Float32Array(maxPoints * 3);
     geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geom.setAttribute('color', new THREE.BufferAttribute(colors, 3));
     geom.setDrawRange(0, 0);
-    const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.15 });
+    const mat = new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.7 });
     const line = new THREE.Line(geom, mat);
     line.visible = false;
     trailGroups.add(line);
-    return { line, positions, index: 0, maxPoints, count: 0 };
+
+    // Parse the base color for fading
+    const c = new THREE.Color(color);
+
+    return {
+        line, positions, colors, index: 0, maxPoints, count: 0,
+        baseColor: c, sampleAccum: 0
+    };
 }
 
 function createBody(data, parentMesh) {
@@ -239,17 +359,6 @@ function createBody(data, parentMesh) {
     const mat = new THREE.MeshBasicMaterial({ color: data.color, side: THREE.DoubleSide });
     const mesh = new THREE.Mesh(geom, mat);
     mesh.rotation.x = -Math.PI / 2;
-
-    // Glow ring for star
-    if (isStar) {
-        const glowGeom = new THREE.RingGeometry(size * 1.1, size * 1.6, 32);
-        const glowMat = new THREE.MeshBasicMaterial({
-            color: '#ffdd44', transparent: true, opacity: 0.15, side: THREE.DoubleSide
-        });
-        const glow = new THREE.Mesh(glowGeom, glowMat);
-        glow.rotation.x = -Math.PI / 2;
-        mesh.add(glow);
-    }
 
     // Selection ring (hidden by default)
     const selGeom = new THREE.RingGeometry(size * 1.3, size * 1.5, 24);
@@ -438,21 +547,33 @@ document.getElementById('info-close').addEventListener('click', () => {
 // ---------------------------------------------------------------------------
 // Raycaster for click selection
 // ---------------------------------------------------------------------------
-const raycaster = new THREE.Raycaster();
-raycaster.params.Mesh = { threshold: 1 };
-const mouse = new THREE.Vector2();
+const clickVec = new THREE.Vector3();
+const MAX_CLICK_DIST = 50; // pixels — generous hit area out to label
 
 renderer.domElement.addEventListener('click', (event) => {
-    mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-    mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+    const mx = event.clientX;
+    const my = event.clientY;
 
-    raycaster.setFromCamera(mouse, camera);
-    const meshes = bodyMeshes.map(b => b.mesh);
-    const intersects = raycaster.intersectObjects(meshes, false);
+    let closest = null;
+    let closestDist = Infinity;
 
-    if (intersects.length > 0) {
-        const hit = bodyMeshes.find(b => b.mesh === intersects[0].object);
-        if (hit) selectBody(hit);
+    bodyMeshes.forEach(entry => {
+        clickVec.copy(entry.mesh.position);
+        clickVec.project(camera);
+        if (clickVec.z > 1) return; // behind camera
+
+        const sx = (clickVec.x * 0.5 + 0.5) * window.innerWidth;
+        const sy = (-clickVec.y * 0.5 + 0.5) * window.innerHeight;
+        const dist = Math.hypot(mx - sx, my - sy);
+
+        if (dist < closestDist) {
+            closestDist = dist;
+            closest = entry;
+        }
+    });
+
+    if (closest && closestDist < MAX_CLICK_DIST) {
+        selectBody(closest);
     }
 });
 
@@ -521,23 +642,78 @@ function updatePositions(dt) {
             entry.mesh.position.set(x, 0, z);
         }
 
-        // Trail
-        if (entry.trail.line.visible) {
-            const t = entry.trail;
-            const i = t.index * 3;
-            t.positions[i] = entry.mesh.position.x;
-            t.positions[i + 1] = 0;
-            t.positions[i + 2] = entry.mesh.position.z;
+        // Trail — always record, sample every ~0.02 sim-time units
+        const t = entry.trail;
+        t.sampleAccum += dt * timeSpeed;
+        if (t.sampleAccum > 0.02) {
+            t.sampleAccum = 0;
+            const i3 = t.index * 3;
+            t.positions[i3] = entry.mesh.position.x;
+            t.positions[i3 + 1] = 0;
+            t.positions[i3 + 2] = entry.mesh.position.z;
             t.index = (t.index + 1) % t.maxPoints;
             t.count = Math.min(t.count + 1, t.maxPoints);
+
+            // Rebuild colors: oldest = transparent, newest = full color
+            const total = t.count;
+            for (let j = 0; j < total; j++) {
+                // Map j to the actual buffer index (ring buffer order)
+                const bufIdx = (t.count >= t.maxPoints)
+                    ? (t.index + j) % t.maxPoints
+                    : j;
+                const fade = j / total; // 0=oldest, 1=newest
+                t.colors[bufIdx * 3] = t.baseColor.r * fade;
+                t.colors[bufIdx * 3 + 1] = t.baseColor.g * fade;
+                t.colors[bufIdx * 3 + 2] = t.baseColor.b * fade;
+            }
+
+            // Draw in ring-buffer order so the line connects properly
+            if (t.count >= t.maxPoints) {
+                // Reorder into a contiguous draw buffer
+                const pa = t.positions;
+                const ca = t.colors;
+                const tmpP = new Float32Array(t.maxPoints * 3);
+                const tmpC = new Float32Array(t.maxPoints * 3);
+                for (let j = 0; j < t.maxPoints; j++) {
+                    const src = ((t.index + j) % t.maxPoints) * 3;
+                    const dst = j * 3;
+                    tmpP[dst] = pa[src]; tmpP[dst + 1] = pa[src + 1]; tmpP[dst + 2] = pa[src + 2];
+                    tmpC[dst] = ca[src]; tmpC[dst + 1] = ca[src + 1]; tmpC[dst + 2] = ca[src + 2];
+                }
+                t.positions.set(tmpP);
+                t.colors.set(tmpC);
+                t.index = 0;
+                t.count = t.maxPoints;
+            }
+
             t.line.geometry.attributes.position.needsUpdate = true;
+            t.line.geometry.attributes.color.needsUpdate = true;
             t.line.geometry.setDrawRange(0, t.count);
         }
     });
 }
 
+const edgeVec = new THREE.Vector3();
+const labelsVisible = () => document.getElementById('toggle-labels').checked;
+
+// LOD thresholds — camera distance to parent body below which moons become visible
+const MOON_LOD_DIST = 25;
+
 function updateLabels() {
+    const showLabels = labelsVisible();
     bodyMeshes.forEach(entry => {
+        // LOD: hide moons when camera is far from their parent
+        if (entry.isMoon && entry.parentMesh) {
+            const camDist = camera.position.distanceTo(entry.parentMesh.position);
+            const visible = camDist < MOON_LOD_DIST;
+            entry.mesh.visible = visible;
+            if (entry.orbitLine) entry.orbitLine.visible = visible && document.getElementById('toggle-orbits').checked;
+            if (!visible) {
+                entry.labelDiv.style.display = 'none';
+                return;
+            }
+        }
+
         tempVec.copy(entry.mesh.position);
         tempVec.project(camera);
 
@@ -546,11 +722,21 @@ function updateLabels() {
             return;
         }
 
-        const x = (tempVec.x * 0.5 + 0.5) * window.innerWidth;
-        const y = (-tempVec.y * 0.5 + 0.5) * window.innerHeight;
+        const cx = (tempVec.x * 0.5 + 0.5) * window.innerWidth;
+        const cy = (-tempVec.y * 0.5 + 0.5) * window.innerHeight;
 
-        entry.labelDiv.style.transform = `translate(${x + 10}px, ${y - 6}px)`;
-        entry.labelDiv.style.display = document.getElementById('toggle-labels').checked ? '' : 'none';
+        // Project a point at the edge of the body to get screen-space radius
+        const geom = entry.mesh.geometry;
+        const radius = geom.parameters?.radius ?? geom.parameters?.outerRadius ?? 0.3;
+        edgeVec.copy(entry.mesh.position);
+        edgeVec.x += radius;
+        edgeVec.project(camera);
+        const ex = (edgeVec.x * 0.5 + 0.5) * window.innerWidth;
+        const screenRadius = Math.abs(ex - cx);
+
+        const gap = 6; // fixed pixel gap outside the body
+        entry.labelDiv.style.transform = `translate(${cx + screenRadius + gap}px, ${cy - 6}px)`;
+        entry.labelDiv.style.display = showLabels ? '' : 'none';
     });
 }
 
@@ -574,7 +760,21 @@ function updateInfoPosition() {
     }
 }
 
+let fpsFrames = 0;
+let fpsLastTime = performance.now();
+let fpsValue = 0;
+
 function updateHUD() {
+    // FPS counter — update every 500ms
+    fpsFrames++;
+    const now = performance.now();
+    if (now - fpsLastTime >= 500) {
+        fpsValue = Math.round(fpsFrames / ((now - fpsLastTime) / 1000));
+        fpsFrames = 0;
+        fpsLastTime = now;
+        document.getElementById('fps-display').textContent = `FPS: ${fpsValue}`;
+    }
+
     const day = Math.floor(simTime * 365.25);
     const speedLabel = timeSpeed === 0 ? 'Paused' :
         timeSpeed === 0.25 ? '5-Second Increment' :
@@ -593,6 +793,7 @@ function animate() {
     controls.update();
     updateFlyTo();
     updatePositions(dt);
+    updateAsteroids(dt);
     updateFollow();
     updateLabels();
     updateInfoPosition();
