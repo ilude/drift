@@ -288,7 +288,7 @@ function updateAsteroids(dt) {
 }
 
 // ---------------------------------------------------------------------------
-// Create celestial bodies
+// Shared containers (needed by comets and bodies)
 // ---------------------------------------------------------------------------
 const bodyMeshes = [];    // { data, mesh, orbitLine, labelDiv, moons: [...] }
 const labelContainer = document.createElement('div');
@@ -297,6 +297,178 @@ document.body.appendChild(labelContainer);
 
 const trailGroups = new THREE.Group();
 scene.add(trailGroups);
+
+// ---------------------------------------------------------------------------
+// Comets — famous Sol system comets with real orbital elements
+// ---------------------------------------------------------------------------
+const COMETS = [
+    // name, semi-major axis (AU), eccentricity, period (years), inclination (deg), color
+    { name: 'Halley',          a: 17.83,   e: 0.967, period: 75.3,   inc: 162.3, color: '#99ccff' },
+    { name: 'Hale-Bopp',       a: 186,     e: 0.995, period: 2533,   inc: 89.4,  color: '#aaddff' },
+    { name: 'Encke',           a: 2.22,    e: 0.848, period: 3.3,    inc: 11.8,  color: '#88bbaa' },
+    { name: 'Swift-Tuttle',    a: 26.09,   e: 0.963, period: 133.3,  inc: 113.5, color: '#bbaaff' },
+    { name: 'Tempel 1',        a: 3.12,    e: 0.514, period: 5.5,    inc: 10.5,  color: '#aa9988' },
+    { name: 'Churyumov-Ger.',  a: 3.46,    e: 0.641, period: 6.4,    inc: 7.0,   color: '#998877' },
+    { name: 'Hyakutake',       a: 1700,    e: 0.9999, period: 70000, inc: 124.9, color: '#ccddff' },
+    { name: 'Neowise',         a: 364,     e: 0.999, period: 6950,   inc: 128.9, color: '#ddeeff' },
+];
+
+const cometEntries = [];
+const cometGroup = new THREE.Group();
+scene.add(cometGroup);
+
+// Label container already created above, we'll reuse it for comet labels
+
+COMETS.forEach(comet => {
+    const { a, e, inc, color, name, period } = comet;
+
+    // Perihelion and aphelion in scaled coords
+    const perihelionAU = a * (1 - e);
+    const aphelionAU = a * (1 + e);
+
+    // Build elliptical orbit path
+    const segments = 256;
+    const orbitPoints = [];
+    const semiMajor = scaleDist(a);
+    const semiMinor = semiMajor * Math.sqrt(1 - e * e);
+    // Focus offset — the sun is at one focus
+    const focusOffset = semiMajor * e;
+
+    // We scale each point individually from AU for better visual accuracy
+    // with our sqrt scaling
+    for (let i = 0; i <= segments; i++) {
+        const theta = (i / segments) * Math.PI * 2;
+        // Ellipse in AU
+        const r = a * (1 - e * e) / (1 + e * Math.cos(theta));
+        const rScaled = scaleDist(r);
+        const x = rScaled * Math.cos(theta);
+        const z = rScaled * Math.sin(theta);
+        // Apply inclination rotation around x-axis
+        const incRad = (inc * Math.PI) / 180;
+        const y = z * Math.sin(incRad);
+        const zRot = z * Math.cos(incRad);
+        orbitPoints.push(new THREE.Vector3(x, y, zRot));
+    }
+
+    const orbitGeom = new THREE.BufferGeometry().setFromPoints(orbitPoints);
+    const orbitMat = new THREE.LineBasicMaterial({
+        color, transparent: true, opacity: 0.2
+    });
+    const orbitLine = new THREE.Line(orbitGeom, orbitMat);
+    cometGroup.add(orbitLine);
+
+    // Comet dot
+    const dotGeom = new THREE.CircleGeometry(0.25, 12);
+    const dotMat = new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide });
+    const mesh = new THREE.Mesh(dotGeom, dotMat);
+    mesh.rotation.x = -Math.PI / 2;
+    scene.add(mesh);
+
+    // Comet tail (small triangle pointing away from sun)
+    const tailGeom = new THREE.BufferGeometry();
+    const tailPositions = new Float32Array(9); // 3 vertices
+    tailGeom.setAttribute('position', new THREE.BufferAttribute(tailPositions, 3));
+    const tailMat = new THREE.MeshBasicMaterial({
+        color, transparent: true, opacity: 0.3, side: THREE.DoubleSide
+    });
+    const tailMesh = new THREE.Mesh(tailGeom, tailMat);
+    scene.add(tailMesh);
+
+    // Label
+    const labelDiv = document.createElement('div');
+    labelDiv.textContent = name;
+    labelDiv.style.cssText = `
+        position: absolute;
+        color: ${color};
+        font-family: 'Courier New', monospace;
+        font-size: 10px;
+        white-space: nowrap;
+        text-shadow: 0 0 4px #000, 0 0 2px #000;
+        opacity: 0.7;
+    `;
+    labelContainer.appendChild(labelDiv);
+
+    // Start at random true anomaly
+    const startAngle = Math.random() * Math.PI * 2;
+
+    cometEntries.push({
+        data: comet,
+        mesh,
+        tailMesh,
+        tailPositions,
+        orbitLine,
+        labelDiv,
+        angle: startAngle, // true anomaly
+        a, e, period, inc,
+        incRad: (inc * Math.PI) / 180
+    });
+});
+
+function updateComets(dt) {
+    cometEntries.forEach(entry => {
+        const { a, e, period, incRad } = entry;
+
+        // Kepler: speed varies — faster near perihelion
+        // Mean motion
+        const n = (Math.PI * 2) / (period * 60);
+        entry.angle += n * dt * timeSpeed;
+
+        // True anomaly to radius
+        const theta = entry.angle;
+        const r = a * (1 - e * e) / (1 + e * Math.cos(theta));
+        const rScaled = scaleDist(r);
+
+        const x = rScaled * Math.cos(theta);
+        const z = rScaled * Math.sin(theta);
+        const y = z * Math.sin(incRad);
+        const zRot = z * Math.cos(incRad);
+
+        entry.mesh.position.set(x, y, zRot);
+
+        // Tail — points away from sun, longer when closer
+        const distToSun = Math.max(rScaled, 1);
+        const tailLen = Math.min(8, 80 / distToSun); // longer near sun
+        const dirX = x / distToSun;
+        const dirZ = zRot / distToSun;
+        const perpX = -dirZ;
+        const perpZ = dirX;
+        const tailWidth = tailLen * 0.3;
+
+        const tp = entry.tailPositions;
+        tp[0] = x; tp[1] = y; tp[2] = zRot; // tip (at comet)
+        tp[3] = x + dirX * tailLen + perpX * tailWidth;
+        tp[4] = y;
+        tp[5] = zRot + dirZ * tailLen + perpZ * tailWidth;
+        tp[6] = x + dirX * tailLen - perpX * tailWidth;
+        tp[7] = y;
+        tp[8] = zRot + dirZ * tailLen - perpZ * tailWidth;
+        entry.tailMesh.geometry.attributes.position.needsUpdate = true;
+
+        // Fade tail based on distance (only visible near inner system)
+        entry.tailMesh.material.opacity = Math.min(0.4, 3 / distToSun);
+    });
+}
+
+function updateCometLabels() {
+    const showLabels = labelsVisible();
+    const tempV = new THREE.Vector3();
+    cometEntries.forEach(entry => {
+        tempV.copy(entry.mesh.position);
+        tempV.project(camera);
+        if (tempV.z > 1) {
+            entry.labelDiv.style.display = 'none';
+            return;
+        }
+        const cx = (tempV.x * 0.5 + 0.5) * window.innerWidth;
+        const cy = (-tempV.y * 0.5 + 0.5) * window.innerHeight;
+        entry.labelDiv.style.transform = `translate(${cx + 12}px, ${cy - 6}px)`;
+        entry.labelDiv.style.display = showLabels ? '' : 'none';
+    });
+}
+
+// ---------------------------------------------------------------------------
+// Create celestial bodies
+// ---------------------------------------------------------------------------
 
 function createLabel(name, color, isMoon) {
     const div = document.createElement('div');
@@ -794,8 +966,10 @@ function animate() {
     updateFlyTo();
     updatePositions(dt);
     updateAsteroids(dt);
+    updateComets(dt);
     updateFollow();
     updateLabels();
+    updateCometLabels();
     updateInfoPosition();
     updateHUD();
 
