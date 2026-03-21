@@ -19,6 +19,8 @@ export function speedLabel(timeSpeed) {
     return `${Math.round(timeSpeed / 30)} month${timeSpeed < 60 ? '' : 's'} / sec`;
 }
 
+export const MASTER_SEED = 42;
+
 export const state = {
     bodyMeshes: [],
     asteroidBelts: [],
@@ -28,6 +30,7 @@ export const state = {
     timeSpeed: 1,
     currentSystemKey: 'sol',
     discoveredSystems: new Map(),
+    masterRng: null,
     BODIES: null,
     COMETS: null,
     ASTEROID_BELTS: null,

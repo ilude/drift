@@ -6,6 +6,14 @@ import { scene, camera, controls, ZOOM_BASE, labelContainer, trailGroups, cometG
 import { seededRandom } from './utils.js';
 import { generateBodyTexture, generateCloudTextureForBody, createStarMaterial } from './textures.js';
 
+function nameHash(str) {
+    let h = 5381;
+    for (let i = 0; i < str.length; i++) {
+        h = ((h << 5) + h + str.charCodeAt(i)) & 0x7fffffff;
+    }
+    return h;
+}
+
 // Transform orbital plane coordinates to 3D world space using Ω, i, ω
 const _orbitOut = { x: 0, y: 0, z: 0 };
 
@@ -208,7 +216,7 @@ export function createBody(data, parentMesh) {
 
     const entry = {
         data, mesh, selRing, planetRing, cloudMesh, orbitLine, orbitRadius, labelDiv, trail,
-        angle: Math.random() * Math.PI * 2,
+        angle: seededRandom(nameHash(data.name))() * Math.PI * 2,
         parentMesh, moons: [], isMoon, screenSize: size,
         baseSize: size,
         realisticSize: (isMoon || !data.radius) ? size : realisticSize(data.radius),
@@ -284,7 +292,7 @@ export function createComets() {
             },
             mesh, selRing, orbitLine, orbitRadius: 0,
             labelDiv, trail,
-            angle: Math.random() * Math.PI * 2,
+            angle: seededRandom(nameHash(name))() * Math.PI * 2,
             parentMesh: null, moons: [], isMoon: false, isComet: true,
             screenSize: size, geomLevels: sharedCometGeoms, lodLevel: 0
         };

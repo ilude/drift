@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { state } from './state.js';
+import { state, MASTER_SEED } from './state.js';
+import { seededRandom } from './utils.js';
 import { scene, camera, renderer, controls, trailGroups, cometGroup } from './scene.js';
 import { createBodies, createComets, createAsteroidBelts, updateAsteroids, updatePositions, sharedResources } from './rendering.js';
 import { setupClickHandlers, updateFlyTo, updateFollow, updateInfoPosition } from './selection.js';
@@ -9,6 +10,8 @@ import { getSolSystem } from './sol-data.js';
 // ---------------------------------------------------------------------------
 // Initialize with Sol
 // ---------------------------------------------------------------------------
+state.masterRng = seededRandom(MASTER_SEED);
+
 const sol = getSolSystem();
 state.discoveredSystems.set('sol', { name: 'Sol System', seed: null, systemData: sol });
 state.BODIES = sol.bodies;

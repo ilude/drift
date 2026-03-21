@@ -266,7 +266,7 @@ export function setupUI(loadSystem) {
     });
 
     document.getElementById('btn-random').addEventListener('click', () => {
-        const seed = Math.floor(Math.random() * 2147483646) + 1;
+        const seed = Math.floor(state.masterRng() * 2147483646) + 1;
         discoverSystem(seed);
         document.getElementById('system-switcher-dropdown').classList.add('hidden');
     });
