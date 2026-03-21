@@ -25,11 +25,11 @@ export function updateFlyTo() {
     const ease = 1 - Math.pow(1 - t, 3);
 
     const pos = state.flyTo.entry.mesh.position;
-    const endTarget = new THREE.Vector3(pos.x, 0, pos.z);
-    const endCam = new THREE.Vector3().copy(endTarget).addScaledVector(state.flyTo.camOffset, state.flyTo.zoomDist);
+    flyEndTarget.set(pos.x, 0, pos.z);
+    flyEndCam.copy(flyEndTarget).addScaledVector(state.flyTo.camOffset, state.flyTo.zoomDist);
 
-    camera.position.lerpVectors(state.flyTo.startCam, endCam, ease);
-    controls.target.lerpVectors(state.flyTo.startTarget, endTarget, ease);
+    camera.position.lerpVectors(state.flyTo.startCam, flyEndCam, ease);
+    controls.target.lerpVectors(state.flyTo.startTarget, flyEndTarget, ease);
 
     if (t >= 1) {
         state.flyTo = null;
@@ -94,7 +94,7 @@ export function selectAsteroid(hit) {
     document.getElementById('info-period').textContent = `${asteroid.period} years`;
     document.getElementById('info-radius').textContent = `~${asteroid.diameter} km dia.`;
     document.getElementById('info-moons').textContent = '0';
-    document.getElementById('info-position').textContent = '-';
+    infoPositionEl.textContent = '-';
 }
 
 export function updateFollow() {
@@ -108,14 +108,17 @@ export function updateFollow() {
     camera.position.z += dz;
 }
 
+const infoPositionEl = document.getElementById('info-position');
+
 export function updateInfoPosition() {
     if (state.selectedBody) {
         const pos = state.selectedBody.mesh.position;
-        document.getElementById('info-position').textContent =
-            `${pos.x.toFixed(1)}, ${pos.z.toFixed(1)}`;
+        infoPositionEl.textContent = `${pos.x.toFixed(1)}, ${pos.z.toFixed(1)}`;
     }
 }
 
+const flyEndTarget = new THREE.Vector3();
+const flyEndCam = new THREE.Vector3();
 const clickVec = new THREE.Vector3();
 
 export function setupClickHandlers() {

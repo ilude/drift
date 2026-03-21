@@ -140,16 +140,18 @@ function discoverSystem(seed) {
 
 const tempVec = new THREE.Vector3();
 const edgeVec = new THREE.Vector3();
-const labelsVisible = () => document.getElementById('toggle-labels').checked;
 
 export function updateLabels() {
-    const showLabels = labelsVisible();
+    const showLabels = state.showLabels;
+    const showOrbits = state.showOrbits;
+    const camDist = camera.position.length();
+    const zoomFactor = 120 / camDist;
+
     state.bodyMeshes.forEach(entry => {
         if (entry.isMoon && entry.parentMesh) {
-            const zoomFactor = 120 / camera.position.length();
             const visible = zoomFactor > MOON_LOD_ZOOM;
             entry.mesh.visible = visible;
-            if (entry.orbitLine) entry.orbitLine.visible = visible && document.getElementById('toggle-orbits').checked;
+            if (entry.orbitLine) entry.orbitLine.visible = visible && showOrbits;
             if (!visible) {
                 entry.labelDiv.style.display = 'none';
                 return;
@@ -167,8 +169,7 @@ export function updateLabels() {
         const cx = (tempVec.x * 0.5 + 0.5) * window.innerWidth;
         const cy = (-tempVec.y * 0.5 + 0.5) * window.innerHeight;
 
-        const geom = entry.mesh.geometry;
-        const radius = geom.parameters?.radius ?? geom.parameters?.outerRadius ?? 0.3;
+        const radius = entry.screenSize || 0.3;
         edgeVec.copy(entry.mesh.position);
         edgeVec.x += radius;
         edgeVec.project(camera);
@@ -183,9 +184,14 @@ export function updateLabels() {
 
 // --- HUD ---
 
+const fpsEl = document.getElementById('fps-display');
+const timeEl = document.getElementById('time-display');
+const zoomEl = document.getElementById('zoom-display');
 let fpsFrames = 0;
 let fpsLastTime = performance.now();
 let fpsValue = 0;
+let lastTimeText = '';
+let lastZoomText = '';
 
 export function updateHUD() {
     fpsFrames++;
@@ -194,18 +200,25 @@ export function updateHUD() {
         fpsValue = Math.round(fpsFrames / ((now - fpsLastTime) / 1000));
         fpsFrames = 0;
         fpsLastTime = now;
-        document.getElementById('fps-display').textContent = `FPS: ${fpsValue}`;
+        fpsEl.textContent = `FPS: ${fpsValue}`;
     }
 
     const day = Math.floor(state.simTime * 365.25);
     const speedLabel = state.timeSpeed === 0 ? 'Paused' :
         state.timeSpeed === 0.25 ? '5-Second Increment' :
         state.timeSpeed === 1 ? '1-Day Increment' : '30-Day Increment';
-    document.getElementById('time-display').textContent = `Day ${day} | ${speedLabel}`;
+    const timeText = `Day ${day} | ${speedLabel}`;
+    if (timeText !== lastTimeText) {
+        timeEl.textContent = timeText;
+        lastTimeText = timeText;
+    }
 
     const dist = camera.position.length();
-    const zoom = (120 / dist).toFixed(2);
-    document.getElementById('zoom-display').textContent = `Zoom: ${zoom}x`;
+    const zoomText = `Zoom: ${(120 / dist).toFixed(2)}x`;
+    if (zoomText !== lastZoomText) {
+        zoomEl.textContent = zoomText;
+        lastZoomText = zoomText;
+    }
 }
 
 // --- Setup all UI event listeners ---
@@ -250,10 +263,12 @@ export function setupUI(loadSystem) {
 
     // Display toggles
     document.getElementById('toggle-orbits').addEventListener('change', (e) => {
+        state.showOrbits = e.target.checked;
         state.bodyMeshes.forEach(b => { if (b.orbitLine) b.orbitLine.visible = e.target.checked; });
     });
 
     document.getElementById('toggle-labels').addEventListener('change', (e) => {
+        state.showLabels = e.target.checked;
         state.bodyMeshes.forEach(b => { b.labelDiv.style.display = e.target.checked ? '' : 'none'; });
     });
 
@@ -262,6 +277,7 @@ export function setupUI(loadSystem) {
     });
 
     document.getElementById('toggle-trails').addEventListener('change', (e) => {
+        state.showTrails = e.target.checked;
         state.bodyMeshes.forEach(b => { b.trail.line.visible = e.target.checked; });
     });
 }

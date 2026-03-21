@@ -4,6 +4,8 @@ import { scene, labelContainer, trailGroups, cometGroup } from './scene.js';
 import { seededRandom } from './utils.js';
 
 // Transform orbital plane coordinates to 3D world space using Ω, i, ω
+const _orbitOut = { x: 0, y: 0, z: 0 };
+
 export function orbitToWorld(x, z, incRad, nodeRad, periRad) {
     const cosW = Math.cos(periRad), sinW = Math.sin(periRad);
     const x1 = x * cosW - z * sinW;
@@ -15,11 +17,20 @@ export function orbitToWorld(x, z, incRad, nodeRad, periRad) {
     const z2 = z1 * cosI;
 
     const cosN = Math.cos(nodeRad), sinN = Math.sin(nodeRad);
-    const x3 = x2 * cosN - z2 * sinN;
-    const z3 = x2 * sinN + z2 * cosN;
+    _orbitOut.x = x2 * cosN - z2 * sinN;
+    _orbitOut.y = y2;
+    _orbitOut.z = x2 * sinN + z2 * cosN;
 
-    return { x: x3, y: y2, z: z3 };
+    return _orbitOut;
 }
+
+// Shared geometry/materials for identical bodies
+const sharedMoonGeom = new THREE.SphereGeometry(BODY_MIN_SIZE * 0.6, 8, 8);
+const sharedCometGeom = new THREE.SphereGeometry(BODY_MIN_SIZE * 0.7, 8, 8);
+const sharedMoonOrbitMat = new THREE.LineBasicMaterial({ color: '#1a2a1a', transparent: true, opacity: 0.3 });
+const sharedPlanetOrbitMat = new THREE.LineBasicMaterial({ color: '#1a3a1a', transparent: true, opacity: 0.3 });
+
+export const sharedResources = new Set([sharedMoonGeom, sharedCometGeom, sharedMoonOrbitMat, sharedPlanetOrbitMat]);
 
 function createLabel(name, color, isMoon) {
     const div = document.createElement('div');
@@ -37,15 +48,17 @@ function createLabel(name, color, isMoon) {
     return div;
 }
 
-function createOrbitRing(radius, color) {
+function createOrbitRing(radius, mat) {
     const segments = 128;
-    const points = [];
+    const positions = new Float32Array((segments + 1) * 3);
     for (let i = 0; i <= segments; i++) {
         const angle = (i / segments) * Math.PI * 2;
-        points.push(new THREE.Vector3(Math.cos(angle) * radius, 0, Math.sin(angle) * radius));
+        positions[i * 3] = Math.cos(angle) * radius;
+        positions[i * 3 + 1] = 0;
+        positions[i * 3 + 2] = Math.sin(angle) * radius;
     }
-    const geom = new THREE.BufferGeometry().setFromPoints(points);
-    const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.3 });
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     return new THREE.Line(geom, mat);
 }
 
@@ -65,7 +78,9 @@ function createTrail(color, maxPoints) {
 
     return {
         line, positions, colors, index: 0, maxPoints, count: 0,
-        baseColor: c, sampleAccum: 0
+        baseColor: c, sampleAccum: 0,
+        tmpP: new Float32Array(maxPoints * 3),
+        tmpC: new Float32Array(maxPoints * 3)
     };
 }
 
@@ -75,8 +90,8 @@ export function createBody(data, parentMesh) {
 
     const size = isMoon ? BODY_MIN_SIZE * 0.6 : bodySize(data.radius, isStar);
 
-    const segments = isStar ? 16 : (isMoon ? 8 : 12);
-    const geom = new THREE.SphereGeometry(size, segments, segments);
+    const geom = isMoon ? sharedMoonGeom :
+        new THREE.SphereGeometry(size, isStar ? 16 : 12, isStar ? 16 : 12);
     const mat = isStar
         ? new THREE.MeshBasicMaterial({ color: data.color })
         : new THREE.MeshStandardMaterial({ color: data.color, roughness: 0.8, metalness: 0.1 });
@@ -96,8 +111,7 @@ export function createBody(data, parentMesh) {
     let orbitRadius = 0;
     if (data.distance > 0) {
         orbitRadius = isMoon ? data.distance * MOON_DIST_SCALE : scaleDist(data.distance);
-        const ringColor = isMoon ? '#1a2a1a' : '#1a3a1a';
-        orbitLine = createOrbitRing(orbitRadius, ringColor);
+        orbitLine = createOrbitRing(orbitRadius, isMoon ? sharedMoonOrbitMat : sharedPlanetOrbitMat);
         if (isMoon) orbitLine.visible = false;
         scene.add(orbitLine);
     }
@@ -108,7 +122,7 @@ export function createBody(data, parentMesh) {
     const entry = {
         data, mesh, selRing, orbitLine, orbitRadius, labelDiv, trail,
         angle: Math.random() * Math.PI * 2,
-        parentMesh, moons: [], isMoon
+        parentMesh, moons: [], isMoon, screenSize: size
     };
 
     state.bodyMeshes.push(entry);
@@ -158,9 +172,8 @@ export function createComets() {
         cometGroup.add(orbitLine);
 
         const size = BODY_MIN_SIZE * 0.7;
-        const geom = new THREE.SphereGeometry(size, 8, 8);
         const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.9, metalness: 0 });
-        const mesh = new THREE.Mesh(geom, mat);
+        const mesh = new THREE.Mesh(sharedCometGeom, mat);
 
         const selGeom = new THREE.RingGeometry(size * 1.3, size * 1.5, 24);
         const selMat = new THREE.MeshBasicMaterial({
@@ -200,6 +213,10 @@ export function createAsteroidBelts() {
         const speeds = new Float32Array(count);
         const inclinations = new Float32Array(count);
         const nodeAngles = new Float32Array(count);
+        const cosInc = new Float32Array(count);
+        const sinInc = new Float32Array(count);
+        const cosNode = new Float32Array(count);
+        const sinNode = new Float32Array(count);
         const yOffsets = new Float32Array(count);
         const asteroids = [];
 
@@ -236,12 +253,16 @@ export function createAsteroidBelts() {
             speeds[i] = (Math.PI * 2) / (period * 60);
             inclinations[i] = inc;
             nodeAngles[i] = nodeAngle;
+            const cosI = Math.cos(inc), sinI = Math.sin(inc);
+            const cosN = Math.cos(nodeAngle), sinN = Math.sin(nodeAngle);
+            cosInc[i] = cosI;
+            sinInc[i] = sinI;
+            cosNode[i] = cosN;
+            sinNode[i] = sinN;
             yOffsets[i] = 0;
 
             const x = Math.cos(angle) * r;
             const z = Math.sin(angle) * r;
-            const cosN = Math.cos(nodeAngle), sinN = Math.sin(nodeAngle);
-            const cosI = Math.cos(inc), sinI = Math.sin(inc);
             const xn = x * cosN + z * sinN;
             const zn = -x * sinN + z * cosN;
             const yn = zn * sinI;
@@ -268,20 +289,20 @@ export function createAsteroidBelts() {
         const points = new THREE.Points(geom, mat);
         scene.add(points);
 
-        return { belt, points, positions, angles, radii, speeds, inclinations, nodeAngles, yOffsets, count, asteroids };
+        return { belt, points, positions, angles, radii, speeds, inclinations, nodeAngles, cosInc, sinInc, cosNode, sinNode, yOffsets, count, asteroids };
     });
 }
 
 export function updateAsteroids(dt) {
-    state.asteroidBelts.forEach(({ positions, angles, radii, speeds, inclinations, nodeAngles, count, points }) => {
+    state.asteroidBelts.forEach(({ positions, angles, radii, speeds, cosInc, sinInc, cosNode, sinNode, count, points }) => {
         for (let i = 0; i < count; i++) {
             angles[i] += speeds[i] * dt * state.timeSpeed;
             const r = radii[i];
             const x = Math.cos(angles[i]) * r;
             const z = Math.sin(angles[i]) * r;
 
-            const cosN = Math.cos(nodeAngles[i]), sinN = Math.sin(nodeAngles[i]);
-            const cosI = Math.cos(inclinations[i]), sinI = Math.sin(inclinations[i]);
+            const cosN = cosNode[i], sinN = sinNode[i];
+            const cosI = cosInc[i], sinI = sinInc[i];
             const xn = x * cosN + z * sinN;
             const zn = -x * sinN + z * cosN;
             const yn = zn * sinI;
@@ -360,8 +381,8 @@ export function updatePositions(dt) {
             if (t.count >= t.maxPoints) {
                 const pa = t.positions;
                 const ca = t.colors;
-                const tmpP = new Float32Array(t.maxPoints * 3);
-                const tmpC = new Float32Array(t.maxPoints * 3);
+                const tmpP = t.tmpP;
+                const tmpC = t.tmpC;
                 for (let j = 0; j < t.maxPoints; j++) {
                     const src = ((t.index + j) % t.maxPoints) * 3;
                     const dst = j * 3;

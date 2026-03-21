@@ -27,4 +27,7 @@ export const state = {
     BODIES: null,
     COMETS: null,
     ASTEROID_BELTS: null,
+    showLabels: true,
+    showOrbits: true,
+    showTrails: false,
 };
