@@ -170,11 +170,10 @@ export function updateLabels() {
         const cy = (-tempVec.y * 0.5 + 0.5) * window.innerHeight;
 
         const radius = entry.screenSize || 0.3;
-        edgeVec.copy(entry.mesh.position);
-        edgeVec.x += radius;
+        edgeVec.setFromMatrixColumn(camera.matrixWorld, 0);
+        edgeVec.multiplyScalar(radius).add(entry.mesh.position);
         edgeVec.project(camera);
-        const ex = (edgeVec.x * 0.5 + 0.5) * window.innerWidth;
-        const screenRadius = Math.abs(ex - cx);
+        const screenRadius = Math.abs((edgeVec.x * 0.5 + 0.5) * window.innerWidth - cx);
 
         // LOD: swap sphere geometry based on screen size
         if (entry.geomLevels) {
