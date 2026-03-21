@@ -38,6 +38,8 @@ export function speedLabel(timeSpeed) {
 }
 
 export const MASTER_SEED = 42;
+const SAVE_KEY = 'solar-sim-state';
+const SAVE_VERSION = 1;
 
 export const state = {
     bodyMeshes: [],
@@ -49,6 +51,7 @@ export const state = {
     currentSystemKey: 'sol',
     discoveredSystems: new Map(),
     masterRng: null,
+    randomClickCount: 0,
     BODIES: null,
     COMETS: null,
     ASTEROID_BELTS: null,
@@ -56,3 +59,33 @@ export const state = {
     showOrbits: true,
     showTrails: false,
 };
+
+export function saveState() {
+    const systems = [];
+    state.discoveredSystems.forEach((sys, key) => {
+        if (key === 'sol') return;
+        systems.push({ key, name: sys.name, seed: sys.seed });
+    });
+    const data = {
+        version: SAVE_VERSION,
+        simTime: state.simTime,
+        currentSystemKey: state.currentSystemKey,
+        randomClickCount: state.randomClickCount,
+        discoveredSystems: systems,
+    };
+    try {
+        localStorage.setItem(SAVE_KEY, JSON.stringify(data));
+    } catch (_) { /* storage full or unavailable */ }
+}
+
+export function loadSavedState() {
+    try {
+        const raw = localStorage.getItem(SAVE_KEY);
+        if (!raw) return null;
+        const data = JSON.parse(raw);
+        if (data.version !== SAVE_VERSION) return null;
+        return data;
+    } catch (_) {
+        return null;
+    }
+}

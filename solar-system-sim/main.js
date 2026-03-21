@@ -1,27 +1,62 @@
 import * as THREE from 'three';
-import { state, MASTER_SEED } from './state.js';
+import { state, MASTER_SEED, saveState, loadSavedState } from './state.js';
 import { seededRandom } from './utils.js';
 import { scene, camera, renderer, controls, trailGroups, cometGroup } from './scene.js';
 import { createBodies, createComets, createAsteroidBelts, updateAsteroids, updatePositions, sharedResources } from './rendering.js';
 import { setupClickHandlers, updateFlyTo, updateFollow, updateInfoPosition } from './selection.js';
 import { buildBodyList, setupUI, updateLabels, updateHUD } from './ui.js';
 import { getSolSystem } from './sol-data.js';
+import { generateSystem } from './system-generator.js';
 
 // ---------------------------------------------------------------------------
-// Initialize with Sol
+// Initialize
 // ---------------------------------------------------------------------------
 state.masterRng = seededRandom(MASTER_SEED);
 
 const sol = getSolSystem();
 state.discoveredSystems.set('sol', { name: 'Sol System', seed: null, systemData: sol });
-state.BODIES = sol.bodies;
-state.COMETS = sol.comets;
-state.ASTEROID_BELTS = sol.asteroidBelts;
+
+// Restore saved state if available
+const saved = loadSavedState();
+if (saved) {
+    // Advance masterRng to match previous random discovery count
+    for (let i = 0; i < saved.randomClickCount; i++) state.masterRng();
+    state.randomClickCount = saved.randomClickCount;
+
+    // Regenerate discovered systems from saved seeds
+    saved.discoveredSystems.forEach(({ key, name, seed }) => {
+        const systemData = generateSystem(seed);
+        state.discoveredSystems.set(key, { name, seed, systemData });
+    });
+
+    // Load the active system
+    const active = state.discoveredSystems.get(saved.currentSystemKey);
+    if (active) {
+        state.currentSystemKey = saved.currentSystemKey;
+        state.BODIES = active.systemData.bodies;
+        state.COMETS = active.systemData.comets;
+        state.ASTEROID_BELTS = active.systemData.asteroidBelts;
+        state.simTime = saved.simTime;
+        document.querySelector('.system-name').textContent = active.systemData.name + ' \u25be';
+        document.title = `System Map - ${active.systemData.name}`;
+    } else {
+        state.BODIES = sol.bodies;
+        state.COMETS = sol.comets;
+        state.ASTEROID_BELTS = sol.asteroidBelts;
+    }
+} else {
+    state.BODIES = sol.bodies;
+    state.COMETS = sol.comets;
+    state.ASTEROID_BELTS = sol.asteroidBelts;
+}
 
 createBodies();
 createComets();
 state.asteroidBelts = createAsteroidBelts();
 buildBodyList();
+
+// Auto-save on page unload
+window.addEventListener('beforeunload', saveState);
 
 // ---------------------------------------------------------------------------
 // Teardown & load system
