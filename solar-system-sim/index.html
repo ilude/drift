@@ -10,13 +10,26 @@
     <div id="canvas-container"></div>
 
     <div id="header-bar">
-        <span class="system-name">Sol System</span>
+        <span class="system-name" id="system-switcher-btn">Sol System ▾</span>
         <span class="header-sep">|</span>
         <span id="time-display">Day 0 | 5-Second Increment</span>
         <span class="header-sep">|</span>
         <span id="zoom-display">Zoom: 1.00x</span>
         <span style="flex:1"></span>
         <span id="fps-display">FPS: --</span>
+    </div>
+
+    <div id="system-switcher-dropdown" class="panel hidden">
+        <div class="panel-header">Discovered Systems</div>
+        <div id="system-list"></div>
+        <div class="panel-header">Discover New</div>
+        <div id="discover-controls">
+            <input type="text" id="seed-input" placeholder="Enter seed...">
+            <div style="display:flex;gap:4px;">
+                <button class="ctrl-btn" id="btn-discover">Discover</button>
+                <button class="ctrl-btn" id="btn-random">Random</button>
+            </div>
+        </div>
     </div>
 
     <div id="info-panel" class="panel hidden">

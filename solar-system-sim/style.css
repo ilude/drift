@@ -42,6 +42,66 @@ body {
 .system-name {
     color: #aaddaa;
     font-weight: bold;
+    cursor: pointer;
+}
+
+.system-name:hover {
+    color: #ccffcc;
+}
+
+/* System switcher dropdown */
+#system-switcher-dropdown {
+    position: fixed;
+    top: 28px;
+    left: 12px;
+    width: 240px;
+    z-index: 100;
+}
+
+#system-list {
+    padding: 4px 0;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.system-list-item {
+    padding: 4px 8px;
+    cursor: pointer;
+    color: #88cc88;
+    font-size: 11px;
+}
+
+.system-list-item:hover {
+    background: #1a2a1a;
+}
+
+.system-list-item.active {
+    border-left: 2px solid #88cc88;
+    background: #1a2a1a;
+    color: #aaffaa;
+}
+
+#discover-controls {
+    padding: 6px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+#seed-input {
+    background: #141420;
+    border: 1px solid #2a3a2a;
+    color: #88cc88;
+    font-family: inherit;
+    font-size: 11px;
+    padding: 3px 6px;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+#seed-input:focus {
+    border-color: #4a6a4a;
+    outline: none;
 }
 
 .header-sep {

@@ -1,96 +1,17 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { getSolSystem, generateSystem } from './system-generator.js';
 
 // ---------------------------------------------------------------------------
-// Solar system data (distances in AU, periods in Earth years, radii in km)
+// System data — loaded from generator, swappable at runtime
 // ---------------------------------------------------------------------------
-const BODIES = [
-    {
-        name: 'Sol', type: 'Star', distance: 0, period: 0, radius: 695700,
-        color: '#ffdd44', emissive: true, moons: []
-    },
-    {
-        name: 'Mercury', type: 'Planet', distance: 0.387, period: 0.241, radius: 2440,
-        color: '#aaaaaa', moons: []
-    },
-    {
-        name: 'Venus', type: 'Planet', distance: 0.723, period: 0.615, radius: 6052,
-        color: '#ddaa66', moons: []
-    },
-    {
-        name: 'Earth', type: 'Planet', distance: 1.0, period: 1.0, radius: 6371,
-        color: '#4488cc', moons: [
-            { name: 'Luna', distance: 0.04, period: 0.0748, radius: 1737, color: '#999999' }
-        ]
-    },
-    {
-        name: 'Mars', type: 'Planet', distance: 1.524, period: 1.881, radius: 3390,
-        color: '#cc5533', moons: [
-            { name: 'Phobos', distance: 0.02, period: 0.0008, radius: 11, color: '#887766' },
-            { name: 'Deimos', distance: 0.03, period: 0.003, radius: 6, color: '#887766' }
-        ]
-    },
-    {
-        name: 'Jupiter', type: 'Planet', distance: 5.203, period: 11.86, radius: 69911,
-        color: '#ddaa77', moons: [
-            { name: 'Io', distance: 0.06, period: 0.00484, radius: 1822, color: '#ddcc44' },
-            { name: 'Europa', distance: 0.08, period: 0.00972, radius: 1561, color: '#ccccdd' },
-            { name: 'Ganymede', distance: 0.10, period: 0.01959, radius: 2634, color: '#aaaaaa' },
-            { name: 'Callisto', distance: 0.13, period: 0.04570, radius: 2410, color: '#777788' }
-        ]
-    },
-    {
-        name: 'Saturn', type: 'Planet', distance: 9.537, period: 29.46, radius: 58232,
-        color: '#ccbb77', moons: [
-            { name: 'Titan', distance: 0.10, period: 0.0437, radius: 2575, color: '#cc9944' },
-            { name: 'Enceladus', distance: 0.04, period: 0.00375, radius: 252, color: '#ddddee' }
-        ]
-    },
-    {
-        name: 'Uranus', type: 'Planet', distance: 19.19, period: 84.01, radius: 25362,
-        color: '#88bbcc', moons: [
-            { name: 'Miranda', distance: 0.04, period: 0.00387, radius: 236, color: '#aabbbb' },
-            { name: 'Titania', distance: 0.08, period: 0.02387, radius: 789, color: '#aaaaaa' }
-        ]
-    },
-    {
-        name: 'Neptune', type: 'Planet', distance: 30.07, period: 164.8, radius: 24622,
-        color: '#4466cc', moons: [
-            { name: 'Triton', distance: 0.06, period: 0.01610, radius: 1353, color: '#99aaaa' }
-        ]
-    },
-    // Dwarf planets & notable small bodies
-    {
-        name: 'Ceres', type: 'Dwarf Planet', distance: 2.77, period: 4.60, radius: 473,
-        color: '#888877', moons: []
-    },
-    {
-        name: 'Pluto', type: 'Dwarf Planet', distance: 39.48, period: 248.0, radius: 1188,
-        color: '#ccaa88', moons: [
-            { name: 'Charon', distance: 0.05, period: 0.01745, radius: 606, color: '#999988' }
-        ]
-    },
-    {
-        name: 'Haumea', type: 'Dwarf Planet', distance: 43.22, period: 284.1, radius: 816,
-        color: '#aaaaaa', moons: [
-            { name: "Hi'iaka", distance: 0.06, period: 0.1345, radius: 160, color: '#888888' }
-        ]
-    },
-    {
-        name: 'Makemake', type: 'Dwarf Planet', distance: 45.79, period: 309.9, radius: 715,
-        color: '#bb9977', moons: []
-    },
-    {
-        name: 'Eris', type: 'Dwarf Planet', distance: 67.78, period: 559.0, radius: 1163,
-        color: '#bbbbbb', moons: [
-            { name: 'Dysnomia', distance: 0.05, period: 0.04384, radius: 350, color: '#777777' }
-        ]
-    },
-    {
-        name: 'Sedna', type: 'Detached Object', distance: 506, period: 11400, radius: 498,
-        color: '#cc6644', moons: []
-    }
-];
+const discoveredSystems = new Map();
+discoveredSystems.set('sol', { name: 'Sol System', seed: null, systemData: getSolSystem() });
+let currentSystemKey = 'sol';
+let currentSystem = discoveredSystems.get('sol').systemData;
+let BODIES = currentSystem.bodies;
+let COMETS = currentSystem.comets;
+let ASTEROID_BELTS = currentSystem.asteroidBelts;
 
 // ---------------------------------------------------------------------------
 // Scale helpers — we use a sqrt scale for distance to keep inner and outer
@@ -197,44 +118,6 @@ auMarkers.forEach(au => {
 // ---------------------------------------------------------------------------
 // Procedural asteroid belts
 // ---------------------------------------------------------------------------
-const ASTEROID_BELTS = [
-    {
-        name: 'Main Belt',
-        minAU: 2.1, maxAU: 3.3,       // between Mars and Jupiter
-        count: 1387,
-        color: '#555544',
-        size: 0.25,
-        minPeriod: 3.2, maxPeriod: 5.9, // years (Kepler-ish)
-        maxInc: 3,                       // degrees — flattened for visual clarity
-    },
-    {
-        name: 'Kuiper Belt - Cold Classical',
-        minAU: 42, maxAU: 48,           // stable region between 2:3 and 1:2 Neptune resonances
-        count: 1523,
-        color: '#333344',
-        size: 0.3,
-        minPeriod: 272, maxPeriod: 332,
-        maxInc: 1,                       // cold population: very flat
-    },
-    {
-        name: 'Kuiper Belt - Hot Classical',
-        minAU: 30, maxAU: 50,           // wider range, more eccentric
-        count: 1261,
-        color: '#334455',
-        size: 0.3,
-        minPeriod: 164, maxPeriod: 354,
-        maxInc: 5,                       // hot population: slightly more spread
-    },
-    {
-        name: 'Kuiper Belt - Resonant',
-        minAU: 39, maxAU: 48,           // plutinos (3:2) and twotinos (2:1)
-        count: 842,
-        color: '#443355',
-        size: 0.3,
-        minPeriod: 244, maxPeriod: 332,
-        maxInc: 3,                       // moderate, kept flat
-    }
-];
 
 // Seeded random for reproducibility
 function seededRandom(seed) {
@@ -245,9 +128,12 @@ function seededRandom(seed) {
     };
 }
 
-const asteroidBelts = ASTEROID_BELTS.map(belt => {
+let asteroidBelts = [];
+
+function createAsteroidBelts() {
+    return ASTEROID_BELTS.map(belt => {
     const rng = seededRandom(belt.name.length * 7919);
-    const prefix = belt.name === 'Main Belt' ? 'MB' : 'KB';
+    const prefix = belt.name.includes('Belt') ? belt.name.split(' ')[0].substring(0, 2).toUpperCase() : 'AB';
     const maxIncRad = (belt.maxInc || 0) * Math.PI / 180;
     const count = belt.count;
     const positions = new Float32Array(count * 3);
@@ -332,7 +218,9 @@ const asteroidBelts = ASTEROID_BELTS.map(belt => {
     scene.add(points);
 
     return { belt, points, positions, angles, radii, speeds, inclinations, nodeAngles, yOffsets, count, asteroids };
-});
+    });
+}
+asteroidBelts = createAsteroidBelts();
 
 function updateAsteroids(dt) {
     asteroidBelts.forEach(({ positions, angles, radii, speeds, inclinations, nodeAngles, count, points }) => {
@@ -367,21 +255,6 @@ document.body.appendChild(labelContainer);
 
 const trailGroups = new THREE.Group();
 scene.add(trailGroups);
-
-// ---------------------------------------------------------------------------
-// Comets — famous Sol system comets with real orbital elements
-// ---------------------------------------------------------------------------
-const COMETS = [
-    // Real orbital elements: a (AU), e, period (yr), inc (deg), Ω (long. asc. node), ω (arg. perihelion)
-    { name: 'Halley',          a: 17.83,  e: 0.967,  period: 75.3,   inc: 4,    node: 58.42,  peri: 111.33, color: '#99ccff' },
-    { name: 'Hale-Bopp',       a: 186,    e: 0.995,  period: 2533,   inc: 3,    node: 282.47, peri: 130.59, color: '#aaddff' },
-    { name: 'Encke',           a: 2.22,   e: 0.848,  period: 3.3,    inc: 2,    node: 334.57, peri: 186.55, color: '#88bbaa' },
-    { name: 'Swift-Tuttle',    a: 26.09,  e: 0.963,  period: 133.3,  inc: 5,    node: 139.38, peri: 152.98, color: '#bbaaff' },
-    { name: 'Tempel 1',        a: 3.12,   e: 0.510,  period: 5.5,    inc: 2,    node: 68.76,  peri: 179.19, color: '#aa9988' },
-    { name: 'Churyumov-Ger.',  a: 3.46,   e: 0.678,  period: 6.4,    inc: 1,    node: 45.93,  peri: 14.52,  color: '#998877' },
-    { name: 'Hyakutake',       a: 1700,   e: 0.9998, period: 70000,  inc: 3,    node: 188.05, peri: 130.17, color: '#ccddff' },
-    { name: 'Neowise',         a: 358.5,  e: 0.999,  period: 6800,   inc: 4,    node: 61.01,  peri: 37.28,  color: '#ddeeff' },
-];
 
 // Transform a point in the orbital plane to 3D space using Ω, i, ω
 // Input: (x, y) in orbital plane (y=0 plane, x toward perihelion)
@@ -541,12 +414,14 @@ function createBody(data, parentMesh) {
     return entry;
 }
 
-BODIES.forEach(b => {
-    if (!b.type || b.type !== 'Moon') createBody(b, null);
-});
+function createBodies() {
+    BODIES.forEach(b => {
+        if (!b.type || b.type !== 'Moon') createBody(b, null);
+    });
+}
 
-// Create comets as regular bodies with Keplerian orbit data
-COMETS.forEach(comet => {
+function createComets() {
+    COMETS.forEach(comet => {
     const { a, e, inc, node, peri, color, name, period } = comet;
     const incRad = (inc * Math.PI) / 180;
     const nodeRad = (node * Math.PI) / 180;
@@ -607,7 +482,111 @@ COMETS.forEach(comet => {
         parentMesh: null, moons: [], isMoon: false, isComet: true
     };
     bodyMeshes.push(entry);
-});
+    });
+}
+
+// --- Initial creation ---
+createBodies();
+createComets();
+
+// ---------------------------------------------------------------------------
+// Teardown & load system
+// ---------------------------------------------------------------------------
+function teardownSystem() {
+    bodyMeshes.forEach(entry => {
+        scene.remove(entry.mesh);
+        entry.mesh.geometry.dispose();
+        entry.mesh.material.dispose();
+        if (entry.selRing) {
+            entry.selRing.geometry.dispose();
+            entry.selRing.material.dispose();
+        }
+        if (entry.orbitLine) {
+            scene.remove(entry.orbitLine);
+            entry.orbitLine.geometry.dispose();
+            entry.orbitLine.material.dispose();
+        }
+        if (entry.labelDiv) entry.labelDiv.remove();
+        if (entry.trail) {
+            trailGroups.remove(entry.trail.line);
+            entry.trail.line.geometry.dispose();
+            entry.trail.line.material.dispose();
+        }
+    });
+    bodyMeshes.length = 0;
+
+    asteroidBelts.forEach(ab => {
+        scene.remove(ab.points);
+        ab.points.geometry.dispose();
+        ab.points.material.dispose();
+    });
+    asteroidBelts = [];
+
+    while (cometGroup.children.length > 0) {
+        const child = cometGroup.children[0];
+        cometGroup.remove(child);
+        child.geometry.dispose();
+        child.material.dispose();
+    }
+
+    selectedBody = null;
+    flyTo = null;
+    document.getElementById('info-panel').classList.add('hidden');
+}
+
+function loadSystem(systemData) {
+    teardownSystem();
+    BODIES = systemData.bodies;
+    COMETS = systemData.comets;
+    ASTEROID_BELTS = systemData.asteroidBelts;
+    createBodies();
+    createComets();
+    asteroidBelts = createAsteroidBelts();
+    buildBodyList();
+    document.querySelector('.system-name').textContent = systemData.name + ' ▾';
+    document.title = `System Map - ${systemData.name}`;
+    simTime = 0;
+}
+
+function hashString(str) {
+    let hash = 5381;
+    for (let i = 0; i < str.length; i++) {
+        hash = ((hash << 5) + hash) + str.charCodeAt(i);
+        hash = hash & 0x7fffffff;
+    }
+    return hash || 1;
+}
+
+function discoverSystem(seed) {
+    const key = `seed-${seed}`;
+    if (!discoveredSystems.has(key)) {
+        const systemData = generateSystem(seed);
+        discoveredSystems.set(key, { name: systemData.name, seed, systemData });
+    }
+    switchToSystem(key);
+}
+
+function switchToSystem(key) {
+    if (key === currentSystemKey) return;
+    const sys = discoveredSystems.get(key);
+    if (!sys) return;
+    currentSystemKey = key;
+    loadSystem(sys.systemData);
+    rebuildSystemList();
+}
+
+function rebuildSystemList() {
+    const list = document.getElementById('system-list');
+    if (!list) return;
+    list.innerHTML = '';
+    discoveredSystems.forEach((sys, key) => {
+        const item = document.createElement('div');
+        item.className = 'system-list-item' + (key === currentSystemKey ? ' active' : '');
+        item.textContent = sys.name;
+        item.addEventListener('click', () => switchToSystem(key));
+        list.appendChild(item);
+    });
+}
 
 // ---------------------------------------------------------------------------
 // Body list panel
@@ -871,6 +850,33 @@ renderer.domElement.addEventListener('click', (event) => {
     } else if (closest && closestDist < MAX_CLICK_DIST) {
         selectBody(closest);
     }
+});
+
+// ---------------------------------------------------------------------------
+// System switcher
+// ---------------------------------------------------------------------------
+document.getElementById('system-switcher-btn').addEventListener('click', () => {
+    const dropdown = document.getElementById('system-switcher-dropdown');
+    dropdown.classList.toggle('hidden');
+    if (!dropdown.classList.contains('hidden')) rebuildSystemList();
+});
+
+document.getElementById('btn-discover').addEventListener('click', () => {
+    const seedStr = document.getElementById('seed-input').value.trim();
+    if (!seedStr) return;
+    discoverSystem(hashString(seedStr));
+    document.getElementById('seed-input').value = '';
+    document.getElementById('system-switcher-dropdown').classList.add('hidden');
+});
+
+document.getElementById('btn-random').addEventListener('click', () => {
+    const seed = Math.floor(Math.random() * 2147483646) + 1;
+    discoverSystem(seed);
+    document.getElementById('system-switcher-dropdown').classList.add('hidden');
+});
+
+document.getElementById('seed-input').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') document.getElementById('btn-discover').click();
 });
 
 // ---------------------------------------------------------------------------
