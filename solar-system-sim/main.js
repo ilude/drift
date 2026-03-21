@@ -30,7 +30,11 @@ function safeDispose(resource) {
 function teardownSystem() {
     state.bodyMeshes.forEach(entry => {
         scene.remove(entry.mesh);
-        safeDispose(entry.mesh.geometry);
+        if (entry.geomLevels) {
+            entry.geomLevels.forEach(g => safeDispose(g));
+        } else {
+            safeDispose(entry.mesh.geometry);
+        }
         safeDispose(entry.mesh.material);
         if (entry.selRing) {
             safeDispose(entry.selRing.geometry);

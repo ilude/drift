@@ -25,12 +25,16 @@ export function orbitToWorld(x, z, incRad, nodeRad, periRad) {
 }
 
 // Shared geometry/materials for identical bodies
-const sharedMoonGeom = new THREE.SphereGeometry(BODY_MIN_SIZE * 0.6, 8, 8);
-const sharedCometGeom = new THREE.SphereGeometry(BODY_MIN_SIZE * 0.7, 8, 8);
+// LOD tiers: [low, medium, high] segment counts
+const LOD_SEGS = [8, 24, 48];
+const STAR_LOD_SEGS = [32, 48, 64];
+
+const sharedMoonGeoms = LOD_SEGS.map(s => new THREE.SphereGeometry(BODY_MIN_SIZE * 0.6, s, s));
+const sharedCometGeoms = LOD_SEGS.map(s => new THREE.SphereGeometry(BODY_MIN_SIZE * 0.7, s, s));
 const sharedMoonOrbitMat = new THREE.LineBasicMaterial({ color: '#1a2a1a', transparent: true, opacity: 0.3 });
 const sharedPlanetOrbitMat = new THREE.LineBasicMaterial({ color: '#1a3a1a', transparent: true, opacity: 0.3 });
 
-export const sharedResources = new Set([sharedMoonGeom, sharedCometGeom, sharedMoonOrbitMat, sharedPlanetOrbitMat]);
+export const sharedResources = new Set([...sharedMoonGeoms, ...sharedCometGeoms, sharedMoonOrbitMat, sharedPlanetOrbitMat]);
 
 function createLabel(name, color, isMoon) {
     const div = document.createElement('div');
@@ -90,12 +94,13 @@ export function createBody(data, parentMesh) {
 
     const size = isMoon ? BODY_MIN_SIZE * 0.6 : bodySize(data.radius, isStar);
 
-    const geom = isMoon ? sharedMoonGeom :
-        new THREE.SphereGeometry(size, isStar ? 16 : 12, isStar ? 16 : 12);
+    const segs = isStar ? STAR_LOD_SEGS : LOD_SEGS;
+    const geomLevels = isMoon ? sharedMoonGeoms :
+        segs.map(s => new THREE.SphereGeometry(size, s, s));
     const mat = isStar
         ? new THREE.MeshBasicMaterial({ color: data.color })
         : new THREE.MeshStandardMaterial({ color: data.color, roughness: 0.8, metalness: 0.1 });
-    const mesh = new THREE.Mesh(geom, mat);
+    const mesh = new THREE.Mesh(geomLevels[0], mat);
 
     const selGeom = new THREE.RingGeometry(size * 1.3, size * 1.5, 24);
     const selMat = new THREE.MeshBasicMaterial({
@@ -122,7 +127,8 @@ export function createBody(data, parentMesh) {
     const entry = {
         data, mesh, selRing, orbitLine, orbitRadius, labelDiv, trail,
         angle: Math.random() * Math.PI * 2,
-        parentMesh, moons: [], isMoon, screenSize: size
+        parentMesh, moons: [], isMoon, screenSize: size,
+        geomLevels, lodLevel: 0
     };
 
     state.bodyMeshes.push(entry);
@@ -173,7 +179,7 @@ export function createComets() {
 
         const size = BODY_MIN_SIZE * 0.7;
         const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.9, metalness: 0 });
-        const mesh = new THREE.Mesh(sharedCometGeom, mat);
+        const mesh = new THREE.Mesh(sharedCometGeoms[0], mat);
 
         const selGeom = new THREE.RingGeometry(size * 1.3, size * 1.5, 24);
         const selMat = new THREE.MeshBasicMaterial({
@@ -195,7 +201,8 @@ export function createComets() {
             mesh, selRing, orbitLine, orbitRadius: 0,
             labelDiv, trail,
             angle: Math.random() * Math.PI * 2,
-            parentMesh: null, moons: [], isMoon: false, isComet: true
+            parentMesh: null, moons: [], isMoon: false, isComet: true,
+            screenSize: size, geomLevels: sharedCometGeoms, lodLevel: 0
         };
         state.bodyMeshes.push(entry);
     });

@@ -176,6 +176,15 @@ export function updateLabels() {
         const ex = (edgeVec.x * 0.5 + 0.5) * window.innerWidth;
         const screenRadius = Math.abs(ex - cx);
 
+        // LOD: swap sphere geometry based on screen size
+        if (entry.geomLevels) {
+            const level = screenRadius > 50 ? 2 : screenRadius > 15 ? 1 : 0;
+            if (level !== entry.lodLevel) {
+                entry.mesh.geometry = entry.geomLevels[level];
+                entry.lodLevel = level;
+            }
+        }
+
         const gap = 6;
         entry.labelDiv.style.transform = `translate(${cx + screenRadius + gap}px, ${cy - 6}px)`;
         entry.labelDiv.style.display = showLabels ? '' : 'none';
