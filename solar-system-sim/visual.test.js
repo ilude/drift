@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { bodySize, screenRadius, lodLevel, easeOutCubic, BODY_MIN_SIZE, BODY_MAX_SIZE } from './visual.js';
+import { bodySize, screenRadius, lodLevel, easeOutCubic, moonOrbitScale, realisticSize, bodyScaleFactor, BODY_MIN_SIZE, BODY_MAX_SIZE, MOON_LOD_ZOOM, MOON_REALISTIC_SCALE, MOON_ZOOM_MAX, BODY_SCALE_ZOOM_MIN, BODY_SCALE_ZOOM_MAX } from './visual.js';
 
 describe('bodySize', () => {
     it('returns BODY_MAX_SIZE for stars', () => {
@@ -123,5 +123,101 @@ describe('easeOutCubic', () => {
     it('matches formula 1 - (1-t)^3', () => {
         expect(easeOutCubic(0.3)).toBeCloseTo(1 - Math.pow(0.7, 3));
         expect(easeOutCubic(0.7)).toBeCloseTo(1 - Math.pow(0.3, 3));
+    });
+});
+
+describe('moonOrbitScale', () => {
+    it('returns 1 at or below MOON_LOD_ZOOM', () => {
+        expect(moonOrbitScale(0.5)).toBe(1);
+        expect(moonOrbitScale(MOON_LOD_ZOOM)).toBe(1);
+    });
+
+    it('returns MOON_REALISTIC_SCALE at MOON_ZOOM_MAX', () => {
+        expect(moonOrbitScale(MOON_ZOOM_MAX)).toBeCloseTo(MOON_REALISTIC_SCALE);
+    });
+
+    it('returns MOON_REALISTIC_SCALE beyond MOON_ZOOM_MAX', () => {
+        expect(moonOrbitScale(20)).toBeCloseTo(MOON_REALISTIC_SCALE);
+    });
+
+    it('interpolates between 1 and MOON_REALISTIC_SCALE', () => {
+        const mid = (MOON_LOD_ZOOM + MOON_ZOOM_MAX) / 2;
+        const scale = moonOrbitScale(mid);
+        expect(scale).toBeGreaterThan(1);
+        expect(scale).toBeLessThan(MOON_REALISTIC_SCALE);
+    });
+
+    it('is monotonically increasing', () => {
+        let prev = moonOrbitScale(0);
+        for (let z = 1; z <= 12; z += 0.5) {
+            const v = moonOrbitScale(z);
+            expect(v).toBeGreaterThanOrEqual(prev);
+            prev = v;
+        }
+    });
+});
+
+describe('realisticSize', () => {
+    it('returns BODY_MIN_SIZE for very small bodies', () => {
+        expect(realisticSize(100)).toBeCloseTo(BODY_MIN_SIZE, 1);
+    });
+
+    it('returns close to BODY_MAX_SIZE for large stars', () => {
+        expect(realisticSize(695700)).toBeCloseTo(BODY_MAX_SIZE, 0);
+    });
+
+    it('is monotonically increasing', () => {
+        const radii = [500, 2440, 6371, 25362, 69911, 695700];
+        let prev = 0;
+        for (const r of radii) {
+            const s = realisticSize(r);
+            expect(s).toBeGreaterThan(prev);
+            prev = s;
+        }
+    });
+
+    it('Jupiter is significantly larger than Mercury', () => {
+        const mercury = realisticSize(2440);
+        const jupiter = realisticSize(69911);
+        expect(jupiter / mercury).toBeGreaterThan(2);
+    });
+
+    it('stays within [BODY_MIN_SIZE, BODY_MAX_SIZE]', () => {
+        for (const r of [1, 100, 6371, 69911, 695700, 1000000]) {
+            const s = realisticSize(r);
+            expect(s).toBeGreaterThanOrEqual(BODY_MIN_SIZE);
+            expect(s).toBeLessThanOrEqual(BODY_MAX_SIZE);
+        }
+    });
+});
+
+describe('bodyScaleFactor', () => {
+    it('returns 0 at or below BODY_SCALE_ZOOM_MIN', () => {
+        expect(bodyScaleFactor(0.5)).toBe(0);
+        expect(bodyScaleFactor(BODY_SCALE_ZOOM_MIN)).toBe(0);
+    });
+
+    it('returns 1 at BODY_SCALE_ZOOM_MAX', () => {
+        expect(bodyScaleFactor(BODY_SCALE_ZOOM_MAX)).toBeCloseTo(1);
+    });
+
+    it('returns 1 beyond BODY_SCALE_ZOOM_MAX', () => {
+        expect(bodyScaleFactor(20)).toBeCloseTo(1);
+    });
+
+    it('interpolates between 0 and 1', () => {
+        const mid = (BODY_SCALE_ZOOM_MIN + BODY_SCALE_ZOOM_MAX) / 2;
+        const f = bodyScaleFactor(mid);
+        expect(f).toBeGreaterThan(0);
+        expect(f).toBeLessThan(1);
+    });
+
+    it('is monotonically increasing', () => {
+        let prev = 0;
+        for (let z = 0; z <= 15; z += 0.5) {
+            const v = bodyScaleFactor(z);
+            expect(v).toBeGreaterThanOrEqual(prev);
+            prev = v;
+        }
     });
 });

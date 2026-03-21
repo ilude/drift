@@ -1,9 +1,10 @@
 import * as THREE from 'three';
 import { state } from './state.js';
 import { scaleDist, MOON_DIST_SCALE, keplerRadius, orbitSpeed, inclinedPosition } from './orbit.js';
-import { bodySize, BODY_MIN_SIZE } from './visual.js';
-import { scene, labelContainer, trailGroups, cometGroup } from './scene.js';
+import { bodySize, BODY_MIN_SIZE, moonOrbitScale, realisticSize } from './visual.js';
+import { scene, camera, labelContainer, trailGroups, cometGroup } from './scene.js';
 import { seededRandom } from './utils.js';
+import { generateBodyTexture, createStarMaterial } from './textures.js';
 
 // Transform orbital plane coordinates to 3D world space using Ω, i, ω
 const _orbitOut = { x: 0, y: 0, z: 0 };
@@ -99,9 +100,13 @@ export function createBody(data, parentMesh) {
     const segs = isStar ? STAR_LOD_SEGS : LOD_SEGS;
     const geomLevels = isMoon ? sharedMoonGeoms :
         segs.map(s => new THREE.SphereGeometry(size, s, s));
-    const mat = isStar
-        ? new THREE.MeshBasicMaterial({ color: data.color })
-        : new THREE.MeshStandardMaterial({ color: data.color, roughness: 0.8, metalness: 0.1 });
+    let mat;
+    if (isStar) {
+        mat = createStarMaterial(data.color);
+    } else {
+        const texture = generateBodyTexture(data, isMoon);
+        mat = new THREE.MeshStandardMaterial({ map: texture, roughness: 0.8, metalness: 0.1 });
+    }
     const mesh = new THREE.Mesh(geomLevels[0], mat);
 
     const selGeom = new THREE.RingGeometry(size * 1.3, size * 1.5, 24);
@@ -130,6 +135,8 @@ export function createBody(data, parentMesh) {
         data, mesh, selRing, orbitLine, orbitRadius, labelDiv, trail,
         angle: Math.random() * Math.PI * 2,
         parentMesh, moons: [], isMoon, screenSize: size,
+        baseSize: size,
+        realisticSize: (isMoon || !data.radius) ? size : realisticSize(data.radius),
         geomLevels, lodLevel: 0
     };
 
@@ -318,6 +325,8 @@ export function updateAsteroids(dt) {
 
 export function updatePositions(dt) {
     state.simTime += dt * state.timeSpeed;
+    const zoomFactor = 120 / camera.position.length();
+    const moonScale = moonOrbitScale(zoomFactor);
 
     state.bodyMeshes.forEach(entry => {
         if (entry.data.distance === 0 && !entry.isComet) return;
@@ -338,7 +347,7 @@ export function updatePositions(dt) {
         } else {
             entry.angle += orbitSpeed(entry.data.period) * dt * state.timeSpeed;
 
-            const r = entry.orbitRadius;
+            const r = entry.parentMesh ? entry.orbitRadius * moonScale : entry.orbitRadius;
             const x = Math.cos(entry.angle) * r;
             const z = Math.sin(entry.angle) * r;
 
@@ -348,6 +357,7 @@ export function updatePositions(dt) {
                 entry.mesh.position.set(px + x, 0, pz + z);
                 if (entry.orbitLine) {
                     entry.orbitLine.position.set(px, 0, pz);
+                    entry.orbitLine.scale.set(moonScale, 1, moonScale);
                 }
             } else {
                 entry.mesh.position.set(x, 0, z);

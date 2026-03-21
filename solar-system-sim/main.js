@@ -35,6 +35,7 @@ function teardownSystem() {
         } else {
             safeDispose(entry.mesh.geometry);
         }
+        if (entry.mesh.material.map) entry.mesh.material.map.dispose();
         safeDispose(entry.mesh.material);
         if (entry.selRing) {
             safeDispose(entry.selRing.geometry);
@@ -110,6 +111,13 @@ function animate() {
     updateLabels();
     updateInfoPosition();
     updateHUD();
+
+    const elapsed = clock.elapsedTime;
+    state.bodyMeshes.forEach(entry => {
+        if (entry.data.type === 'Star' && entry.mesh.material.uniforms) {
+            entry.mesh.material.uniforms.uTime.value = elapsed;
+        }
+    });
 
     renderer.render(scene, camera);
 }

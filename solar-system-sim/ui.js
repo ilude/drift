@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { state, simTimeToDay, speedLabel } from './state.js';
-import { MOON_LOD_ZOOM, screenRadius as calcScreenRadius, lodLevel } from './visual.js';
+import { MOON_LOD_ZOOM, screenRadius as calcScreenRadius, lodLevel, bodyScaleFactor } from './visual.js';
 import { camera, gridGroup } from './scene.js';
 import { selectBody } from './selection.js';
 import { generateSystem } from './system-generator.js';
@@ -157,6 +157,14 @@ export function updateLabels() {
                 entry.labelDiv.style.display = 'none';
                 return;
             }
+        }
+
+        if (!entry.isMoon && !entry.isComet && entry.baseSize) {
+            const t = bodyScaleFactor(zoomFactor);
+            const scaledSize = entry.baseSize + t * (entry.realisticSize - entry.baseSize);
+            const s = scaledSize / entry.baseSize;
+            entry.mesh.scale.set(s, s, s);
+            entry.screenSize = scaledSize;
         }
 
         tempVec.copy(entry.mesh.position);
