@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { state, simTimeToDay, speedLabel } from './state.js';
+import { state, simTimeToDate, speedLabel } from './state.js';
 import { MOON_LOD_ZOOM, screenRadius as calcScreenRadius, lodLevel, bodyScaleFactor } from './visual.js';
-import { camera, gridGroup } from './scene.js';
+import { camera, controls, gridGroup } from './scene.js';
 import { selectBody } from './selection.js';
 import { generateSystem } from './system-generator.js';
 
@@ -145,7 +145,7 @@ const edgeVec = new THREE.Vector3();
 export function updateLabels() {
     const showLabels = state.showLabels;
     const showOrbits = state.showOrbits;
-    const camDist = camera.position.length();
+    const camDist = camera.position.distanceTo(controls.target);
     const zoomFactor = 120 / camDist;
 
     state.bodyMeshes.forEach(entry => {
@@ -218,14 +218,15 @@ export function updateHUD() {
         fpsEl.textContent = `FPS: ${fpsValue}`;
     }
 
-    const day = simTimeToDay(state.simTime);
-    const timeText = `Day ${day} | ${speedLabel(state.timeSpeed)}`;
+    const d = simTimeToDate(state.simTime);
+    const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const timeText = `${dateStr} | ${speedLabel(state.timeSpeed)}`;
     if (timeText !== lastTimeText) {
         timeEl.textContent = timeText;
         lastTimeText = timeText;
     }
 
-    const dist = camera.position.length();
+    const dist = camera.position.distanceTo(controls.target);
     const zoomText = `Zoom: ${(120 / dist).toFixed(2)}x`;
     if (zoomText !== lastZoomText) {
         zoomEl.textContent = zoomText;
@@ -264,7 +265,7 @@ export function setupUI(loadSystem) {
     });
 
     // Time controls
-    const speedMap = { pause: 0, slow: 0.25, normal: 1, fast: 5 };
+    const speedMap = { pause: 0, slow: 1, normal: 6, fast: 30 };
     ['pause', 'slow', 'normal', 'fast'].forEach(mode => {
         document.getElementById(`btn-${mode}`).addEventListener('click', () => {
             state.timeSpeed = speedMap[mode];

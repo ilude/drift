@@ -73,6 +73,7 @@ function generateStar(rng, name) {
             name,
             type: 'Star',
             distance: 0,
+            e: 0,
             period: 0,
             radius: Math.round(radius * SOLAR_RADIUS_KM),
             color: spec.color,
@@ -197,8 +198,11 @@ function makePlanetEntry(rng, distAU, radiusEarths, starMass) {
     const radiusKm = Math.round(radiusEarths * EARTH_RADIUS_KM);
     const period = keplerPeriod(distAU, starMass);
 
+    const ecc = Math.round(rngFloat(rng, 0.001, 0.12) * 1000) / 1000;
+
     return {
         distance: Math.round(distAU * 1000) / 1000,
+        e: ecc,
         period: Math.round(period * 1000) / 1000,
         radius: radiusKm,
         color,
@@ -367,6 +371,7 @@ function generateMoons(rng, planetName, radiusEarths, category) {
         moons.push({
             name: `${planetName} ${ROMAN[i]}`,
             distance: Math.round(dist * 1000) / 1000,
+            e: Math.round(rngFloat(rng, 0.0, 0.05) * 1000) / 1000,
             period: Math.round(period * 100000) / 100000,
             radius: moonRadiusKm,
             color: rngPick(rng, MOON_COLORS)
@@ -544,6 +549,7 @@ export function generateSystem(seed) {
             name,
             type,
             distance: p.distance,
+            e: p.e,
             period: p.period,
             radius: p.radius,
             color: p.color,

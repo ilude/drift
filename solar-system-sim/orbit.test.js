@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { scaleDist, keplerRadius, orbitSpeed, inclinedPosition, DIST_SCALE } from './orbit.js';
+import { scaleDist, keplerRadius, orbitSpeed, meanToTrue, inclinedPosition, DIST_SCALE } from './orbit.js';
 
 describe('scaleDist', () => {
     it('returns 0 for 0 AU', () => {
@@ -64,8 +64,39 @@ describe('orbitSpeed', () => {
         expect(orbitSpeed(1)).toBeGreaterThan(orbitSpeed(10));
     });
 
-    it('computes 2*PI / (period * 60)', () => {
-        expect(orbitSpeed(1)).toBeCloseTo(Math.PI * 2 / 60);
+    it('computes 2*PI / (period * 365.25)', () => {
+        expect(orbitSpeed(1)).toBeCloseTo(Math.PI * 2 / 365.25);
+    });
+});
+
+describe('meanToTrue', () => {
+    it('returns 0 for M=0 at any eccentricity', () => {
+        expect(meanToTrue(0, 0)).toBeCloseTo(0);
+        expect(meanToTrue(0, 0.5)).toBeCloseTo(0);
+        expect(meanToTrue(0, 0.99)).toBeCloseTo(0);
+    });
+
+    it('returns PI for M=PI at any eccentricity', () => {
+        expect(meanToTrue(Math.PI, 0)).toBeCloseTo(Math.PI);
+        expect(meanToTrue(Math.PI, 0.5)).toBeCloseTo(Math.PI);
+        expect(meanToTrue(Math.PI, 0.96)).toBeCloseTo(Math.PI);
+    });
+
+    it('equals M for circular orbit (e=0)', () => {
+        expect(meanToTrue(1.0, 0)).toBeCloseTo(1.0);
+        expect(meanToTrue(2.5, 0)).toBeCloseTo(2.5);
+    });
+
+    it('true anomaly leads mean anomaly for 0 < M < PI', () => {
+        // Kepler's law: body moves faster at perihelion
+        const theta = meanToTrue(1.0, 0.5);
+        expect(theta).toBeGreaterThan(1.0);
+    });
+
+    it('high eccentricity produces large lead near perihelion', () => {
+        // Halley-like e=0.967, small M → theta should be much larger
+        const theta = meanToTrue(0.1, 0.967);
+        expect(theta).toBeGreaterThan(0.5);
     });
 });
 

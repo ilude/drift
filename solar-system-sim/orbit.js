@@ -10,7 +10,32 @@ export function keplerRadius(a, e, theta) {
 }
 
 export function orbitSpeed(period) {
-    return period > 0 ? (Math.PI * 2) / (period * 60) : 0;
+    return period > 0 ? (Math.PI * 2) / (period * 365.25) : 0;
+}
+
+export function meanToTrue(M, e) {
+    // Normalize M to [0, 2π]
+    M = M % (Math.PI * 2);
+    if (M < 0) M += Math.PI * 2;
+
+    // Solve Kepler's equation: M = E - e*sin(E)
+    // Better initial guess for high eccentricity
+    let E = e < 0.8 ? M + e * Math.sin(M) : Math.PI;
+
+    for (let i = 0; i < 20; i++) {
+        const denom = 1 - e * Math.cos(E);
+        if (Math.abs(denom) < 1e-12) break;
+        const dE = (E - e * Math.sin(E) - M) / denom;
+        E -= dE;
+        if (Math.abs(dE) < 1e-12) break;
+    }
+
+    // Eccentric anomaly E → true anomaly θ
+    const halfE = E / 2;
+    return 2 * Math.atan2(
+        Math.sqrt(1 + e) * Math.sin(halfE),
+        Math.sqrt(1 - e) * Math.cos(halfE)
+    );
 }
 
 export function inclinedPosition(x, z, cosN, sinN, cosI, sinI) {

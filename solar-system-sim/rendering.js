@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import { state } from './state.js';
-import { scaleDist, MOON_DIST_SCALE, keplerRadius, orbitSpeed, inclinedPosition } from './orbit.js';
+import { scaleDist, MOON_DIST_SCALE, keplerRadius, orbitSpeed, meanToTrue, inclinedPosition } from './orbit.js';
 import { bodySize, BODY_MIN_SIZE, moonOrbitScale, realisticSize } from './visual.js';
-import { scene, camera, labelContainer, trailGroups, cometGroup } from './scene.js';
+import { scene, camera, controls, labelContainer, trailGroups, cometGroup } from './scene.js';
 import { seededRandom } from './utils.js';
 import { generateBodyTexture, createStarMaterial } from './textures.js';
 
@@ -55,14 +55,16 @@ function createLabel(name, color, isMoon) {
     return div;
 }
 
-function createOrbitRing(radius, mat) {
-    const segments = Math.min(512, Math.max(128, Math.round(radius * 4)));
+function createOrbitRing(a, e, toScreen, mat) {
+    const approxR = toScreen(a);
+    const segments = Math.min(512, Math.max(128, Math.round(approxR * 4)));
     const positions = new Float32Array((segments + 1) * 3);
     for (let i = 0; i <= segments; i++) {
         const angle = (i / segments) * Math.PI * 2;
-        positions[i * 3] = Math.cos(angle) * radius;
+        const r = toScreen(keplerRadius(a, e, angle));
+        positions[i * 3] = Math.cos(angle) * r;
         positions[i * 3 + 1] = 0;
-        positions[i * 3 + 2] = Math.sin(angle) * radius;
+        positions[i * 3 + 2] = Math.sin(angle) * r;
     }
     const geom = new THREE.BufferGeometry();
     geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
@@ -121,9 +123,11 @@ export function createBody(data, parentMesh) {
 
     let orbitLine = null;
     let orbitRadius = 0;
+    const ecc = data.e || 0;
     if (data.distance > 0) {
-        orbitRadius = isMoon ? data.distance * MOON_DIST_SCALE : scaleDist(data.distance);
-        orbitLine = createOrbitRing(orbitRadius, isMoon ? sharedMoonOrbitMat : sharedPlanetOrbitMat);
+        const toScreen = isMoon ? d => d * MOON_DIST_SCALE : scaleDist;
+        orbitRadius = toScreen(data.distance);
+        orbitLine = createOrbitRing(data.distance, ecc, toScreen, isMoon ? sharedMoonOrbitMat : sharedPlanetOrbitMat);
         if (isMoon) orbitLine.visible = false;
         scene.add(orbitLine);
     }
@@ -325,7 +329,7 @@ export function updateAsteroids(dt) {
 
 export function updatePositions(dt) {
     state.simTime += dt * state.timeSpeed;
-    const zoomFactor = 120 / camera.position.length();
+    const zoomFactor = 120 / camera.position.distanceTo(controls.target);
     const moonScale = moonOrbitScale(zoomFactor);
 
     state.bodyMeshes.forEach(entry => {
@@ -335,7 +339,7 @@ export function updatePositions(dt) {
             const { a, e, incRad, nodeRad, periRad } = entry.data;
             entry.angle += orbitSpeed(entry.data.period) * dt * state.timeSpeed;
 
-            const theta = entry.angle;
+            const theta = meanToTrue(entry.angle, e);
             const r = keplerRadius(a, e, theta);
             const rScaled = scaleDist(r);
 
@@ -347,9 +351,13 @@ export function updatePositions(dt) {
         } else {
             entry.angle += orbitSpeed(entry.data.period) * dt * state.timeSpeed;
 
-            const r = entry.parentMesh ? entry.orbitRadius * moonScale : entry.orbitRadius;
-            const x = Math.cos(entry.angle) * r;
-            const z = Math.sin(entry.angle) * r;
+            const ecc = entry.data.e || 0;
+            const theta = meanToTrue(entry.angle, ecc);
+            const isMoon = !!entry.parentMesh;
+            const kr = keplerRadius(entry.data.distance, ecc, theta);
+            const r = isMoon ? kr * MOON_DIST_SCALE * moonScale : scaleDist(kr);
+            const x = Math.cos(theta) * r;
+            const z = Math.sin(theta) * r;
 
             if (entry.parentMesh) {
                 const px = entry.parentMesh.position.x;
