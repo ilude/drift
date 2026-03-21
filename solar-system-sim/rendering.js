@@ -261,7 +261,7 @@ export function createAsteroidBelts() {
                 au = belt.minAU + rng() * (belt.maxAU - belt.minAU);
             } while (isInGap(au));
             const angle = rng() * Math.PI * 2;
-            const period = belt.minPeriod + (au - belt.minAU) / (belt.maxAU - belt.minAU) * (belt.maxPeriod - belt.minPeriod);
+            const period = Math.sqrt(au * au * au);
             const r = scaleDist(au);
             const diameter = Math.round(1 + rng() * 400);
 
@@ -270,7 +270,7 @@ export function createAsteroidBelts() {
 
             angles[i] = angle;
             radii[i] = r;
-            speeds[i] = (Math.PI * 2) / (period * 60);
+            speeds[i] = orbitSpeed(period);
             inclinations[i] = inc;
             nodeAngles[i] = nodeAngle;
             const cosI = Math.cos(inc), sinI = Math.sin(inc);
