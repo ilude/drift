@@ -256,8 +256,28 @@ const asteroidBelts = ASTEROID_BELTS.map(belt => {
     const yOffsets = new Float32Array(count);
     const asteroids = []; // per-asteroid data
 
+    // Kirkwood gaps — Jupiter resonance distances (AU) with half-widths
+    const kirkwoodGaps = belt.name === 'Main Belt' ? [
+        { center: 2.06, width: 0.03 },  // 4:1
+        { center: 2.50, width: 0.04 },  // 3:1
+        { center: 2.82, width: 0.03 },  // 5:2
+        { center: 2.96, width: 0.03 },  // 7:3
+        { center: 3.28, width: 0.04 },  // 2:1
+    ] : [];
+
+    function isInGap(au) {
+        for (const gap of kirkwoodGaps) {
+            if (Math.abs(au - gap.center) < gap.width) return true;
+        }
+        return false;
+    }
+
     for (let i = 0; i < count; i++) {
-        const au = belt.minAU + rng() * (belt.maxAU - belt.minAU);
+        // Rejection sampling: re-roll if landing in a Kirkwood gap
+        let au;
+        do {
+            au = belt.minAU + rng() * (belt.maxAU - belt.minAU);
+        } while (isInGap(au));
         const angle = rng() * Math.PI * 2;
         const period = belt.minPeriod + (au - belt.minAU) / (belt.maxAU - belt.minAU) * (belt.maxPeriod - belt.minPeriod);
         const r = scaleDist(au);
@@ -319,16 +339,39 @@ scene.add(trailGroups);
 // Comets — famous Sol system comets with real orbital elements
 // ---------------------------------------------------------------------------
 const COMETS = [
-    // name, semi-major axis (AU), eccentricity, period (years), inclination (deg), color
-    { name: 'Halley',          a: 17.83,   e: 0.967, period: 75.3,   inc: 162.3, color: '#99ccff' },
-    { name: 'Hale-Bopp',       a: 186,     e: 0.995, period: 2533,   inc: 89.4,  color: '#aaddff' },
-    { name: 'Encke',           a: 2.22,    e: 0.848, period: 3.3,    inc: 11.8,  color: '#88bbaa' },
-    { name: 'Swift-Tuttle',    a: 26.09,   e: 0.963, period: 133.3,  inc: 113.5, color: '#bbaaff' },
-    { name: 'Tempel 1',        a: 3.12,    e: 0.514, period: 5.5,    inc: 10.5,  color: '#aa9988' },
-    { name: 'Churyumov-Ger.',  a: 3.46,    e: 0.641, period: 6.4,    inc: 7.0,   color: '#998877' },
-    { name: 'Hyakutake',       a: 1700,    e: 0.9999, period: 70000, inc: 124.9, color: '#ccddff' },
-    { name: 'Neowise',         a: 364,     e: 0.999, period: 6950,   inc: 128.9, color: '#ddeeff' },
+    // Real orbital elements: a (AU), e, period (yr), inc (deg), Ω (long. asc. node), ω (arg. perihelion)
+    { name: 'Halley',          a: 17.83,  e: 0.967,  period: 75.3,   inc: 162.26, node: 58.42,  peri: 111.33, color: '#99ccff' },
+    { name: 'Hale-Bopp',       a: 186,    e: 0.995,  period: 2533,   inc: 89.43,  node: 282.47, peri: 130.59, color: '#aaddff' },
+    { name: 'Encke',           a: 2.22,   e: 0.848,  period: 3.3,    inc: 11.78,  node: 334.57, peri: 186.55, color: '#88bbaa' },
+    { name: 'Swift-Tuttle',    a: 26.09,  e: 0.963,  period: 133.3,  inc: 113.45, node: 139.38, peri: 152.98, color: '#bbaaff' },
+    { name: 'Tempel 1',        a: 3.12,   e: 0.510,  period: 5.5,    inc: 10.47,  node: 68.76,  peri: 179.19, color: '#aa9988' },
+    { name: 'Churyumov-Ger.',  a: 3.46,   e: 0.678,  period: 6.4,    inc: 5.30,   node: 45.93,  peri: 14.52,  color: '#998877' },
+    { name: 'Hyakutake',       a: 1700,   e: 0.9998, period: 70000,  inc: 124.92, node: 188.05, peri: 130.17, color: '#ccddff' },
+    { name: 'Neowise',         a: 358.5,  e: 0.999,  period: 6800,   inc: 128.94, node: 61.01,  peri: 37.28,  color: '#ddeeff' },
 ];
+
+// Transform a point in the orbital plane to 3D space using Ω, i, ω
+// Input: (x, y) in orbital plane (y=0 plane, x toward perihelion)
+// Applies: rotate by ω in orbital plane, tilt by i, rotate by Ω around ecliptic pole
+function orbitToWorld(x, z, incRad, nodeRad, periRad) {
+    // Rotate by argument of perihelion in orbital plane
+    const cosW = Math.cos(periRad), sinW = Math.sin(periRad);
+    const x1 = x * cosW - z * sinW;
+    const z1 = x * sinW + z * cosW;
+
+    // Tilt by inclination (rotate around x-axis)
+    const cosI = Math.cos(incRad), sinI = Math.sin(incRad);
+    const x2 = x1;
+    const y2 = z1 * sinI;
+    const z2 = z1 * cosI;
+
+    // Rotate by longitude of ascending node (around y-axis)
+    const cosN = Math.cos(nodeRad), sinN = Math.sin(nodeRad);
+    const x3 = x2 * cosN - z2 * sinN;
+    const z3 = x2 * sinN + z2 * cosN;
+
+    return { x: x3, y: y2, z: z3 };
+}
 
 const cometGroup = new THREE.Group();
 scene.add(cometGroup);
@@ -471,22 +514,31 @@ BODIES.forEach(b => {
 
 // Create comets as regular bodies with Keplerian orbit data
 COMETS.forEach(comet => {
-    const { a, e, inc, color, name, period } = comet;
+    const { a, e, inc, node, peri, color, name, period } = comet;
     const incRad = (inc * Math.PI) / 180;
+    const nodeRad = (node * Math.PI) / 180;
+    const periRad = (peri * Math.PI) / 180;
     const perihelionAU = a * (1 - e);
 
-    // Build elliptical orbit line
-    const segments = 256;
+    // Build elliptical orbit line using full 3D orientation
+    // More segments for high eccentricity to keep curves smooth
+    const segments = e > 0.9 ? 2048 : 512;
     const orbitPoints = [];
     for (let i = 0; i <= segments; i++) {
-        const theta = (i / segments) * Math.PI * 2;
+        // Use eccentric anomaly for even arc-length distribution
+        const E = (i / segments) * Math.PI * 2;
+        const theta = 2 * Math.atan2(
+            Math.sqrt(1 + e) * Math.sin(E / 2),
+            Math.sqrt(1 - e) * Math.cos(E / 2)
+        );
         const r = a * (1 - e * e) / (1 + e * Math.cos(theta));
         const rScaled = scaleDist(r);
+        // Position in orbital plane
         const ox = rScaled * Math.cos(theta);
         const oz = rScaled * Math.sin(theta);
-        const oy = oz * Math.sin(incRad);
-        const ozRot = oz * Math.cos(incRad);
-        orbitPoints.push(new THREE.Vector3(ox, oy, ozRot));
+        // Transform to world using Ω, i, ω
+        const w = orbitToWorld(ox, oz, incRad, nodeRad, periRad);
+        orbitPoints.push(new THREE.Vector3(w.x, w.y, w.z));
     }
     const orbitGeom = new THREE.BufferGeometry().setFromPoints(orbitPoints);
     const orbitMat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.2 });
@@ -514,7 +566,7 @@ COMETS.forEach(comet => {
     const entry = {
         data: {
             name, type: 'Comet', distance: perihelionAU, period, radius: 5,
-            color, moons: [], a, e, inc, incRad
+            color, moons: [], a, e, inc, incRad, nodeRad, periRad
         },
         mesh, selRing, orbitLine, orbitRadius: 0,
         labelDiv, trail,
@@ -832,9 +884,9 @@ function updatePositions(dt) {
     bodyMeshes.forEach(entry => {
         if (entry.data.distance === 0 && !entry.isComet) return; // star at origin
 
-        // Comet: Keplerian elliptical orbit
+        // Comet: Keplerian elliptical orbit with full 3D orientation
         if (entry.isComet) {
-            const { a, e, incRad } = entry.data;
+            const { a, e, incRad, nodeRad, periRad } = entry.data;
             const n = (Math.PI * 2) / (entry.data.period * 60);
             entry.angle += n * dt * timeSpeed;
 
@@ -842,12 +894,13 @@ function updatePositions(dt) {
             const r = a * (1 - e * e) / (1 + e * Math.cos(theta));
             const rScaled = scaleDist(r);
 
-            const cx = rScaled * Math.cos(theta);
-            const cz = rScaled * Math.sin(theta);
-            const cy = cz * Math.sin(incRad);
-            const czRot = cz * Math.cos(incRad);
+            // Position in orbital plane
+            const ox = rScaled * Math.cos(theta);
+            const oz = rScaled * Math.sin(theta);
+            // Transform to world
+            const w = orbitToWorld(ox, oz, incRad, nodeRad, periRad);
 
-            entry.mesh.position.set(cx, cy, czRot);
+            entry.mesh.position.set(w.x, w.y, w.z);
         } else {
             // Circular orbit
             const speed = entry.data.period > 0 ? (Math.PI * 2) / (entry.data.period * 60) : 0;
