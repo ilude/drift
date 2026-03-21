@@ -3,20 +3,20 @@
 // ---------------------------------------------------------------------------
 import { seededRandom } from './utils.js';
 
-function rngInt(rng, min, max) {
+export function rngInt(rng, min, max) {
     return min + Math.floor(rng() * (max - min + 1));
 }
 
-function rngFloat(rng, min, max) {
+export function rngFloat(rng, min, max) {
     return min + rng() * (max - min);
 }
 
-function rngGaussian(rng) {
+export function rngGaussian(rng) {
     const u1 = rng(), u2 = rng();
     return Math.sqrt(-2 * Math.log(u1 || 1e-10)) * Math.cos(2 * Math.PI * u2);
 }
 
-function rngWeighted(rng, entries) {
+export function rngWeighted(rng, entries) {
     const total = entries.reduce((s, e) => s + e.weight, 0);
     let r = rng() * total;
     for (const entry of entries) {
@@ -26,7 +26,7 @@ function rngWeighted(rng, entries) {
     return entries[entries.length - 1];
 }
 
-function rngPick(rng, arr) {
+export function rngPick(rng, arr) {
     return arr[Math.floor(rng() * arr.length)];
 }
 
@@ -81,7 +81,7 @@ function generateSystemName(rng) {
     return `${cat.prefix} ${num}`;
 }
 
-function planetLetter(index) {
+export function planetLetter(index) {
     return String.fromCharCode(98 + index); // b, c, d, ...
 }
 
@@ -160,22 +160,22 @@ function generateBinaryConfig(rng, primaryStar, systemName) {
 
 // --- Planet Generation ---
 
-function keplerPeriod(distAU, starMass) {
+export function keplerPeriod(distAU, starMass) {
     return Math.sqrt(Math.pow(distAU, 3) / starMass);
 }
 
-function radiusToMassEarths(radiusEarths) {
+export function radiusToMassEarths(radiusEarths) {
     if (radiusEarths < 1.5) return Math.pow(radiusEarths, 3.7);
     if (radiusEarths < 4) return 2.7 * Math.pow(radiusEarths, 1.3);
     return 10 * Math.pow(radiusEarths / 4, 2) * 317.8;
 }
 
-function hillRadius(distAU, planetMassEarths, starMassSolar) {
+export function hillRadius(distAU, planetMassEarths, starMassSolar) {
     const massRatio = (planetMassEarths * 3e-6) / starMassSolar; // Earth mass in solar masses
     return distAU * Math.pow(massRatio / 3, 1 / 3);
 }
 
-function categorizePlanet(radiusEarths) {
+export function categorizePlanet(radiusEarths) {
     if (radiusEarths < 1.8) return 'rocky';
     if (radiusEarths < 4) return 'subNeptune';
     if (radiusEarths < 8) return 'iceGiant';

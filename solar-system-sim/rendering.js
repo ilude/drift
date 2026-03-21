@@ -49,7 +49,7 @@ function createLabel(name, color, isMoon) {
 }
 
 function createOrbitRing(radius, mat) {
-    const segments = 128;
+    const segments = Math.min(512, Math.max(128, Math.round(radius * 4)));
     const positions = new Float32Array((segments + 1) * 3);
     for (let i = 0; i <= segments; i++) {
         const angle = (i / segments) * Math.PI * 2;
