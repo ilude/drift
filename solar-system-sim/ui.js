@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { state, simTimeToDate, speedLabel } from './state.js';
+import { state, simTimeToDate } from './state.js';
 import { MOON_LOD_ZOOM, screenRadius as calcScreenRadius, lodLevel, bodyScaleFactor } from './visual.js';
 import { camera, controls, ZOOM_BASE, gridGroup } from './scene.js';
 import { selectBody, recenterOnStar } from './selection.js';
@@ -223,8 +223,12 @@ export function updateHUD() {
     }
 
     const d = simTimeToDate(state.simTime);
-    const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-    const timeText = `${dateStr} | ${speedLabel(state.timeSpeed)}`;
+    const speed = state.timeSpeed;
+    if (speed >= 30) { d.setDate(1); d.setHours(0, 0, 0, 0); }
+    else if (speed >= 8 / 24) { d.setHours(0, 0, 0, 0); }
+    else if (speed >= 1 / 24) { d.setMinutes(0, 0, 0); }
+    else if (speed >= 2 / 1440) { d.setSeconds(0, 0); }
+    const timeText = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
     if (timeText !== lastTimeText) {
         timeEl.textContent = timeText;
         lastTimeText = timeText;
@@ -268,15 +272,73 @@ export function setupUI(loadSystem) {
         if (e.key === 'Enter') document.getElementById('btn-discover').click();
     });
 
-    // Time controls
-    const speedMap = { pause: 0, slow: 0.25, normal: 1, fast: 30 };
-    ['pause', 'slow', 'normal', 'fast'].forEach(mode => {
-        document.getElementById(`btn-${mode}`).addEventListener('click', () => {
-            state.timeSpeed = speedMap[mode];
-            document.querySelectorAll('.ctrl-btn').forEach(b => b.classList.remove('active'));
-            document.getElementById(`btn-${mode}`).classList.add('active');
+    // Time controls — speed selector dropdown
+    const TIME_SCALES = [
+        { label: '5 Seconds', speed: 5 / 86400 },
+        { label: '30 Seconds', speed: 30 / 86400 },
+        { label: '2 Minutes', speed: 120 / 86400 },
+        { label: '5 Minutes', speed: 300 / 86400 },
+        { label: '20 Minutes', speed: 1200 / 86400 },
+        { label: '1 Hour', speed: 1 / 24 },
+        { label: '3 Hours', speed: 3 / 24 },
+        { label: '8 Hours', speed: 8 / 24 },
+        { label: '1 Day', speed: 1 },
+        { label: '5 Days', speed: 5 },
+        { label: '30 Days', speed: 30 },
+    ];
+    const DEFAULT_SCALE_INDEX = 8; // 1 Day
+
+    const speedDropdown = document.getElementById('speed-selector-dropdown');
+    const speedBtn = document.getElementById('speed-selector-btn');
+    const speedListEl = document.getElementById('speed-list');
+    const pauseBtn = document.getElementById('btn-pause');
+    let activeScaleIndex = DEFAULT_SCALE_INDEX;
+    let paused = false;
+
+    function updateSpeedBtn() {
+        speedBtn.textContent = paused ? 'Paused ▾' : `${TIME_SCALES[activeScaleIndex].label} ▾`;
+        pauseBtn.textContent = paused ? '|>' : '||';
+        pauseBtn.classList.toggle('active', paused);
+    }
+
+    function buildSpeedList() {
+        speedListEl.innerHTML = '';
+        TIME_SCALES.forEach((scale, i) => {
+            const item = document.createElement('button');
+            item.className = 'speed-list-item' + (i === activeScaleIndex ? ' active' : '');
+            const spaceIdx = scale.label.indexOf(' ');
+            const num = scale.label.slice(0, spaceIdx);
+            const unit = scale.label.slice(spaceIdx + 1);
+            item.innerHTML = `<span class="speed-num">${num}</span> ${unit}`;
+            item.addEventListener('click', () => {
+                activeScaleIndex = i;
+                state.timeSpeed = scale.speed;
+                paused = false;
+                updateSpeedBtn();
+                buildSpeedList();
+                speedDropdown.classList.add('hidden');
+            });
+            speedListEl.appendChild(item);
         });
+    }
+
+    speedBtn.addEventListener('click', () => {
+        speedDropdown.classList.toggle('hidden');
+        if (!speedDropdown.classList.contains('hidden')) {
+            // Position dropdown near the speed button
+            const rect = speedBtn.getBoundingClientRect();
+            speedDropdown.style.left = `${rect.left}px`;
+            buildSpeedList();
+        }
     });
+
+    pauseBtn.addEventListener('click', () => {
+        paused = !paused;
+        state.timeSpeed = paused ? 0 : TIME_SCALES[activeScaleIndex].speed;
+        updateSpeedBtn();
+    });
+
+    updateSpeedBtn();
 
     // Recenter
     document.getElementById('btn-recenter').addEventListener('click', recenterOnStar);

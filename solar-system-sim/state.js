@@ -4,9 +4,8 @@ export const MAX_CLICK_DIST = 50;
 export const SIM_EPOCH = new Date(2038, 0, 20);
 
 export function simTimeToDate(simTime) {
-    const d = new Date(SIM_EPOCH);
-    d.setDate(d.getDate() + Math.floor(simTime));
-    return d;
+    const ms = simTime * 86400000;
+    return new Date(SIM_EPOCH.getTime() + ms);
 }
 
 export function simTimeToDay(simTime) {

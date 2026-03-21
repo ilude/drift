@@ -108,6 +108,79 @@ body {
     color: #3a4a3a;
 }
 
+.header-btn {
+    background: #141420;
+    border: 1px solid #2a3a2a;
+    color: #88cc88;
+    font-family: inherit;
+    font-size: 11px;
+    padding: 2px 6px;
+    cursor: pointer;
+    line-height: 1;
+}
+
+.header-btn:hover {
+    background: #1a2a1a;
+    border-color: #4a6a4a;
+}
+
+.header-btn.active {
+    color: #aaffaa;
+    border-color: #88cc88;
+}
+
+.header-clickable {
+    color: #aaddaa;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.header-clickable:hover {
+    color: #ccffcc;
+}
+
+/* Speed selector dropdown */
+#speed-selector-dropdown {
+    position: fixed;
+    top: 28px;
+    width: 160px;
+    z-index: 100;
+}
+
+#speed-list {
+    padding: 4px 0;
+}
+
+.speed-list-item {
+    display: block;
+    width: 100%;
+    background: none;
+    border: none;
+    border-left: 2px solid transparent;
+    color: #88cc88;
+    font-family: inherit;
+    font-size: 11px;
+    padding: 4px 8px;
+    cursor: pointer;
+    text-align: left;
+}
+
+.speed-list-item:hover {
+    background: #1a2a1a;
+}
+
+.speed-list-item.active {
+    border-left-color: #88cc88;
+    background: #1a2a1a;
+    color: #aaffaa;
+}
+
+.speed-num {
+    display: inline-block;
+    width: 2ch;
+    text-align: right;
+}
+
 #status-bar {
     position: fixed;
     bottom: 0;

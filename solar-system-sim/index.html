@@ -12,9 +12,17 @@
     <div id="header-bar">
         <span class="system-name" id="system-switcher-btn">Sol System ▾</span>
         <span class="header-sep">|</span>
-        <span id="time-display">Day 0 | 5-Second Increment</span>
+        <span id="time-display">2038-01-20</span>
+        <span class="header-sep">|</span>
+        <button class="header-btn" id="btn-pause">||</button>
+        <span class="header-clickable" id="speed-selector-btn">1 Day ▾</span>
         <span style="flex:1"></span>
         <span id="fps-display">FPS: --</span>
+    </div>
+
+    <div id="speed-selector-dropdown" class="panel hidden">
+        <div class="panel-header">Time Scale</div>
+        <div id="speed-list"></div>
     </div>
 
     <div id="system-switcher-dropdown" class="panel hidden">
@@ -46,17 +54,11 @@
     </div>
 
     <div id="controls-panel" class="panel">
-        <div class="panel-header">Time Controls</div>
-        <div id="time-controls">
-            <button class="ctrl-btn" id="btn-pause">|| Pause</button>
-            <button class="ctrl-btn" id="btn-slow">|> Slow</button>
-            <button class="ctrl-btn active" id="btn-normal">>> Normal</button>
-            <button class="ctrl-btn" id="btn-fast">>>> Fast</button>
-        </div>
-        <div style="margin-top: 6px;">
+        <div class="panel-header">Controls</div>
+        <div style="padding: 6px 8px;">
             <button class="ctrl-btn" id="btn-recenter" style="width:100%;">Recenter</button>
         </div>
-        <div class="panel-header" style="margin-top: 8px;">Display</div>
+        <div class="panel-header">Display</div>
         <div id="display-controls">
             <label class="ctrl-toggle"><input type="checkbox" id="toggle-orbits" checked> Orbital Rings</label>
             <label class="ctrl-toggle"><input type="checkbox" id="toggle-labels" checked> Labels</label>
