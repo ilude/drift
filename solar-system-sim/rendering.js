@@ -98,6 +98,7 @@ export function createBody(data, parentMesh) {
         orbitRadius = isMoon ? data.distance * MOON_DIST_SCALE : scaleDist(data.distance);
         const ringColor = isMoon ? '#1a2a1a' : '#1a3a1a';
         orbitLine = createOrbitRing(orbitRadius, ringColor);
+        if (isMoon) orbitLine.visible = false;
         scene.add(orbitLine);
     }
 
@@ -152,7 +153,7 @@ export function createComets() {
             orbitPoints.push(new THREE.Vector3(w.x, w.y, w.z));
         }
         const orbitGeom = new THREE.BufferGeometry().setFromPoints(orbitPoints);
-        const orbitMat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.2 });
+        const orbitMat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.03 });
         const orbitLine = new THREE.Line(orbitGeom, orbitMat);
         cometGroup.add(orbitLine);
 

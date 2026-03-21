@@ -39,9 +39,15 @@ export function updateFlyTo() {
 export function selectBody(entry) {
     if (state.selectedBody) {
         state.selectedBody.selRing.material.opacity = 0;
+        if (state.selectedBody.isComet && state.selectedBody.orbitLine) {
+            state.selectedBody.orbitLine.material.opacity = 0.03;
+        }
     }
 
     state.selectedBody = entry;
+    if (entry.isComet && entry.orbitLine) {
+        entry.orbitLine.material.opacity = 0.05;
+    }
     const zoomDist = entry.data.type === 'Star' ? 30 :
                      entry.data.type === 'Moon' ? 8 : 15;
     animateCameraTo(entry, zoomDist);
@@ -168,6 +174,9 @@ export function setupClickHandlers() {
         document.getElementById('info-panel').classList.add('hidden');
         if (state.selectedBody) {
             state.selectedBody.selRing.material.opacity = 0;
+            if (state.selectedBody.isComet && state.selectedBody.orbitLine) {
+                state.selectedBody.orbitLine.material.opacity = 0.03;
+            }
             state.selectedBody = null;
         }
     });
