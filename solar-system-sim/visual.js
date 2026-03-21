@@ -1,6 +1,6 @@
 export const BODY_MIN_SIZE = 0.3;
 export const BODY_MAX_SIZE = 2.0;
-export const MOON_LOD_ZOOM = 1.1;
+export const MOON_LOD_ZOOM = 1.8;
 
 export function bodySize(radius, isStar) {
     if (isStar) return BODY_MAX_SIZE;
