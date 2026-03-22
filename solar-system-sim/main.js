@@ -3,7 +3,7 @@ import { state, MASTER_SEED, saveState, loadSavedState } from './state.js';
 import { seededRandom } from './utils.js';
 import { scene, camera, renderer, controls, trailGroups, cometGroup } from './scene.js';
 import { createBodies, createComets, createShip, createAsteroidBelts, updateAsteroids, updatePositions, sharedResources } from './rendering.js';
-import { setupClickHandlers, updateFlyTo, updateFollow, updateInfoPosition } from './selection.js';
+import { setupClickHandlers, updateFlyTo, updateFollow, updateInfoPosition, selectBody } from './selection.js';
 import { buildBodyList, setupUI, updateLabels, updateHUD } from './ui.js';
 import { getSolSystem } from './sol-data.js';
 import { generateSystem } from './system-generator.js';
@@ -63,6 +63,10 @@ state.asteroidBelts = createAsteroidBelts();
 buildBodyList();
 cacheStarEntry();
 
+// Select ship by default
+const shipEntry = state.bodyMeshes.find(e => e.isShip);
+if (shipEntry) selectBody(shipEntry);
+
 // Auto-save on page unload
 window.addEventListener('beforeunload', saveState);
 
@@ -104,6 +108,14 @@ function teardownSystem() {
             trailGroups.remove(entry.trail.line);
             entry.trail.line.geometry.dispose();
             entry.trail.line.material.dispose();
+        }
+        if (entry.tailLine) {
+            scene.remove(entry.tailLine);
+            entry.tailLine.geometry.dispose();
+        }
+        if (entry.transferPath) {
+            scene.remove(entry.transferPath);
+            entry.transferPath.geometry.dispose();
         }
     });
     state.bodyMeshes.length = 0;
@@ -152,11 +164,12 @@ setupClickHandlers();
 // ---------------------------------------------------------------------------
 // Animation loop
 // ---------------------------------------------------------------------------
-const clock = new THREE.Clock();
+const timer = new THREE.Timer();
 
 function animate() {
     requestAnimationFrame(animate);
-    const dt = clock.getDelta();
+    timer.update();
+    const dt = timer.getDelta();
 
     controls.update();
     updateFlyTo();
@@ -170,7 +183,7 @@ function animate() {
     updateHUD(camDist);
 
     if (starEntry && starEntry.mesh.material.uniforms) {
-        starEntry.mesh.material.uniforms.uTime.value = clock.elapsedTime;
+        starEntry.mesh.material.uniforms.uTime.value = timer.getElapsed();
     }
 
     renderer.render(scene, camera);
