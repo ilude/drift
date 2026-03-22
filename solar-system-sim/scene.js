@@ -75,6 +75,7 @@ export const cometGroup = new THREE.Group();
 scene.add(cometGroup);
 
 export const gridGroup = new THREE.Group();
+gridGroup.visible = false;
 scene.add(gridGroup);
 
 // Distance grid rings
