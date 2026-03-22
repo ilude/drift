@@ -647,8 +647,8 @@ export function createShip() {
         // Ship physics
         engineId: defaultEngine.id,
         dryMassKg: defaultEngine.dryMassKg,
-        fuelKg: 100_000,
-        fuelCapacityKg: 100_000,
+        fuelKg: 500_000,
+        fuelCapacityKg: 500_000,
         // Ship state
         shipState: 'orbiting',
         hostPlanetName: homePlanet.name,
@@ -755,6 +755,16 @@ function beginTransfer(entry) {
 
 }
 
+function showTransferStatus(msg) {
+    const el = document.getElementById('transfer-status-value');
+    const row = document.getElementById('info-transfer-status');
+    if (!el || !row) return;
+    el.textContent = msg;
+    row.classList.remove('hidden');
+    if (showTransferStatus._timer) window.clearTimeout(showTransferStatus._timer);
+    showTransferStatus._timer = window.setTimeout(() => row.classList.add('hidden'), 4000);
+}
+
 export function initiateTransfer(entry, targetEntry) {
     if (!entry.isShip || entry.shipState === 'transferring' || entry.shipState === 'departing') return;
     const host = findPlanetEntry(entry.hostPlanetName);
@@ -771,7 +781,10 @@ export function initiateTransfer(entry, targetEntry) {
         engineId: entry.engineId,
     });
 
-    if (!result.feasible) return;
+    if (!result.feasible) {
+        showTransferStatus(`Need ${result.deltaVRequired.toFixed(1)} km/s, have ${result.deltaVAvailable.toFixed(1)} km/s`);
+        return;
+    }
 
     // Deduct fuel
     entry.fuelKg -= result.fuelUsedKg;
