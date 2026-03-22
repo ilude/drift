@@ -44,7 +44,7 @@ if (saved) {
         state.ASTEROID_BELTS = active.systemData.asteroidBelts;
         state.simTime = saved.simTime;
         document.querySelector('.system-name').textContent = active.systemData.name + ' \u25be';
-        document.title = `System Map - ${active.systemData.name}`;
+        document.title = `Drift - ${active.systemData.name}`;
     } else {
         state.BODIES = sol.bodies;
         state.COMETS = sol.comets;
@@ -153,7 +153,7 @@ function loadSystem(systemData) {
     buildBodyList();
     cacheStarEntry();
     document.querySelector('.system-name').textContent = systemData.name + ' ▾';
-    document.title = `System Map - ${systemData.name}`;
+    document.title = `Drift - ${systemData.name}`;
     state.simTime = 0;
 }
 
