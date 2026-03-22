@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { state } from '../core/state.js';
 import { scaleDist, MOON_DIST_SCALE, keplerRadius, orbitSpeed, meanToTrue, inclinedPosition } from '../math/orbit.js';
-import { isTransferComplete, deriveStarMass } from '../math/transfer.js';
+import { isTransferComplete, gameTransferDays, deriveStarMass } from '../math/transfer.js';
 import { ENGINE_TYPES, checkTransfer } from '../math/ship-physics.js';
 import { bodySize, BODY_MIN_SIZE, moonOrbitScale, realisticSize } from '../math/visual.js';
 import { scene, ZOOM_BASE, labelContainer, trailGroups, cometGroup } from './scene.js';
@@ -789,7 +789,9 @@ export function initiateTransfer(entry, targetEntry) {
     // Deduct fuel
     entry.fuelKg -= result.fuelUsedKg;
 
-    const gameDays = result.transferDays;
+    // Use game formula for visual path duration (short, direct transfers)
+    // Physics math is only for fuel/feasibility
+    const gameDays = gameTransferDays(r1, r2);
 
     entry.orbitA = (r1 + r2) / 2;
 

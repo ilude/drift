@@ -126,11 +126,11 @@ describe('initiateTransfer', () => {
         expect(ship.shipState).toBe('orbiting');
     });
 
-    it('uses Hohmann transfer time instead of game formula', () => {
+    it('uses game transfer time for visual path', () => {
         const ship = setupSystem();
         const mars = state.bodyMeshes.find(e => e.data.name === 'Mars');
         initiateTransfer(ship, mars);
-        // Hohmann Earth-Mars ~259 days, game formula would give ~4.6 days
-        expect(ship.pendingTransfer.gameDays).toBeGreaterThan(200);
+        // Game formula: 3 + 3 * |1.524 - 1.0| ≈ 4.6 days (short visual transfers)
+        expect(ship.pendingTransfer.gameDays).toBeLessThan(10);
     });
 });
