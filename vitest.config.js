@@ -4,8 +4,8 @@ export default defineConfig({
     test: {
         coverage: {
             provider: 'v8',
-            include: ['*.js'],
-            exclude: ['vite.config.*', 'vitest.config.*', 'dist/**']
+            include: ['src/**/*.js'],
+            exclude: ['src/__tests__/**', 'dist/**']
         }
     }
 });

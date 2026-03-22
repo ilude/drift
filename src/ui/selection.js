@@ -1,8 +1,8 @@
 import * as THREE from 'three';
-import { state, MAX_CLICK_DIST } from './state.js';
-import { easeOutCubic } from './visual.js';
-import { camera, controls, ZOOM_BASE, renderer } from './scene.js';
-import { COMET_ORBIT_OPACITY, COMET_ORBIT_SELECTED_OPACITY, initiateTransfer } from './rendering.js';
+import { state, MAX_CLICK_DIST } from '../core/state.js';
+import { easeOutCubic } from '../math/visual.js';
+import { camera, controls, ZOOM_BASE, renderer } from '../rendering/scene.js';
+import { COMET_ORBIT_OPACITY, COMET_ORBIT_SELECTED_OPACITY, initiateTransfer } from '../rendering/rendering.js';
 
 const ZOOM_DIST_RECENTER = ZOOM_BASE / 0.25;
 const ZOOM_DIST_STAR = 75;

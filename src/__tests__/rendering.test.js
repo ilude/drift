@@ -1,14 +1,14 @@
 import { describe, it, expect, vi } from 'vitest';
 
 // Mock scene.js to avoid DOM/Three.js side effects at import time
-vi.mock('./scene.js', () => ({
+vi.mock('../rendering/scene.js', () => ({
     scene: { add: vi.fn() },
     labelContainer: { appendChild: vi.fn() },
     trailGroups: { add: vi.fn() },
     cometGroup: { add: vi.fn() },
 }));
 
-import { orbitToWorld } from './rendering.js';
+import { orbitToWorld } from '../rendering/rendering.js';
 
 describe('orbitToWorld', () => {
     const PI = Math.PI;

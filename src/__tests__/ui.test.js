@@ -31,7 +31,7 @@ beforeAll(() => {
 });
 
 // Mock scene.js and selection.js to avoid Three.js side effects
-vi.mock('./scene.js', () => ({
+vi.mock('../rendering/scene.js', () => ({
     scene: { add: vi.fn() },
     camera: { position: { length: () => 120 }, aspect: 1, updateProjectionMatrix: vi.fn() },
     renderer: { setSize: vi.fn(), setPixelRatio: vi.fn(), domElement: { addEventListener: vi.fn() } },
@@ -42,11 +42,11 @@ vi.mock('./scene.js', () => ({
     gridGroup: { visible: true },
 }));
 
-vi.mock('./selection.js', () => ({
+vi.mock('../ui/selection.js', () => ({
     selectBody: vi.fn(),
 }));
 
-import { hashString } from './ui.js';
+import { hashString } from '../ui/ui.js';
 
 describe('hashString', () => {
     it('is deterministic', () => {

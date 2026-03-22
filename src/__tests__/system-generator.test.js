@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { seededRandom, rngInt, rngFloat, rngGaussian, rngWeighted, rngPick } from './utils.js';
-import { keplerPeriod, radiusToMassEarths, hillRadius, categorizePlanet } from './orbit.js';
-import { generateSystem, planetLetter } from './system-generator.js';
-import { getSolSystem } from './sol-data.js';
+import { seededRandom, rngInt, rngFloat, rngGaussian, rngWeighted, rngPick } from '../core/utils.js';
+import { keplerPeriod, radiusToMassEarths, hillRadius, categorizePlanet } from '../math/orbit.js';
+import { generateSystem, planetLetter } from '../data/system-generator.js';
+import { getSolSystem } from '../data/sol-data.js';
 
 // --- RNG helpers ---
 

@@ -1,10 +1,10 @@
 import * as THREE from 'three';
-import { state } from './state.js';
-import { scaleDist, MOON_DIST_SCALE, keplerRadius, orbitSpeed, meanToTrue, inclinedPosition } from './orbit.js';
-import { isTransferComplete, gameTransferDays } from './transfer.js';
-import { bodySize, BODY_MIN_SIZE, moonOrbitScale, realisticSize } from './visual.js';
+import { state } from '../core/state.js';
+import { scaleDist, MOON_DIST_SCALE, keplerRadius, orbitSpeed, meanToTrue, inclinedPosition } from '../math/orbit.js';
+import { isTransferComplete, gameTransferDays } from '../math/transfer.js';
+import { bodySize, BODY_MIN_SIZE, moonOrbitScale, realisticSize } from '../math/visual.js';
 import { scene, ZOOM_BASE, labelContainer, trailGroups, cometGroup } from './scene.js';
-import { seededRandom } from './utils.js';
+import { seededRandom } from '../core/utils.js';
 import { generateBodyTexture, generateCloudTextureForBody, createStarMaterial } from './textures.js';
 
 function nameHash(str) {

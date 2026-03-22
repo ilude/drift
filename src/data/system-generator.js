@@ -1,8 +1,8 @@
 // ---------------------------------------------------------------------------
 // Procedural Star System Generator
 // ---------------------------------------------------------------------------
-import { seededRandom, rngInt, rngFloat, rngGaussian, rngWeighted, rngPick } from './utils.js';
-import { keplerPeriod, categorizePlanet } from './orbit.js';
+import { seededRandom, rngInt, rngFloat, rngGaussian, rngWeighted, rngPick } from '../core/utils.js';
+import { keplerPeriod, categorizePlanet } from '../math/orbit.js';
 
 // --- Lookup Tables ---
 

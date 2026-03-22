@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { simTimeToDay, simTimeToDate, speedLabel, truncateDate, formatDateTime } from './state.js';
+import { simTimeToDay, simTimeToDate, speedLabel, truncateDate, formatDateTime } from '../core/state.js';
 
 describe('simTimeToDay', () => {
     it('returns 0 for simTime 0', () => {

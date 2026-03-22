@@ -1,12 +1,13 @@
+import './style.css';
 import * as THREE from 'three';
-import { state, MASTER_SEED, saveState, loadSavedState } from './state.js';
-import { seededRandom } from './utils.js';
-import { scene, camera, renderer, controls, trailGroups, cometGroup } from './scene.js';
-import { createBodies, createComets, createShip, createAsteroidBelts, updateAsteroids, updatePositions, sharedResources } from './rendering.js';
-import { setupClickHandlers, updateFlyTo, updateFollow, updateInfoPosition, selectBody } from './selection.js';
-import { buildBodyList, setupUI, updateLabels, updateHUD } from './ui.js';
-import { getSolSystem } from './sol-data.js';
-import { generateSystem } from './system-generator.js';
+import { state, MASTER_SEED, saveState, loadSavedState } from './core/state.js';
+import { seededRandom } from './core/utils.js';
+import { scene, camera, renderer, controls, trailGroups, cometGroup } from './rendering/scene.js';
+import { createBodies, createComets, createShip, createAsteroidBelts, updateAsteroids, updatePositions, sharedResources } from './rendering/rendering.js';
+import { setupClickHandlers, updateFlyTo, updateFollow, updateInfoPosition, selectBody } from './ui/selection.js';
+import { buildBodyList, setupUI, updateLabels, updateHUD } from './ui/ui.js';
+import { getSolSystem } from './data/sol-data.js';
+import { generateSystem } from './data/system-generator.js';
 
 // ---------------------------------------------------------------------------
 // Initialize

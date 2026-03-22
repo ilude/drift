@@ -1,9 +1,9 @@
 import * as THREE from 'three';
-import { state, simTimeToDate, truncateDate, formatDateTime } from './state.js';
-import { MOON_LOD_ZOOM, screenRadius as calcScreenRadius, lodLevel, bodyScaleFactor } from './visual.js';
-import { camera, ZOOM_BASE, gridGroup } from './scene.js';
+import { state, simTimeToDate, truncateDate, formatDateTime } from '../core/state.js';
+import { MOON_LOD_ZOOM, screenRadius as calcScreenRadius, lodLevel, bodyScaleFactor } from '../math/visual.js';
+import { camera, ZOOM_BASE, gridGroup } from '../rendering/scene.js';
 import { selectBody, recenterOnStar } from './selection.js';
-import { generateSystem } from './system-generator.js';
+import { generateSystem } from '../data/system-generator.js';
 
 // --- Body list panel ---
 

@@ -38,22 +38,29 @@ Open http://localhost:5173 in your browser.
 
 ## Architecture
 
-All source lives in the project root:
+All source lives under `src/` with logical subdirectories:
 
 ```
-main.js              Orchestrator: init, teardown, animation loop
-state.js             Centralized state, date/time utils, save/load
-orbit.js             Kepler solver, orbital mechanics primitives
-visual.js            Display math: sizing, LOD, screen radius
-scene.js             Three.js setup, camera, controls, grid
-rendering.js         Body creation, position updates, ship transfers
-selection.js         Click detection, fly-to, info panel, follow camera
-transfer.js          Transfer math (Hermite splines, Lambert reference)
-ui.js                Body list, system switcher, time controls, HUD
-textures.js          Procedural planet/star/cloud textures
-system-generator.js  Procedural star system generation
-sol-data.js          Sol System preset data
-utils.js             Seeded RNG helpers
+src/
+  core/
+    state.js             Centralized state, date/time utils, save/load
+    utils.js             Seeded RNG helpers
+  math/
+    orbit.js             Kepler solver, orbital mechanics primitives
+    visual.js            Display math: sizing, LOD, screen radius
+    transfer.js          Transfer math (Hermite splines, Lambert reference)
+  rendering/
+    rendering.js         Body creation, position updates, ship transfers
+    scene.js             Three.js setup, camera, controls, grid
+    textures.js          Procedural planet/star/cloud textures
+  ui/
+    ui.js                Body list, system switcher, time controls, HUD
+    selection.js         Click detection, fly-to, info panel, follow camera
+  data/
+    sol-data.js          Sol System preset data
+    system-generator.js  Procedural star system generation
+  main.js                Orchestrator: init, teardown, animation loop
+  __tests__/             All test files
 ```
 
 ## Testing

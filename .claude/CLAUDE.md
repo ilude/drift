@@ -13,27 +13,43 @@
 
 ## Architecture
 
-All source lives in the project root — no `src/` directory.
+All source lives under `src/` with logical subdirectories. Tests live in `src/__tests__/`. Static assets go in `public/` (served as-is by Vite). `index.html` stays at project root (Vite entry point).
+
+```
+public/                                  (static assets: favicon, images, etc.)
+src/
+  style.css                              (app styles, imported by main.js)
+  core/       state.js, utils.js         (app state, RNG helpers)
+  math/       orbit.js, visual.js,       (pure math, no app imports)
+              transfer.js
+  rendering/  rendering.js, scene.js,    (Three.js scene, bodies, textures)
+              textures.js
+  ui/         ui.js, selection.js        (HUD, labels, click handlers)
+  data/       sol-data.js,               (system data & generation)
+              system-generator.js
+  main.js                                (orchestrator, entry point)
+  __tests__/  *.test.js                  (all test files)
+```
 
 **Import hierarchy (no circular deps):**
 ```
-utils.js, orbit.js, visual.js  (pure math, no app imports)
+core/utils.js, math/orbit.js, math/visual.js  (pure math, no app imports)
         |
-    state.js  (imports nothing)
+    core/state.js  (imports nothing)
         |
-  scene.js, textures.js
+  rendering/scene.js, rendering/textures.js
         |
-  rendering.js, transfer.js, selection.js, ui.js
+  rendering/rendering.js, math/transfer.js, ui/selection.js, ui/ui.js
         |
      main.js  (orchestrator)
 ```
 
 **Key modules:**
-- `state.js` — Single centralized state object, save/restore to localStorage
-- `orbit.js` — Kepler solver (meanToTrue), orbital mechanics primitives
-- `rendering.js` — Body creation, position updates, Hermite spline ship transfers
-- `transfer.js` — Transfer math (Lambert solver retained for reference, Hermite used in practice)
-- `system-generator.js` — Procedural star system generation from seeds
+- `src/core/state.js` — Single centralized state object, save/restore to localStorage
+- `src/math/orbit.js` — Kepler solver (meanToTrue), orbital mechanics primitives
+- `src/rendering/rendering.js` — Body creation, position updates, Hermite spline ship transfers
+- `src/math/transfer.js` — Transfer math (Lambert solver retained for reference, Hermite used in practice)
+- `src/data/system-generator.js` — Procedural star system generation from seeds
 
 ## Conventions
 

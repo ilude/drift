@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { seededRandom } from './utils.js';
-import { categorizePlanet } from './orbit.js';
+import { seededRandom } from '../core/utils.js';
+import { categorizePlanet } from '../math/orbit.js';
 
 function hashString(str) {
     let hash = 5381;

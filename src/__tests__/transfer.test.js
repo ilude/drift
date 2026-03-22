@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { hohmannTransfer, transferSpeed, transferStartAngle, isTransferComplete, gameTransferDays, gameTransferSpeed, lambertSolve, propagatePosition, worldToAU, auToWorld, computeMu, deriveStarMass } from './transfer.js';
-import { DAYS_PER_YEAR } from './orbit.js';
+import { hohmannTransfer, transferSpeed, transferStartAngle, isTransferComplete, gameTransferDays, gameTransferSpeed, lambertSolve, propagatePosition, worldToAU, auToWorld, computeMu, deriveStarMass } from '../math/transfer.js';
+import { DAYS_PER_YEAR } from '../math/orbit.js';
 
 describe('hohmannTransfer', () => {
     it('computes correct semi-major axis', () => {
