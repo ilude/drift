@@ -11,7 +11,7 @@ vi.mock('../rendering/scene.js', () => ({
     cometGroup: { add: vi.fn() },
 }));
 
-import { orbitToWorld, createShip } from '../rendering/rendering.js';
+import { orbitToWorld, createShip, initiateTransfer } from '../rendering/rendering.js';
 import { state } from '../core/state.js';
 
 describe('orbitToWorld', () => {
@@ -82,5 +82,55 @@ describe('createShip', () => {
         expect(entry.fuelKg).toBeGreaterThan(0);
         expect(entry.fuelCapacityKg).toBeGreaterThan(0);
         expect(typeof entry.engineId).toBe('string');
+    });
+});
+
+describe('initiateTransfer', () => {
+    function setupSystem() {
+        state.BODIES = [
+            { name: 'Sun', type: 'Star', distance: 0, period: 0, radius: 696340, color: '#ffdd44', moons: [] },
+            { name: 'Earth', type: 'Planet', distance: 1.0, period: 1.0, radius: 6371, color: '#4488ff', moons: [] },
+            { name: 'Mars', type: 'Planet', distance: 1.524, period: 1.881, radius: 3390, color: '#ff6644', moons: [] },
+        ];
+        state.bodyMeshes = [];
+        state.simTime = 0;
+
+        // Create planet entries so findPlanetEntry works
+        state.BODIES.forEach(b => {
+            if (b.type !== 'Star') {
+                const mesh = { position: { x: 100 * b.distance, y: 0, z: 0, set: vi.fn() } };
+                state.bodyMeshes.push({
+                    data: b, mesh, isShip: false, isMoon: false, isComet: false,
+                    speed: 0.01, angle: 0,
+                });
+            }
+        });
+
+        const ship = createShip();
+        return ship;
+    }
+
+    it('deducts fuel on successful transfer', () => {
+        const ship = setupSystem();
+        const fuelBefore = ship.fuelKg;
+        const mars = state.bodyMeshes.find(e => e.data.name === 'Mars');
+        initiateTransfer(ship, mars);
+        expect(ship.fuelKg).toBeLessThan(fuelBefore);
+    });
+
+    it('rejects transfer when fuel is insufficient', () => {
+        const ship = setupSystem();
+        ship.fuelKg = 1; // near-zero fuel
+        const mars = state.bodyMeshes.find(e => e.data.name === 'Mars');
+        initiateTransfer(ship, mars);
+        expect(ship.shipState).toBe('orbiting');
+    });
+
+    it('uses Hohmann transfer time instead of game formula', () => {
+        const ship = setupSystem();
+        const mars = state.bodyMeshes.find(e => e.data.name === 'Mars');
+        initiateTransfer(ship, mars);
+        // Hohmann Earth-Mars ~259 days, game formula would give ~4.6 days
+        expect(ship.pendingTransfer.gameDays).toBeGreaterThan(200);
     });
 });

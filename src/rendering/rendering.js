@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import { state } from '../core/state.js';
 import { scaleDist, MOON_DIST_SCALE, keplerRadius, orbitSpeed, meanToTrue, inclinedPosition } from '../math/orbit.js';
-import { isTransferComplete, gameTransferDays } from '../math/transfer.js';
-import { ENGINE_TYPES } from '../math/ship-physics.js';
+import { isTransferComplete, gameTransferDays, deriveStarMass } from '../math/transfer.js';
+import { ENGINE_TYPES, checkTransfer } from '../math/ship-physics.js';
 import { bodySize, BODY_MIN_SIZE, moonOrbitScale, realisticSize } from '../math/visual.js';
 import { scene, ZOOM_BASE, labelContainer, trailGroups, cometGroup } from './scene.js';
 import { seededRandom } from '../core/utils.js';
@@ -763,7 +763,20 @@ export function initiateTransfer(entry, targetEntry) {
     const r2 = targetEntry.data.distance;
     if (r1 === r2) return;
 
-    const gameDays = gameTransferDays(r1, r2);
+    // Physics-based transfer feasibility check
+    const starMass = deriveStarMass(state.BODIES);
+    const result = checkTransfer(r1, r2, starMass, {
+        fuelKg: entry.fuelKg,
+        dryMassKg: entry.dryMassKg,
+        engineId: entry.engineId,
+    });
+
+    if (!result.feasible) return;
+
+    // Deduct fuel
+    entry.fuelKg -= result.fuelUsedKg;
+
+    const gameDays = result.transferDays;
 
     entry.orbitA = (r1 + r2) / 2;
 
