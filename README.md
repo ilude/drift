@@ -7,7 +7,7 @@ Built with [Three.js](https://threejs.org/) and vanilla JavaScript, bundled with
 ## Getting Started
 
 ```bash
-npm install
+bun install
 make dev
 ```
 

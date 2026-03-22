@@ -4,12 +4,12 @@
 
 ## Commands
 
-- `npm run dev` — Start dev server
-- `npm run build` — Production build (`npx vite build`)
-- `npm run test` — Run tests (`npx vitest run`)
-- `npm run test:watch` — Watch mode tests
-- `npm run test:coverage` — Coverage report (v8)
-- `npm run lint` — ESLint (`npx eslint .`)
+- `bun run dev` — Start dev server
+- `bun run build` — Production build
+- `bun run test` — Run tests
+- `bun run test:watch` — Watch mode tests
+- `bun run test:coverage` — Coverage report (v8)
+- `bun run lint` — ESLint
 
 ## Architecture
 
@@ -57,4 +57,4 @@ utils.js, orbit.js, visual.js  (pure math, no app imports)
 - Coordinate transforms (rendering.test.js)
 - RNG (utils.test.js)
 
-All tests must pass before committing. Run `npm test` to verify.
+All tests must pass before committing. Run `bun run test` to verify.

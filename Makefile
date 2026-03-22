@@ -1,22 +1,22 @@
 .PHONY: dev build test test-watch coverage lint clean check install
 
 dev:
-	npx vite
+	bun run dev
 
 build:
-	npx vite build
+	bun run build
 
 test:
-	npx vitest run
+	bun run test
 
 test-watch:
-	npx vitest
+	bun run test:watch
 
 coverage:
-	npx vitest run --coverage
+	bun run test:coverage
 
 lint:
-	npx eslint .
+	bun run lint
 
 check: lint test build
 
@@ -24,4 +24,4 @@ clean:
 	rm -rf dist coverage
 
 install:
-	npm install
+	bun install
