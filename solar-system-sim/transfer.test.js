@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { hohmannTransfer, transferSpeed, transferStartAngle, isTransferComplete } from './transfer.js';
+import { hohmannTransfer, transferSpeed, transferStartAngle, isTransferComplete, gameTransferDays, gameTransferSpeed } from './transfer.js';
 import { DAYS_PER_YEAR } from './orbit.js';
 
 describe('hohmannTransfer', () => {
@@ -72,5 +72,29 @@ describe('isTransferComplete', () => {
 
     it('returns true at exact boundary', () => {
         expect(isTransferComplete(259, 259)).toBe(true);
+    });
+});
+
+describe('gameTransferDays', () => {
+    it('Earth to Mars takes ~5 days', () => {
+        const days = gameTransferDays(1.0, 1.524);
+        expect(days).toBeCloseTo(4.57, 1);
+    });
+
+    it('Earth to Saturn takes ~29 days', () => {
+        const days = gameTransferDays(1.0, 9.537);
+        expect(days).toBeCloseTo(28.6, 0);
+    });
+
+    it('is symmetric', () => {
+        expect(gameTransferDays(1.0, 5.0)).toBe(gameTransferDays(5.0, 1.0));
+    });
+});
+
+describe('gameTransferSpeed', () => {
+    it('traverses PI radians in the given days', () => {
+        const days = 10;
+        const speed = gameTransferSpeed(days);
+        expect(speed * days).toBeCloseTo(Math.PI, 10);
     });
 });

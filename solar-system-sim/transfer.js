@@ -32,6 +32,22 @@ export function transferStartAngle(r1, r2) {
 }
 
 /**
+ * Game-scale transfer time: days not months.
+ * ~3 days base + 3 days per AU of distance.
+ * Earth→Mars ≈ 5 days, Earth→Saturn ≈ 29 days.
+ */
+export function gameTransferDays(r1, r2) {
+    return 3 + 3 * Math.abs(r2 - r1);
+}
+
+/**
+ * Angular speed to traverse PI radians in the given number of days.
+ */
+export function gameTransferSpeed(transferDays) {
+    return Math.PI / transferDays;
+}
+
+/**
  * Check if the half-orbit transfer is complete.
  */
 export function isTransferComplete(elapsedDays, transferTimeDays) {
