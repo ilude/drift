@@ -163,7 +163,7 @@ export function updateLabels(camDist) {
             }
         }
 
-        if (!entry.isMoon && !entry.isComet && entry.baseSize) {
+        if (!entry.isMoon && !entry.isComet && !entry.isShip && entry.baseSize) {
             const scaledSize = entry.baseSize + scaleFactor * (entry.realisticSize - entry.baseSize);
             const s = scaledSize / entry.baseSize;
             entry.mesh.scale.set(s, s, s);
