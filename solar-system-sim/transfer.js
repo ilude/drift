@@ -328,11 +328,7 @@ export function transferStartAngle(r1, r2) {
 }
 
 export function gameTransferDays(r1, r2) {
-    // Use 50% of Hohmann transfer time (fast but well-behaved orbits)
-    // Hohmann half-period: sqrt(a³)/2 years, converted to days
-    const a = (r1 + r2) / 2;
-    const hohmannDays = Math.sqrt(a * a * a) * DAYS_PER_YEAR / 2;
-    return Math.max(15, hohmannDays * 0.5);
+    return 3 + 3 * Math.abs(r2 - r1);
 }
 
 export function gameTransferSpeed(transferDays) {

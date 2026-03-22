@@ -76,22 +76,18 @@ describe('isTransferComplete', () => {
 });
 
 describe('gameTransferDays', () => {
-    it('Earth to Mars takes ~130 days (50% of Hohmann)', () => {
+    it('Earth to Mars takes ~5 days', () => {
         const days = gameTransferDays(1.0, 1.524);
-        expect(days).toBeCloseTo(129.5, 0);
+        expect(days).toBeCloseTo(4.57, 1);
     });
 
-    it('Earth to Saturn takes ~1104 days (50% of Hohmann)', () => {
+    it('Earth to Saturn takes ~29 days', () => {
         const days = gameTransferDays(1.0, 9.537);
-        expect(days).toBeCloseTo(1104, 0);
+        expect(days).toBeCloseTo(28.6, 0);
     });
 
     it('is symmetric', () => {
         expect(gameTransferDays(1.0, 5.0)).toBe(gameTransferDays(5.0, 1.0));
-    });
-
-    it('has a minimum of 10 days', () => {
-        expect(gameTransferDays(0.1, 0.15)).toBeGreaterThanOrEqual(10);
     });
 });
 
