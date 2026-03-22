@@ -171,11 +171,11 @@ function animate() {
     timer.update();
     const dt = timer.getDelta();
 
-    controls.update();
-    updateFlyTo();
     updatePositions(dt, camera.position.distanceTo(controls.target));
     updateAsteroids(dt);
+    updateFlyTo();
     updateFollow();
+    controls.update();
 
     const camDist = camera.position.distanceTo(controls.target);
     updateLabels(camDist);
