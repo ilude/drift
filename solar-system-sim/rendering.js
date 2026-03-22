@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import { state } from './state.js';
 import { scaleDist, MOON_DIST_SCALE, keplerRadius, orbitSpeed, meanToTrue, inclinedPosition } from './orbit.js';
-import { isTransferComplete, gameTransferDays } from './transfer.js';
-import { bodySize, BODY_MIN_SIZE, moonOrbitScale, realisticSize, easeOutCubic } from './visual.js';
+import { isTransferComplete, gameTransferDays, lambertSolve, propagatePosition, worldToAU, auToWorld, computeMu, deriveStarMass } from './transfer.js';
+import { bodySize, BODY_MIN_SIZE, moonOrbitScale, realisticSize } from './visual.js';
 import { scene, ZOOM_BASE, labelContainer, trailGroups, cometGroup } from './scene.js';
 import { seededRandom } from './utils.js';
 import { generateBodyTexture, generateCloudTextureForBody, createStarMaterial } from './textures.js';
@@ -395,27 +395,77 @@ export function createAsteroidBelts() {
 const SHIP_SIZE = 0.02;
 const SHIP_LOCAL_ORBIT = 1.5;       // world-space radius around host planet
 const SHIP_LOCAL_SPEED = Math.PI * 2 / 7;  // ~7 day orbital period (visual clarity over realism)
-const MIN_HANDLE = SHIP_LOCAL_ORBIT * 2;
 const SHIP_TAIL_LENGTH = 20;
 const shipTailMat = new THREE.LineBasicMaterial({ color: '#999999', transparent: true, opacity: 0.6 });
 
-function transferPosition(entry, t) {
-    // Cubic Bezier with linear t — control points define velocity at endpoints
-    const u = t;
-    const inv = 1 - u;
+// Cached gravitational parameter (AU³/day²), recomputed on system load
+let systemMu = computeMu(1);
+
+export function updateSystemMu() {
+    const starMass = deriveStarMass(state.BODIES);
+    systemMu = computeMu(starMass);
+}
+
+function lambertTransferPosition(entry, elapsedDays) {
+    const dt = elapsedDays - entry.lambertSegmentStart;
+    const posAU = propagatePosition(
+        entry.lambertR0x, entry.lambertR0z,
+        entry.lambertV0x, entry.lambertV0z,
+        dt, systemMu
+    );
+    return auToWorld(posAU.x, posAU.z);
+}
+
+function predictTargetWorld(targetEntry, daysFromNow) {
+    const currentAngle = Math.atan2(targetEntry.mesh.position.z, targetEntry.mesh.position.x);
+    const arrivalAngle = currentAngle + targetEntry.speed * daysFromNow;
+    const targetR = scaleDist(targetEntry.data.distance);
     return {
-        x: inv * inv * inv * entry.p0x + 3 * inv * inv * u * entry.p1x + 3 * inv * u * u * entry.p2x + u * u * u * entry.p3x,
-        z: inv * inv * inv * entry.p0z + 3 * inv * inv * u * entry.p1z + 3 * inv * u * u * entry.p2z + u * u * u * entry.p3z,
+        x: Math.cos(arrivalAngle) * targetR,
+        z: Math.sin(arrivalAngle) * targetR,
     };
 }
 
-const SHIP_PATH_LOOKAHEAD = 0.25;  // show 25% of curve ahead
-const SHIP_PATH_POINTS = 48;       // enough for orbit arc + transfer preview
+/**
+ * Two-step Lambert solve for tangential orbit insertion:
+ * 1) Solve to planet center → get arrival velocity direction
+ * 2) Offset target perpendicular to arrival velocity by SHIP_LOCAL_ORBIT
+ * 3) Re-solve to offset target → trajectory passes tangent to local orbit
+ */
+function solveLambertTangent(shipWorldX, shipWorldZ, targetEntry, tofDays) {
+    const targetWorld = predictTargetWorld(targetEntry, tofDays);
+    const targetCenterAU = worldToAU(targetWorld.x, targetWorld.z);
+    const shipAU = worldToAU(shipWorldX, shipWorldZ);
 
-function createTransferPath(reason) {
-    console.log('PATH CREATE:', reason);
-    const positions = new Float32Array((SHIP_PATH_POINTS + 1) * 3);
-    const colors = new Float32Array((SHIP_PATH_POINTS + 1) * 4);
+    // Step 1: Lambert to planet center
+    const sol1 = lambertSolve(shipAU.x, shipAU.z, targetCenterAU.x, targetCenterAU.z, tofDays, systemMu);
+    if (!sol1) return null;
+
+    // Step 2: Use arrival velocity to compute tangent insertion point
+    // v2 direction ≈ approach direction; for CCW orbit insertion:
+    // orbit tangent at angle θ has direction θ+PI/2
+    // to match v2: θ = v2_dir - PI/2
+    const v2dir = Math.atan2(sol1.v2z, sol1.v2x);
+    const insertAngle = v2dir - Math.PI / 2;
+
+    // Offset target in world space by SHIP_LOCAL_ORBIT at insertion angle
+    const offsetWorldX = targetWorld.x + Math.cos(insertAngle) * SHIP_LOCAL_ORBIT;
+    const offsetWorldZ = targetWorld.z + Math.sin(insertAngle) * SHIP_LOCAL_ORBIT;
+    const offsetAU = worldToAU(offsetWorldX, offsetWorldZ);
+
+    // Step 3: Re-solve Lambert to offset target
+    const sol2 = lambertSolve(shipAU.x, shipAU.z, offsetAU.x, offsetAU.z, tofDays, systemMu);
+    return sol2 || sol1; // fallback to center-targeting if offset solve fails
+}
+
+const SHIP_PATH_LOOKAHEAD = 0.25;  // show 25% of curve ahead
+const SHIP_TRANSFER_PTS = 128;     // transfer curve sample points
+const SHIP_MAX_ARC_PTS = 48;       // max orbit arc points
+const SHIP_PATH_BUFFER = SHIP_TRANSFER_PTS + SHIP_MAX_ARC_PTS + 1; // total buffer capacity
+
+function createTransferPath() {
+    const positions = new Float32Array(SHIP_PATH_BUFFER * 3);
+    const colors = new Float32Array(SHIP_PATH_BUFFER * 4);
     const geom = new THREE.BufferGeometry();
     geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     geom.setAttribute('color', new THREE.BufferAttribute(colors, 4));
@@ -429,35 +479,61 @@ function createTransferPath(reason) {
     return line;
 }
 
-function updateTransferPath(entry, tCurrent) {
+function updateTransferPath(entry, elapsedDays) {
     if (!entry.transferPath) return;
     const positions = entry.transferPath.geometry.attributes.position.array;
     const colors = entry.transferPath.geometry.attributes.color.array;
     const isSelected = (state.selectedBody === entry);
     const baseAlpha = isSelected ? 0.5 : 0.2;
 
-    const tStart = tCurrent;
-    const tEnd = Math.min(tCurrent + SHIP_PATH_LOOKAHEAD, 1.0);
-    const range = tEnd - tStart;
+    const remaining = entry.transferTimeDays - elapsedDays;
+    const lookaheadDays = Math.min(remaining, entry.transferTimeDays * SHIP_PATH_LOOKAHEAD);
 
-    for (let i = 0; i <= SHIP_PATH_POINTS; i++) {
-        const frac = i / SHIP_PATH_POINTS;
-        const t = tStart + frac * range;
-        const p = transferPosition(entry, t);
+    for (let i = 0; i <= SHIP_TRANSFER_PTS; i++) {
+        const frac = i / SHIP_TRANSFER_PTS;
+        const dt = elapsedDays + frac * lookaheadDays;
+        const p = lambertTransferPosition(entry, dt);
         const idx3 = i * 3;
         positions[idx3] = p.x;
         positions[idx3 + 1] = 0;
         positions[idx3 + 2] = p.z;
-        // Fade out: full alpha at ship, zero at lookahead end
         const idx4 = i * 4;
-        colors[idx4] = 0.33;     // r
-        colors[idx4 + 1] = 0.33; // g
-        colors[idx4 + 2] = 0.33; // b
-        colors[idx4 + 3] = baseAlpha * (1 - frac); // a — fades to 0
+        colors[idx4] = 0.33;
+        colors[idx4 + 1] = 0.33;
+        colors[idx4 + 2] = 0.33;
+        colors[idx4 + 3] = baseAlpha * (1 - frac);
     }
     entry.transferPath.geometry.attributes.position.needsUpdate = true;
     entry.transferPath.geometry.attributes.color.needsUpdate = true;
-    entry.transferPath.geometry.setDrawRange(0, SHIP_PATH_POINTS + 1);
+    entry.transferPath.geometry.setDrawRange(0, SHIP_TRANSFER_PTS + 1);
+    if (entry.transferRecalcCounter === 1) {
+        checkPathSmoothness(positions, SHIP_TRANSFER_PTS + 1, 'transfer');
+    }
+}
+
+function checkPathSmoothness(positions, count, label) {
+    const MAX_TURN_DEG = 15;
+    const MIN_SEG_LEN = 0.5; // ignore micro-segments (world units)
+    const cosTurn = Math.cos(MAX_TURN_DEG * Math.PI / 180);
+    let kinks = 0;
+    for (let i = 1; i < count - 1; i++) {
+        const ax = positions[(i) * 3] - positions[(i - 1) * 3];
+        const az = positions[(i) * 3 + 2] - positions[(i - 1) * 3 + 2];
+        const bx = positions[(i + 1) * 3] - positions[(i) * 3];
+        const bz = positions[(i + 1) * 3 + 2] - positions[(i) * 3 + 2];
+        const la = Math.hypot(ax, az);
+        const lb = Math.hypot(bx, bz);
+        if (la < MIN_SEG_LEN || lb < MIN_SEG_LEN) continue;
+        const dot = (ax * bx + az * bz) / (la * lb);
+        if (dot < cosTurn) {
+            kinks++;
+            if (kinks <= 3) {
+                const deg = Math.acos(Math.max(-1, Math.min(1, dot))) * 180 / Math.PI;
+                console.warn(`PATH KINK [${label}] at point ${i}/${count}: ${deg.toFixed(1)}° turn, segs ${la.toFixed(1)}/${lb.toFixed(1)} at (${positions[i * 3].toFixed(1)}, ${positions[i * 3 + 2].toFixed(1)})`);
+            }
+        }
+    }
+    if (kinks > 3) console.warn(`PATH KINK [${label}]: ${kinks} total kinks (showing first 3)`);
 }
 
 function updateDepartureArc(entry) {
@@ -470,34 +546,29 @@ function updateDepartureArc(entry) {
     const baseAlpha = isSelected ? 0.5 : 0.2;
     const pt = entry.pendingTransfer;
 
-    // Recompute preliminary route every 15 frames as planets move
+    // Recompute preliminary Lambert route every 15 frames as planets move
     entry.departFrameCount = (entry.departFrameCount || 0) + 1;
     if (entry.departFrameCount % 15 === 0) {
         const targetEntry = state.bodyMeshes.find(e => e.data.name === pt.targetName && !e.isMoon && !e.isShip);
         if (targetEntry) {
-            const target = computeTransferTarget(
-                { x: host.mesh.position.x, z: host.mesh.position.z }, targetEntry, pt.gameDays
-            );
-            const toTargetDir = Math.atan2(
-                target.p3z - host.mesh.position.z,
-                target.p3x - host.mesh.position.x
-            );
-            pt.optimalLocalAngle = toTargetDir - Math.PI / 2;
+            // Two-step Lambert from host center for tangent departure
+            const hostSol = solveLambertTangent(host.mesh.position.x, host.mesh.position.z, targetEntry, pt.gameDays);
+            if (hostSol) {
+                const v1Dir = Math.atan2(hostSol.v1z, hostSol.v1x);
+                pt.optimalLocalAngle = v1Dir - Math.PI / 2;
+            }
+
             const departPos = {
                 x: host.mesh.position.x + Math.cos(pt.optimalLocalAngle) * SHIP_LOCAL_ORBIT,
                 z: host.mesh.position.z + Math.sin(pt.optimalLocalAngle) * SHIP_LOCAL_ORBIT,
             };
-            const departVelDir = pt.optimalLocalAngle + Math.PI / 2;
-            const dist = Math.hypot(target.p3x - departPos.x, target.p3z - departPos.z);
-            const departCpScale = Math.max(MIN_HANDLE, dist * 0.4);
-            const arrivalCpScale = Math.max(MIN_HANDLE, Math.min(dist * 0.3, SHIP_LOCAL_ORBIT * 5));
-            const arrivalVelDir = target.approachDir + Math.PI / 2;
-            pt.p0x = departPos.x; pt.p0z = departPos.z;
-            pt.p1x = departPos.x + Math.cos(departVelDir) * departCpScale;
-            pt.p1z = departPos.z + Math.sin(departVelDir) * departCpScale;
-            pt.p2x = target.p3x - Math.cos(arrivalVelDir) * arrivalCpScale;
-            pt.p2z = target.p3z - Math.sin(arrivalVelDir) * arrivalCpScale;
-            pt.p3x = target.p3x; pt.p3z = target.p3z;
+            const sol = solveLambertTangent(departPos.x, departPos.z, targetEntry, pt.gameDays);
+            if (sol) {
+                const departAU = worldToAU(departPos.x, departPos.z);
+                pt.lambertR0x = departAU.x; pt.lambertR0z = departAU.z;
+                pt.lambertV0x = sol.v1x; pt.lambertV0z = sol.v1z;
+                pt.lambertValid = true;
+            }
         }
     }
 
@@ -505,14 +576,12 @@ function updateDepartureArc(entry) {
     const curAngle = ((entry.angle % TWO_PI) + TWO_PI) % TWO_PI;
     const tgtAngle = ((pt.optimalLocalAngle % TWO_PI) + TWO_PI) % TWO_PI;
 
-    // Arc from current angle to departure point
     let sweep = tgtAngle - curAngle;
     if (sweep < 0) sweep += TWO_PI;
     if (sweep > TWO_PI) sweep -= TWO_PI;
 
-    // Split: 12 points for orbit arc, 36 for transfer preview
-    const ARC_PTS = 12;
-    const TRANSFER_PTS = SHIP_PATH_POINTS - ARC_PTS;
+    // Scale orbit arc points by sweep length (~8 points per radian, min 4, max 48)
+    const ARC_PTS = Math.max(4, Math.min(SHIP_MAX_ARC_PTS, Math.round(sweep * 8)));
     let idx = 0;
 
     // Part 1: orbit arc to departure point
@@ -531,23 +600,26 @@ function updateDepartureArc(entry) {
         idx++;
     }
 
-    // Part 2: transfer preview from departure point using preliminary Bezier
-    if (pt.p0x !== undefined) {
-        for (let i = 1; i <= TRANSFER_PTS; i++) {
-            const t = i / TRANSFER_PTS;
-            const u = t; // linear — matches transferPosition
-            const inv = 1 - u;
-            const x = inv*inv*inv*pt.p0x + 3*inv*inv*u*pt.p1x + 3*inv*u*u*pt.p2x + u*u*u*pt.p3x;
-            const z = inv*inv*inv*pt.p0z + 3*inv*inv*u*pt.p1z + 3*inv*u*u*pt.p2z + u*u*u*pt.p3z;
+    // Part 2: transfer preview from departure point using Lambert propagation
+    if (pt.lambertValid) {
+        for (let i = 1; i <= SHIP_TRANSFER_PTS; i++) {
+            const frac = i / SHIP_TRANSFER_PTS;
+            const dt = frac * pt.gameDays;
+            const posAU = propagatePosition(
+                pt.lambertR0x, pt.lambertR0z,
+                pt.lambertV0x, pt.lambertV0z,
+                dt, systemMu
+            );
+            const w = auToWorld(posAU.x, posAU.z);
             const idx3 = idx * 3;
-            positions[idx3] = x;
+            positions[idx3] = w.x;
             positions[idx3 + 1] = 0;
-            positions[idx3 + 2] = z;
+            positions[idx3 + 2] = w.z;
             const idx4 = idx * 4;
             colors[idx4] = 0.33;
             colors[idx4 + 1] = 0.33;
             colors[idx4 + 2] = 0.33;
-            colors[idx4 + 3] = baseAlpha * (1 - t * 0.7); // fade toward end
+            colors[idx4 + 3] = baseAlpha * (1 - frac * 0.7);
             idx++;
         }
     }
@@ -555,11 +627,13 @@ function updateDepartureArc(entry) {
     entry.transferPath.geometry.attributes.position.needsUpdate = true;
     entry.transferPath.geometry.attributes.color.needsUpdate = true;
     entry.transferPath.geometry.setDrawRange(0, idx);
+    if (entry.departFrameCount % 15 === 1) {
+        checkPathSmoothness(positions, idx, 'departure');
+    }
 }
 
-function removeTransferPath(entry, reason) {
+function removeTransferPath(entry) {
     if (entry.transferPath) {
-        console.log('PATH REMOVE:', reason);
         scene.remove(entry.transferPath);
         entry.transferPath.geometry.dispose();
         entry.transferPath.material.dispose();
@@ -606,13 +680,16 @@ export function createShip() {
         shipState: 'orbiting',
         hostPlanetName: homePlanet.name,
         orbitA: homePlanet.distance,
-        // Transfer fields (Bezier control points set at transfer start)
+        // Transfer fields (Lambert orbital mechanics)
         transferTarget: null,
         transferStartTime: 0,
         transferTimeDays: 0,
-        p0x: 0, p0z: 0, p1x: 0, p1z: 0, p2x: 0, p2z: 0, p3x: 0, p3z: 0,
-        arrivalAngle: 0, approachDir: 0, targetR: 0,
+        lambertR0x: 0, lambertR0z: 0, // departure position (AU)
+        lambertV0x: 0, lambertV0z: 0, // departure velocity (AU/day)
+        lambertSegmentStart: 0,        // simTime when current segment started
         pendingTransfer: null,
+        transferRecalcCounter: 0,
+        captureReady: false,
         // Visual: transfer path line and velocity tail
         transferPath: null,
         tailPositions: new Float32Array(SHIP_TAIL_LENGTH * 3),
@@ -632,7 +709,7 @@ export function createShip() {
 }
 
 function completeTransfer(entry) {
-    removeTransferPath(entry, 'completeTransfer');
+    removeTransferPath(entry);
     const target = findPlanetEntry(entry.transferTarget);
 
     entry.shipState = 'orbiting';
@@ -645,7 +722,6 @@ function completeTransfer(entry) {
         entry.data.distance = target.data.distance;
         entry.orbitA = entry.data.distance;
 
-        const hadBlendTarget = !!entry.blendTarget;
         if (entry.blendTarget) {
             entry.angle = entry.blendTarget.entryAngle;
         } else {
@@ -654,106 +730,74 @@ function completeTransfer(entry) {
             entry.angle = Math.atan2(dz, dx);
         }
         entry.blendTarget = null;
-        // Always snap to orbit radius
-        const preSnapPos = `(${entry.mesh.position.x.toFixed(2)}, ${entry.mesh.position.z.toFixed(2)})`;
+        // Snap to orbit radius
+        const preSnap = { x: entry.mesh.position.x, z: entry.mesh.position.z };
         entry.mesh.position.set(
             target.mesh.position.x + Math.cos(entry.angle) * SHIP_LOCAL_ORBIT,
             0,
             target.mesh.position.z + Math.sin(entry.angle) * SHIP_LOCAL_ORBIT
         );
-        const postSnapPos = `(${entry.mesh.position.x.toFixed(2)}, ${entry.mesh.position.z.toFixed(2)})`;
-        const snapDist = Math.hypot(
-            parseFloat(postSnapPos.split(',')[0].slice(1)) - parseFloat(preSnapPos.split(',')[0].slice(1)),
-            parseFloat(postSnapPos.split(',')[1].slice(0, -1)) - parseFloat(preSnapPos.split(',')[1].slice(0, -1))
-        );
         console.log('COMPLETE TRANSFER:', {
             to: entry.hostPlanetName,
             entryAngle: `${(entry.angle * 180 / Math.PI).toFixed(1)}°`,
-            usedBlendTarget: hadBlendTarget ? 'yes' : 'fallback atan2',
-            preSnap: preSnapPos,
-            postSnap: postSnapPos,
-            snapDist: snapDist.toFixed(3),
-            targetPos: `(${target.mesh.position.x.toFixed(2)}, ${target.mesh.position.z.toFixed(2)})`,
+            snapDist: Math.hypot(entry.mesh.position.x - preSnap.x, entry.mesh.position.z - preSnap.z).toFixed(3),
         });
     } else {
         entry.angle = 0;
     }
 }
 
-function computeTransferTarget(shipPos, targetEntry, gameDays) {
-    // Predict where target will be at arrival
-    const targetAngle = Math.atan2(targetEntry.mesh.position.z, targetEntry.mesh.position.x);
-    const arrivalAngle = targetAngle + targetEntry.speed * gameDays;
-    const targetR = scaleDist(targetEntry.data.distance);
-    const targetCenterX = Math.cos(arrivalAngle) * targetR;
-    const targetCenterZ = Math.sin(arrivalAngle) * targetR;
-
-    // Entry point: stable, based on transfer direction (inward vs outward)
-    // Outward (ship closer to star): approach from inner side (arrivalAngle + PI)
-    // Inward (ship farther from star): approach from outer side (arrivalAngle)
-    const shipR = Math.hypot(shipPos.x, shipPos.z);
-    const approachDir = shipR < targetR ? arrivalAngle + Math.PI : arrivalAngle;
-    return {
-        p3x: targetCenterX + Math.cos(approachDir) * SHIP_LOCAL_ORBIT,
-        p3z: targetCenterZ + Math.sin(approachDir) * SHIP_LOCAL_ORBIT,
-        approachDir,
-    };
-}
-
 function beginTransfer(entry) {
     const p = entry.pendingTransfer;
 
-    // Recompute target prediction NOW at actual departure time
     const tgt = findPlanetEntry(p.targetName);
     if (!tgt) return;
 
-    // P0: ship's actual position at departure
-    entry.p0x = entry.mesh.position.x;
-    entry.p0z = entry.mesh.position.z;
-
-    // P3: fresh prediction from current moment
-    const target = computeTransferTarget(
-        { x: entry.p0x, z: entry.p0z }, tgt, p.gameDays
+    // Two-step Lambert for tangential orbit insertion
+    const sol = solveLambertTangent(
+        entry.mesh.position.x, entry.mesh.position.z, tgt, p.gameDays
     );
-    entry.p3x = target.p3x;
-    entry.p3z = target.p3z;
+    if (!sol) return;
 
-    // Control point scales: departure proportional to transfer distance, arrival to orbit radius
-    const dist = Math.hypot(entry.p3x - entry.p0x, entry.p3z - entry.p0z);
-    const departCpScale = Math.max(MIN_HANDLE, dist * 0.4);
-    const arrivalCpScale = Math.max(MIN_HANDLE, Math.min(dist * 0.3, SHIP_LOCAL_ORBIT * 5));
+    const shipAU = worldToAU(entry.mesh.position.x, entry.mesh.position.z);
+    entry.lambertR0x = shipAU.x;
+    entry.lambertR0z = shipAU.z;
+    entry.lambertV0x = sol.v1x;
+    entry.lambertV0z = sol.v1z;
+    entry.lambertSegmentStart = 0; // elapsed = 0 at start
 
-    // P1: depart tangent to ship's current local orbit velocity (CCW: angle + PI/2)
-    const departVelDir = entry.angle + Math.PI / 2;
-    entry.p1x = entry.p0x + Math.cos(departVelDir) * departCpScale;
-    entry.p1z = entry.p0z + Math.sin(departVelDir) * departCpScale;
-
-    // P2: arrive tangent to target's local orbit velocity (CCW: approachDir + PI/2)
-    const arrivalVelDir = target.approachDir + Math.PI / 2;
-    entry.p2x = entry.p3x - Math.cos(arrivalVelDir) * arrivalCpScale;
-    entry.p2z = entry.p3z - Math.sin(arrivalVelDir) * arrivalCpScale;
-
-    entry.approachDir = target.approachDir;
     entry.transferStartTime = state.simTime;
     entry.transferTimeDays = p.gameDays;
     entry.transferTarget = p.targetName;
     entry.shipState = 'transferring';
     entry.pendingTransfer = null;
     entry.blendTarget = null;
+    entry.transferRecalcCounter = 0;
 
-    removeTransferPath(entry, 'beginTransfer');
-    entry.transferPath = createTransferPath('beginTransfer');
+    removeTransferPath(entry);
+    entry.transferPath = createTransferPath();
 
-    console.log('BEGIN TRANSFER:', {
+    // Pre-fill tail buffer with current position to avoid line-to-origin artifact
+    for (let i = 0; i < SHIP_TAIL_LENGTH; i++) {
+        entry.tailPositions[i * 3] = entry.mesh.position.x;
+        entry.tailPositions[i * 3 + 1] = 0;
+        entry.tailPositions[i * 3 + 2] = entry.mesh.position.z;
+    }
+    entry.tailCount = 0;
+
+    const v = Math.hypot(sol.v1x, sol.v1z);
+    const alpha = 2 / Math.hypot(shipAU.x, shipAU.z) - (v * v) / systemMu;
+    console.log('BEGIN TRANSFER (Lambert):', {
         from: entry.hostPlanetName, to: entry.transferTarget,
-        shipPos: `(${entry.p0x.toFixed(2)}, ${entry.p0z.toFixed(2)})`,
-        targetPos: `(${entry.p3x.toFixed(2)}, ${entry.p3z.toFixed(2)})`,
-        dist: dist.toFixed(2),
+        shipAU: `(${shipAU.x.toFixed(4)}, ${shipAU.z.toFixed(4)})`,
+        v0: `${v.toFixed(6)} AU/day`,
+        orbitType: alpha > 0 ? 'elliptic' : alpha < 0 ? 'hyperbolic' : 'parabolic',
         gameDays: p.gameDays.toFixed(1),
-        departAngle: `${(departVelDir * 180 / Math.PI).toFixed(1)}°`,
-        arrivalAngle: `${(arrivalVelDir * 180 / Math.PI).toFixed(1)}°`,
-        handles: `depart=${departCpScale.toFixed(2)} arrive=${arrivalCpScale.toFixed(2)}`,
     });
+
+    // Pause for inspection at departure
+    state.timeSpeed = 0;
+    window.dispatchEvent(new Event('debug-step-done'));
 }
 
 export function initiateTransfer(entry, targetEntry) {
@@ -766,48 +810,42 @@ export function initiateTransfer(entry, targetEntry) {
 
     const gameDays = gameTransferDays(r1, r2);
 
-    // Compute preliminary target to determine optimal departure angle
-    const target = computeTransferTarget(
-        { x: host.mesh.position.x, z: host.mesh.position.z }, targetEntry, gameDays
-    );
-
-    // Optimal departure: local orbit angle where velocity points toward target
-    const toTargetDir = Math.atan2(
-        target.p3z - host.mesh.position.z,
-        target.p3x - host.mesh.position.x
-    );
-    const optimalLocalAngle = toTargetDir - Math.PI / 2;
-
     entry.orbitA = (r1 + r2) / 2;
 
-    // Compute preliminary Bezier for preview
+    // Two-step Lambert from host center to get tangent departure velocity
+    const hostSol = solveLambertTangent(host.mesh.position.x, host.mesh.position.z, targetEntry, gameDays);
+
+    // Optimal departure: local orbit angle where orbital tangent matches Lambert v1
+    let optimalLocalAngle;
+    if (hostSol) {
+        const v1Dir = Math.atan2(hostSol.v1z, hostSol.v1x);
+        optimalLocalAngle = v1Dir - Math.PI / 2;
+    } else {
+        const targetWorld = predictTargetWorld(targetEntry, gameDays);
+        const toTargetDir = Math.atan2(targetWorld.z - host.mesh.position.z, targetWorld.x - host.mesh.position.x);
+        optimalLocalAngle = toTargetDir - Math.PI / 2;
+    }
+
+    // Solve Lambert from actual departure position for preview
     const departPos = {
         x: host.mesh.position.x + Math.cos(optimalLocalAngle) * SHIP_LOCAL_ORBIT,
         z: host.mesh.position.z + Math.sin(optimalLocalAngle) * SHIP_LOCAL_ORBIT,
     };
-    const departVelDir = optimalLocalAngle + Math.PI / 2;
-    const dist = Math.hypot(target.p3x - departPos.x, target.p3z - departPos.z);
-    const departCpScale = Math.max(MIN_HANDLE, dist * 0.4);
-    const arrivalCpScale = Math.max(MIN_HANDLE, Math.min(dist * 0.3, SHIP_LOCAL_ORBIT * 5));
-    const arrivalVelDir = target.approachDir + Math.PI / 2;
+    const sol = solveLambertTangent(departPos.x, departPos.z, targetEntry, gameDays);
+    const departAU = worldToAU(departPos.x, departPos.z);
 
     entry.pendingTransfer = {
         gameDays,
         targetName: targetEntry.data.name,
         optimalLocalAngle,
-        // Preliminary Bezier for path preview
-        p0x: departPos.x, p0z: departPos.z,
-        p1x: departPos.x + Math.cos(departVelDir) * departCpScale,
-        p1z: departPos.z + Math.sin(departVelDir) * departCpScale,
-        p2x: target.p3x - Math.cos(arrivalVelDir) * arrivalCpScale,
-        p2z: target.p3z - Math.sin(arrivalVelDir) * arrivalCpScale,
-        p3x: target.p3x, p3z: target.p3z,
+        lambertR0x: departAU.x, lambertR0z: departAU.z,
+        lambertV0x: sol ? sol.v1x : 0, lambertV0z: sol ? sol.v1z : 0,
+        lambertValid: !!sol,
     };
     entry.shipState = 'departing';
 
-    // Create path line immediately for departure arc feedback
-    removeTransferPath(entry, 'initiateTransfer');
-    entry.transferPath = createTransferPath('initiateTransfer');
+    removeTransferPath(entry);
+    entry.transferPath = createTransferPath();
 }
 
 
@@ -882,33 +920,77 @@ export function updatePositions(dt, camDist) {
                     completeTransfer(entry);
                 } else {
                     const t = elapsed / entry.transferTimeDays;
-                    const p = transferPosition(entry, t);
 
-                    // End blend: last 15% smoothly lerp toward actual target orbit position
-                    if (t > 0.85) {
-                        const tgt = findPlanetEntry(entry.transferTarget);
-                        if (tgt) {
-                            // Freeze only the entry angle once — compute position from planet each frame
-                            if (!entry.blendTarget) {
-                                const appAngle = Math.atan2(
-                                    tgt.mesh.position.z - p.z,
-                                    tgt.mesh.position.x - p.x
+                    // Re-solve Lambert every 15 frames (before end blend)
+                    if (t < 0.85) {
+                        entry.transferRecalcCounter++;
+                        if (entry.transferRecalcCounter >= 15) {
+                            entry.transferRecalcCounter = 0;
+                            const tgt = findPlanetEntry(entry.transferTarget);
+                            if (tgt) {
+                                const remainingDays = entry.transferTimeDays - elapsed;
+                                const sol = solveLambertTangent(
+                                    entry.mesh.position.x, entry.mesh.position.z,
+                                    tgt, remainingDays
                                 );
-                                const entryAngle = appAngle - Math.PI / 2;
-                                entry.blendTarget = { entryAngle };
-                                console.log('BLEND START:', {
-                                    t: t.toFixed(3),
-                                    bezierPos: `(${p.x.toFixed(2)}, ${p.z.toFixed(2)})`,
-                                    entryAngle: `${(entryAngle * 180 / Math.PI).toFixed(1)}°`,
-                                    planetPos: `(${tgt.mesh.position.x.toFixed(2)}, ${tgt.mesh.position.z.toFixed(2)})`,
+                                if (sol) {
+                                    const shipAU = worldToAU(entry.mesh.position.x, entry.mesh.position.z);
+                                    entry.lambertR0x = shipAU.x;
+                                    entry.lambertR0z = shipAU.z;
+                                    entry.lambertV0x = sol.v1x;
+                                    entry.lambertV0z = sol.v1z;
+                                    entry.lambertSegmentStart = elapsed;
+                                    console.log('RECALC:', {
+                                        t: t.toFixed(3), remaining: remainingDays.toFixed(1),
+                                        shipPos: `(${entry.mesh.position.x.toFixed(1)}, ${entry.mesh.position.z.toFixed(1)})`,
+                                    });
+                                }
+                            }
+                        }
+                    }
+
+                    // Propagate position along Lambert transfer orbit
+                    const p = lambertTransferPosition(entry, elapsed);
+
+                    // Capture blend: smoothly transition from Lambert conic to local orbit
+                    const CAPTURE_RADIUS = SHIP_LOCAL_ORBIT * 15;
+                    const tgt = findPlanetEntry(entry.transferTarget);
+                    if (tgt) {
+                        const dist = Math.hypot(p.x - tgt.mesh.position.x, p.z - tgt.mesh.position.z);
+
+                        if (dist <= SHIP_LOCAL_ORBIT) {
+                            // Fully captured — complete transfer
+                            const dx = p.x - tgt.mesh.position.x;
+                            const dz = p.z - tgt.mesh.position.z;
+                            entry.blendTarget = { entryAngle: Math.atan2(dz, dx) };
+                            console.log('CAPTURE:', {
+                                t: t.toFixed(3), dist: dist.toFixed(2),
+                                entryAngle: `${(entry.blendTarget.entryAngle * 180 / Math.PI).toFixed(1)}°`,
+                            });
+                            completeTransfer(entry);
+                            return;
+                        }
+
+                        if (dist < CAPTURE_RADIUS) {
+                            // In capture zone: blend Lambert position toward orbit circle
+                            // Ship's angle relative to planet (from Lambert trajectory)
+                            const angle = Math.atan2(p.z - tgt.mesh.position.z, p.x - tgt.mesh.position.x);
+                            // Orbit position at same angle
+                            const orbitX = tgt.mesh.position.x + Math.cos(angle) * SHIP_LOCAL_ORBIT;
+                            const orbitZ = tgt.mesh.position.z + Math.sin(angle) * SHIP_LOCAL_ORBIT;
+                            // Blend: 0 at capture edge, 1 at orbit radius
+                            const rawBlend = 1 - (dist - SHIP_LOCAL_ORBIT) / (CAPTURE_RADIUS - SHIP_LOCAL_ORBIT);
+                            const blend = rawBlend * rawBlend * (3 - 2 * rawBlend); // smoothstep
+                            p.x = p.x + (orbitX - p.x) * blend;
+                            p.z = p.z + (orbitZ - p.z) * blend;
+
+                            if (!entry.captureReady) {
+                                entry.captureReady = true;
+                                console.log('CAPTURE ZONE:', {
+                                    t: t.toFixed(3), dist: dist.toFixed(2),
+                                    blend: blend.toFixed(3),
                                 });
                             }
-                            // Track planet's current position + frozen angle offset
-                            const endX = tgt.mesh.position.x + Math.cos(entry.blendTarget.entryAngle) * SHIP_LOCAL_ORBIT;
-                            const endZ = tgt.mesh.position.z + Math.sin(entry.blendTarget.entryAngle) * SHIP_LOCAL_ORBIT;
-                            const blend = easeOutCubic((t - 0.85) / 0.15);
-                            p.x = p.x + (endX - p.x) * blend;
-                            p.z = p.z + (endZ - p.z) * blend;
                         }
                     }
 
@@ -920,8 +1002,7 @@ export function updatePositions(dt, camDist) {
             if (entry.transferPath) {
                 if (entry.shipState === 'transferring') {
                     const elapsed = state.simTime - entry.transferStartTime;
-                    const tCur = elapsed / entry.transferTimeDays;
-                    updateTransferPath(entry, tCur);
+                    updateTransferPath(entry, elapsed);
                     entry.transferPath.visible = true;
                 } else if (entry.shipState === 'departing' && entry.pendingTransfer) {
                     // Show arc from ship to optimal departure point
@@ -932,17 +1013,11 @@ export function updatePositions(dt, camDist) {
                 }
             }
 
-            // Velocity tail: only during transfer
+            // Velocity tail: hidden during transfer (path preview covers it)
             if (entry.shipState === 'transferring') {
-                entry.tailLine.visible = true;
-                entry.tailPositions.copyWithin(0, 3);
-                const last = (SHIP_TAIL_LENGTH - 1) * 3;
-                entry.tailPositions[last] = entry.mesh.position.x;
-                entry.tailPositions[last + 1] = 0;
-                entry.tailPositions[last + 2] = entry.mesh.position.z;
-                entry.tailCount = Math.min(entry.tailCount + 1, SHIP_TAIL_LENGTH);
-                entry.tailLine.geometry.attributes.position.needsUpdate = true;
-                entry.tailLine.geometry.setDrawRange(0, entry.tailCount);
+                entry.tailLine.visible = false;
+                entry.tailCount = 0;
+                entry.tailLine.geometry.setDrawRange(0, 0);
             } else {
                 entry.tailLine.visible = false;
                 entry.tailCount = 0;
