@@ -50,6 +50,10 @@
             <div class="info-row"><span class="info-label">Radius:</span><span id="info-radius">-</span></div>
             <div class="info-row"><span class="info-label">Moons:</span><span id="info-moons">-</span></div>
             <div class="info-row"><span class="info-label">Position:</span><span id="info-position">-</span></div>
+            <div id="info-ship-size" class="info-row hidden">
+                <span class="info-label">Size:</span>
+                <input type="number" id="ship-size-input" value="0.02" step="0.01" min="0.01" max="1.0">
+            </div>
             <div id="info-transfer" class="info-row hidden">
                 <span class="info-label">Transfer:</span>
                 <span class="transfer-controls">
@@ -69,7 +73,7 @@
         <div id="display-controls">
             <label class="ctrl-toggle"><input type="checkbox" id="toggle-orbits" checked> Orbital Rings</label>
             <label class="ctrl-toggle"><input type="checkbox" id="toggle-labels" checked> Labels</label>
-            <label class="ctrl-toggle"><input type="checkbox" id="toggle-grid" checked> Distance Grid</label>
+            <label class="ctrl-toggle"><input type="checkbox" id="toggle-grid"> Distance Grid</label>
             <label class="ctrl-toggle"><input type="checkbox" id="toggle-trails"> Orbit Trails</label>
         </div>
     </div>
