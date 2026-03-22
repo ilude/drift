@@ -2,17 +2,18 @@
  * @vitest-environment jsdom
  */
 import { describe, it, expect, vi } from 'vitest';
+import type { BodyEntry, PlanetEntry } from '../types';
 
 // Mock scene.js to avoid DOM/Three.js side effects at import time
-vi.mock('../rendering/scene.js', () => ({
+vi.mock('../rendering/scene', () => ({
     scene: { add: vi.fn() },
     labelContainer: { appendChild: vi.fn() },
     trailGroups: { add: vi.fn() },
     cometGroup: { add: vi.fn() },
 }));
 
-import { orbitToWorld, createShip, initiateTransfer } from '../rendering/rendering.js';
-import { state } from '../core/state.js';
+import { orbitToWorld, createShip, initiateTransfer } from '../rendering/rendering';
+import { state } from '../core/state';
 
 describe('orbitToWorld', () => {
     const PI = Math.PI;
@@ -66,12 +67,12 @@ describe('orbitToWorld', () => {
 describe('createShip', () => {
     it('returns ship entry with physics properties', () => {
         state.BODIES = [
-            { name: 'Sun', type: 'Star', distance: 0, period: 0, radius: 696340, color: '#ffdd44', moons: [] },
-            { name: 'Earth', type: 'Planet', distance: 1.0, period: 1.0, radius: 6371, color: '#4488ff', moons: [] },
+            { name: 'Sun', type: 'Star' as const, distance: 0, e: 0, period: 0, radius: 696340, color: '#ffdd44', moons: [] },
+            { name: 'Earth', type: 'Planet' as const, distance: 1.0, e: 0.017, period: 1.0, radius: 6371, color: '#4488ff', moons: [] },
         ];
         state.bodyMeshes = [];
 
-        const entry = createShip();
+        const entry = createShip()!;
         expect(entry).toBeDefined();
         expect(entry.isShip).toBe(true);
         expect(entry).toHaveProperty('dryMassKg');
@@ -88,50 +89,49 @@ describe('createShip', () => {
 describe('initiateTransfer', () => {
     function setupSystem() {
         state.BODIES = [
-            { name: 'Sun', type: 'Star', distance: 0, period: 0, radius: 696340, color: '#ffdd44', moons: [] },
-            { name: 'Earth', type: 'Planet', distance: 1.0, period: 1.0, radius: 6371, color: '#4488ff', moons: [] },
-            { name: 'Mars', type: 'Planet', distance: 1.524, period: 1.881, radius: 3390, color: '#ff6644', moons: [] },
+            { name: 'Sun', type: 'Star' as const, distance: 0, e: 0, period: 0, radius: 696340, color: '#ffdd44', moons: [] },
+            { name: 'Earth', type: 'Planet' as const, distance: 1.0, e: 0.017, period: 1.0, radius: 6371, color: '#4488ff', moons: [] },
+            { name: 'Mars', type: 'Planet' as const, distance: 1.524, e: 0.093, period: 1.881, radius: 3390, color: '#ff6644', moons: [] },
         ];
         state.bodyMeshes = [];
         state.simTime = 0;
 
-        // Create planet entries so findPlanetEntry works
-        state.BODIES.forEach(b => {
+        state.BODIES!.forEach(b => {
             if (b.type !== 'Star') {
-                const mesh = { position: { x: 100 * b.distance, y: 0, z: 0, set: vi.fn() } };
                 state.bodyMeshes.push({
-                    data: b, mesh, isShip: false, isMoon: false, isComet: false,
+                    data: b, mesh: { position: { x: 100 * b.distance, y: 0, z: 0, set: vi.fn() } },
+                    isShip: false, isMoon: false, isComet: false,
                     speed: 0.01, angle: 0,
-                });
+                } as unknown as BodyEntry);
             }
         });
 
-        const ship = createShip();
+        const ship = createShip()!;
         return ship;
     }
 
     it('deducts fuel on successful transfer', () => {
         const ship = setupSystem();
         const fuelBefore = ship.fuelKg;
-        const mars = state.bodyMeshes.find(e => e.data.name === 'Mars');
-        initiateTransfer(ship, mars);
+        const mars = state.bodyMeshes.find(e => e.data.name === 'Mars')!;
+        initiateTransfer(ship, mars as unknown as PlanetEntry);
         expect(ship.fuelKg).toBeLessThan(fuelBefore);
     });
 
     it('rejects transfer when fuel is insufficient', () => {
         const ship = setupSystem();
         ship.fuelKg = 1; // near-zero fuel
-        const mars = state.bodyMeshes.find(e => e.data.name === 'Mars');
-        initiateTransfer(ship, mars);
+        const mars = state.bodyMeshes.find(e => e.data.name === 'Mars')!;
+        initiateTransfer(ship, mars as unknown as PlanetEntry);
         expect(ship.shipState).toBe('orbiting');
     });
 
     it('uses brachistochrone transfer time (~2 days for Earth-Mars at 1g)', () => {
         const ship = setupSystem();
-        const mars = state.bodyMeshes.find(e => e.data.name === 'Mars');
-        initiateTransfer(ship, mars);
-        // Brachistochrone at 1g: ~2 days Earth→Mars
-        expect(ship.pendingTransfer.gameDays).toBeLessThan(5);
-        expect(ship.pendingTransfer.gameDays).toBeGreaterThan(1);
+        const mars = state.bodyMeshes.find(e => e.data.name === 'Mars')!;
+        initiateTransfer(ship, mars as unknown as PlanetEntry);
+        // Brachistochrone at 1g: ~2 days Earth->Mars
+        expect(ship.pendingTransfer!.gameDays).toBeLessThan(5);
+        expect(ship.pendingTransfer!.gameDays).toBeGreaterThan(1);
     });
 });

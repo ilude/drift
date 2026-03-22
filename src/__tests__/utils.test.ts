@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { seededRandom } from '../core/utils.js';
+import { seededRandom } from '../core/utils';
 
 describe('seededRandom', () => {
     it('produces deterministic output for same seed', () => {

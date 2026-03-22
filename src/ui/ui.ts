@@ -1,18 +1,20 @@
 import * as THREE from 'three';
-import { state, simTimeToDate, truncateDate, formatDateTime } from '../core/state.js';
-import { MOON_LOD_ZOOM, screenRadius as calcScreenRadius, lodLevel, bodyScaleFactor } from '../math/visual.js';
-import { camera, ZOOM_BASE, gridGroup } from '../rendering/scene.js';
-import { selectBody, recenterOnStar } from './selection.js';
-import { generateSystem } from '../data/system-generator.js';
+import { state, simTimeToDate, truncateDate, formatDateTime } from '../core/state';
+import { MOON_LOD_ZOOM, screenRadius as calcScreenRadius, lodLevel, bodyScaleFactor } from '../math/visual';
+import { camera, ZOOM_BASE, gridGroup } from '../rendering/scene';
+import { selectBody, recenterOnStar } from './selection';
+import { generateSystem } from '../data/system-generator';
+import type { BodyEntry, SystemData } from '../types';
+import { isShipEntry } from '../types';
 
 // --- Body list panel ---
 
-const bodyListEl = document.getElementById('body-list');
+const bodyListEl = document.getElementById('body-list')!;
 
-export function buildBodyList() {
+export function buildBodyList(): void {
     bodyListEl.innerHTML = '';
 
-    const groups = {};
+    const groups: Record<string, BodyEntry[]> = {};
     const groupOrder = ['Star', 'Planet', 'Dwarf Planet', 'Detached Object', 'Comet', 'Ship'];
     state.bodyMeshes.forEach(entry => {
         if (entry.isMoon) return;
@@ -21,7 +23,7 @@ export function buildBodyList() {
         groups[type].push(entry);
     });
 
-    const groupLabels = {
+    const groupLabels: Record<string, string> = {
         'Star': 'Stars',
         'Planet': 'Planets',
         'Dwarf Planet': 'Dwarf Planets',
@@ -49,7 +51,7 @@ export function buildBodyList() {
         header.addEventListener('click', () => {
             const collapsed = list.style.display === 'none';
             list.style.display = collapsed ? '' : 'none';
-            header.querySelector('.body-group-toggle').textContent = collapsed ? '[-]' : '[+]';
+            header.querySelector('.body-group-toggle')!.textContent = collapsed ? '[-]' : '[+]';
         });
 
         entries.forEach(entry => {
@@ -60,12 +62,12 @@ export function buildBodyList() {
             item.innerHTML = `<span class="body-color-dot" style="background:${entry.data.color}"></span>
                 <span class="body-list-name">${entry.data.name}</span>${toggleSpan}`;
             item.addEventListener('click', (e) => {
-                if (e.target.classList.contains('moon-toggle')) {
+                if ((e.target as HTMLElement).classList.contains('moon-toggle')) {
                     const moonList = item.nextElementSibling;
                     if (moonList && moonList.classList.contains('moon-sublist')) {
-                        const collapsed = moonList.style.display === 'none';
-                        moonList.style.display = collapsed ? '' : 'none';
-                        e.target.textContent = collapsed ? '[-]' : '[+]';
+                        const collapsed = (moonList as HTMLElement).style.display === 'none';
+                        (moonList as HTMLElement).style.display = collapsed ? '' : 'none';
+                        (e.target as HTMLElement).textContent = collapsed ? '[-]' : '[+]';
                     }
                     return;
                 }
@@ -95,7 +97,7 @@ export function buildBodyList() {
 
 // --- System switcher ---
 
-export function hashString(str) {
+export function hashString(str: string): number {
     let hash = 5381;
     for (let i = 0; i < str.length; i++) {
         hash = ((hash << 5) + hash) + str.charCodeAt(i);
@@ -104,7 +106,7 @@ export function hashString(str) {
     return hash || 1;
 }
 
-function rebuildSystemList() {
+function rebuildSystemList(): void {
     const list = document.getElementById('system-list');
     if (!list) return;
     list.innerHTML = '';
@@ -118,9 +120,9 @@ function rebuildSystemList() {
 }
 
 // loadSystem is passed in from main via setupUI
-let _loadSystem = null;
+let _loadSystem: ((systemData: SystemData) => void) | null = null;
 
-function switchToSystem(key) {
+function switchToSystem(key: string): void {
     if (key === state.currentSystemKey) return;
     const sys = state.discoveredSystems.get(key);
     if (!sys) return;
@@ -129,7 +131,7 @@ function switchToSystem(key) {
     rebuildSystemList();
 }
 
-function discoverSystem(seed) {
+function discoverSystem(seed: number): void {
     const key = `seed-${seed}`;
     if (!state.discoveredSystems.has(key)) {
         const systemData = generateSystem(seed);
@@ -143,7 +145,7 @@ function discoverSystem(seed) {
 const tempVec = new THREE.Vector3();
 const edgeVec = new THREE.Vector3();
 
-export function updateLabels(camDist) {
+export function updateLabels(camDist: number): void {
     const showLabels = state.showLabels;
     const showOrbits = state.showOrbits;
     const zoomFactor = ZOOM_BASE / camDist;
@@ -163,7 +165,7 @@ export function updateLabels(camDist) {
             }
         }
 
-        if (!entry.isMoon && !entry.isComet && !entry.isShip && entry.baseSize) {
+        if (!entry.isMoon && !entry.isComet && !entry.isShip && 'baseSize' in entry) {
             const scaledSize = entry.baseSize + scaleFactor * (entry.realisticSize - entry.baseSize);
             const s = scaledSize / entry.baseSize;
             entry.mesh.scale.set(s, s, s);
@@ -194,10 +196,10 @@ export function updateLabels(camDist) {
             }
         }
 
-        if (entry.planetRing) {
+        if ('planetRing' in entry && entry.planetRing) {
             entry.planetRing.visible = sr > 15;
         }
-        if (entry.cloudMesh) {
+        if ('cloudMesh' in entry && entry.cloudMesh) {
             entry.cloudMesh.visible = sr > 15;
         }
 
@@ -209,16 +211,16 @@ export function updateLabels(camDist) {
 
 // --- HUD ---
 
-const fpsEl = document.getElementById('fps-display');
-const timeEl = document.getElementById('time-display');
-const zoomEl = document.getElementById('zoom-display');
+const fpsEl = document.getElementById('fps-display')!;
+const timeEl = document.getElementById('time-display')!;
+const zoomEl = document.getElementById('zoom-display')!;
 let fpsFrames = 0;
 let fpsLastTime = performance.now();
 let fpsValue = 0;
 let lastTimeText = '';
 let lastZoomText = '';
 
-export function updateHUD(camDist) {
+export function updateHUD(camDist: number): void {
     fpsFrames++;
     const now = performance.now();
     if (now - fpsLastTime >= 500) {
@@ -244,37 +246,37 @@ export function updateHUD(camDist) {
 
 // --- Setup all UI event listeners ---
 
-export function setupUI(loadSystem) {
+export function setupUI(loadSystem: (systemData: SystemData) => void): void {
     _loadSystem = loadSystem;
 
     // System switcher
-    document.getElementById('system-switcher-btn').addEventListener('click', () => {
-        const dropdown = document.getElementById('system-switcher-dropdown');
+    document.getElementById('system-switcher-btn')!.addEventListener('click', () => {
+        const dropdown = document.getElementById('system-switcher-dropdown')!;
         dropdown.classList.toggle('hidden');
         if (!dropdown.classList.contains('hidden')) rebuildSystemList();
     });
 
-    document.getElementById('btn-discover').addEventListener('click', () => {
-        const seedStr = document.getElementById('seed-input').value.trim();
+    document.getElementById('btn-discover')!.addEventListener('click', () => {
+        const seedStr = (document.getElementById('seed-input') as HTMLInputElement).value.trim();
         if (!seedStr) return;
         discoverSystem(hashString(seedStr));
-        document.getElementById('seed-input').value = '';
-        document.getElementById('system-switcher-dropdown').classList.add('hidden');
+        (document.getElementById('seed-input') as HTMLInputElement).value = '';
+        document.getElementById('system-switcher-dropdown')!.classList.add('hidden');
     });
 
-    document.getElementById('btn-random').addEventListener('click', () => {
-        const seed = Math.floor(state.masterRng() * 2147483646) + 1;
+    document.getElementById('btn-random')!.addEventListener('click', () => {
+        const seed = Math.floor(state.masterRng!() * 2147483646) + 1;
         state.randomClickCount++;
         discoverSystem(seed);
-        document.getElementById('system-switcher-dropdown').classList.add('hidden');
+        document.getElementById('system-switcher-dropdown')!.classList.add('hidden');
     });
 
-    document.getElementById('seed-input').addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') document.getElementById('btn-discover').click();
+    document.getElementById('seed-input')!.addEventListener('keydown', (e: KeyboardEvent) => {
+        if (e.key === 'Enter') document.getElementById('btn-discover')!.click();
     });
 
     // Time controls — speed selector dropdown
-    const TIME_SCALES = [
+    const TIME_SCALES: Array<{ label: string; speed: number }> = [
         { label: '5 Seconds', speed: 5 / 86400 },
         { label: '30 Seconds', speed: 30 / 86400 },
         { label: '2 Minutes', speed: 120 / 86400 },
@@ -289,20 +291,20 @@ export function setupUI(loadSystem) {
     ];
     const DEFAULT_SCALE_INDEX = 8; // 1 Day
 
-    const speedDropdown = document.getElementById('speed-selector-dropdown');
-    const speedBtn = document.getElementById('speed-selector-btn');
-    const speedListEl = document.getElementById('speed-list');
-    const pauseBtn = document.getElementById('btn-pause');
+    const speedDropdown = document.getElementById('speed-selector-dropdown')!;
+    const speedBtn = document.getElementById('speed-selector-btn')!;
+    const speedListEl = document.getElementById('speed-list')!;
+    const pauseBtn = document.getElementById('btn-pause')!;
     let activeScaleIndex = DEFAULT_SCALE_INDEX;
     let paused = false;
 
-    function updateSpeedBtn() {
+    function updateSpeedBtn(): void {
         speedBtn.textContent = paused ? 'Paused ▾' : `${TIME_SCALES[activeScaleIndex].label} ▾`;
         pauseBtn.textContent = paused ? '|>' : '||';
         pauseBtn.classList.toggle('active', paused);
     }
 
-    function buildSpeedList() {
+    function buildSpeedList(): void {
         speedListEl.innerHTML = '';
         TIME_SCALES.forEach((scale, i) => {
             const item = document.createElement('button');
@@ -333,7 +335,7 @@ export function setupUI(loadSystem) {
         }
     });
 
-    function togglePause() {
+    function togglePause(): void {
         paused = !paused;
         state.timeSpeed = paused ? 0 : TIME_SCALES[activeScaleIndex].speed;
         updateSpeedBtn();
@@ -341,8 +343,8 @@ export function setupUI(loadSystem) {
 
     pauseBtn.addEventListener('click', togglePause);
 
-    window.addEventListener('keydown', (e) => {
-        const onFormElement = ['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName);
+    window.addEventListener('keydown', (e: KeyboardEvent) => {
+        const onFormElement = ['INPUT', 'SELECT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName);
         if (e.code === 'Space' || e.key === ' ') {
             if (onFormElement) return;
             e.preventDefault();
@@ -356,7 +358,7 @@ export function setupUI(loadSystem) {
             state.timeSpeed = speed;
             paused = false;
             updateSpeedBtn();
-            const ship = state.bodyMeshes.find(b => b.isShip);
+            const ship = state.bodyMeshes.find(isShipEntry);
             const elapsed = ship ? state.simTime - ship.transferStartTime : 0;
             const t = ship && ship.transferTimeDays > 0 ? elapsed / ship.transferTimeDays : 0;
             console.log(`DEBUG STEP [${backward ? 'B' : 'N'}]:`, {
@@ -375,25 +377,25 @@ export function setupUI(loadSystem) {
     updateSpeedBtn();
 
     // Recenter
-    document.getElementById('btn-recenter').addEventListener('click', recenterOnStar);
+    document.getElementById('btn-recenter')!.addEventListener('click', recenterOnStar);
 
     // Display toggles
-    document.getElementById('toggle-orbits').addEventListener('change', (e) => {
-        state.showOrbits = e.target.checked;
-        state.bodyMeshes.forEach(b => { if (b.orbitLine) b.orbitLine.visible = e.target.checked; });
+    document.getElementById('toggle-orbits')!.addEventListener('change', (e) => {
+        state.showOrbits = (e.target as HTMLInputElement).checked;
+        state.bodyMeshes.forEach(b => { if (b.orbitLine) b.orbitLine.visible = (e.target as HTMLInputElement).checked; });
     });
 
-    document.getElementById('toggle-labels').addEventListener('change', (e) => {
-        state.showLabels = e.target.checked;
-        state.bodyMeshes.forEach(b => { b.labelDiv.style.display = e.target.checked ? '' : 'none'; });
+    document.getElementById('toggle-labels')!.addEventListener('change', (e) => {
+        state.showLabels = (e.target as HTMLInputElement).checked;
+        state.bodyMeshes.forEach(b => { b.labelDiv.style.display = (e.target as HTMLInputElement).checked ? '' : 'none'; });
     });
 
-    document.getElementById('toggle-grid').addEventListener('change', (e) => {
-        gridGroup.visible = e.target.checked;
+    document.getElementById('toggle-grid')!.addEventListener('change', (e) => {
+        gridGroup.visible = (e.target as HTMLInputElement).checked;
     });
 
-    document.getElementById('toggle-trails').addEventListener('change', (e) => {
-        state.showTrails = e.target.checked;
-        state.bodyMeshes.forEach(b => { b.trail.line.visible = e.target.checked; });
+    document.getElementById('toggle-trails')!.addEventListener('change', (e) => {
+        state.showTrails = (e.target as HTMLInputElement).checked;
+        state.bodyMeshes.forEach(b => { b.trail.line.visible = (e.target as HTMLInputElement).checked; });
     });
 }

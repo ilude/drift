@@ -1,10 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { hohmannTransfer, transferSpeed, transferStartAngle, isTransferComplete, gameTransferDays, gameTransferSpeed, lambertSolve, propagatePosition, worldToAU, auToWorld, computeMu, deriveStarMass } from '../math/transfer.js';
-import { DAYS_PER_YEAR } from '../math/orbit.js';
+import { hohmannTransfer, transferSpeed, transferStartAngle, isTransferComplete, gameTransferDays, gameTransferSpeed, lambertSolve, propagatePosition, worldToAU, auToWorld, computeMu, deriveStarMass } from '../math/transfer';
+import { DAYS_PER_YEAR } from '../math/orbit';
+import type { BodyData } from '../types';
 
 describe('hohmannTransfer', () => {
     it('computes correct semi-major axis', () => {
-        const { a } = hohmannTransfer(1.0, 1.524); // Earth → Mars
+        const { a } = hohmannTransfer(1.0, 1.524); // Earth -> Mars
         expect(a).toBeCloseTo(1.262, 3);
     });
 
@@ -32,7 +33,7 @@ describe('hohmannTransfer', () => {
     it('uses star mass in period calculation', () => {
         const t1 = hohmannTransfer(1.0, 2.0, 1).transferTimeDays;
         const t2 = hohmannTransfer(1.0, 2.0, 4).transferTimeDays;
-        expect(t2).toBeLessThan(t1); // heavier star → shorter period
+        expect(t2).toBeLessThan(t1); // heavier star -> shorter period
     });
 });
 
@@ -102,7 +103,7 @@ describe('gameTransferSpeed', () => {
 describe('computeMu', () => {
     it('returns correct mu for solar mass', () => {
         const mu = computeMu(1);
-        // mu = 4π²/365.25² AU³/day²
+        // mu = 4pi^2/365.25^2 AU^3/day^2
         expect(mu).toBeCloseTo(4 * Math.PI * Math.PI / (365.25 * 365.25), 10);
     });
 
@@ -116,7 +117,7 @@ describe('deriveStarMass', () => {
         const mass = deriveStarMass([
             { type: 'Star', distance: 0, period: 0 },
             { type: 'Planet', distance: 1.0, period: 1.0, name: 'Earth' },
-        ]);
+        ] as unknown as BodyData[]);
         expect(mass).toBeCloseTo(1.0, 5);
     });
 
@@ -124,7 +125,7 @@ describe('deriveStarMass', () => {
         const mass = deriveStarMass([
             { type: 'Star', distance: 0, period: 0 },
             { type: 'Planet', distance: 5.203, period: 11.86, name: 'Jupiter' },
-        ]);
+        ] as unknown as BodyData[]);
         expect(mass).toBeCloseTo(1.0, 1);
     });
 });
@@ -167,20 +168,20 @@ describe('lambertSolve', () => {
     });
 
     it('departure velocity is roughly correct magnitude for Hohmann', () => {
-        // Earth at (1, 0) AU, Mars at (-1.524, 0) AU (180° transfer)
+        // Earth at (1, 0) AU, Mars at (-1.524, 0) AU (180 deg transfer)
         const result = lambertSolve(1, 0, -1.524, 0, 259, mu);
         expect(result).not.toBeNull();
-        // Hohmann departure velocity ~32.7 km/s ≈ ~0.0000634 AU/day ... let's just check it's reasonable
-        const v1 = Math.hypot(result.v1x, result.v1z);
+        // Hohmann departure velocity ~32.7 km/s ... let's just check it's reasonable
+        const v1 = Math.hypot(result!.v1x, result!.v1z);
         expect(v1).toBeGreaterThan(0);
-        expect(v1).toBeLessThan(0.1); // AU/day — reasonable bound
+        expect(v1).toBeLessThan(0.1); // AU/day -- reasonable bound
     });
 
     it('works for fast game-scale transfers', () => {
         // Earth (1, 0) to Mars position (0.5, 1.4) in ~5 days
         const result = lambertSolve(1, 0, 0.5, 1.4, 5, mu);
         expect(result).not.toBeNull();
-        const v1 = Math.hypot(result.v1x, result.v1z);
+        const v1 = Math.hypot(result!.v1x, result!.v1z);
         expect(v1).toBeGreaterThan(0);
     });
 
@@ -207,7 +208,7 @@ describe('propagatePosition', () => {
         expect(pos.z).toBeCloseTo(0, 2);
     });
 
-    it('circular orbit quarter period gives 90° rotation', () => {
+    it('circular orbit quarter period gives 90 deg rotation', () => {
         const v = Math.sqrt(mu / 1.0);
         const period = DAYS_PER_YEAR;
         const pos = propagatePosition(1, 0, 0, v, period / 4, mu);
@@ -221,7 +222,7 @@ describe('propagatePosition', () => {
         const tof = 200;
         const result = lambertSolve(r1x, r1z, r2x, r2z, tof, mu);
         expect(result).not.toBeNull();
-        const pos = propagatePosition(r1x, r1z, result.v1x, result.v1z, tof, mu);
+        const pos = propagatePosition(r1x, r1z, result!.v1x, result!.v1z, tof, mu);
         expect(pos.x).toBeCloseTo(r2x, 2);
         expect(pos.z).toBeCloseTo(r2z, 2);
     });
@@ -232,7 +233,7 @@ describe('propagatePosition', () => {
         const tof = 5;
         const result = lambertSolve(r1x, r1z, r2x, r2z, tof, mu);
         expect(result).not.toBeNull();
-        const pos = propagatePosition(r1x, r1z, result.v1x, result.v1z, tof, mu);
+        const pos = propagatePosition(r1x, r1z, result!.v1x, result!.v1z, tof, mu);
         expect(pos.x).toBeCloseTo(r2x, 1);
         expect(pos.z).toBeCloseTo(r2z, 1);
     });

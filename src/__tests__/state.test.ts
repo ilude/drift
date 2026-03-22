@@ -2,7 +2,8 @@
  * @vitest-environment jsdom
  */
 import { describe, it, expect } from 'vitest';
-import { simTimeToDay, simTimeToDate, speedLabel, truncateDate, formatDateTime, state, restoreShipState } from '../core/state.js';
+import { simTimeToDay, simTimeToDate, speedLabel, truncateDate, formatDateTime, state, restoreShipState } from '../core/state';
+import type { SavedStateData, ShipEntry } from '../types';
 
 describe('simTimeToDay', () => {
     it('returns 0 for simTime 0', () => {
@@ -145,22 +146,22 @@ describe('speedLabel', () => {
 
 describe('ship state persistence', () => {
     it('restoreShipState round-trips fuelKg and engineId', () => {
-        // Simulate a save payload (what saveState would produce)
         const saved = {
-            version: 1,
+            version: 1, simTime: 0, currentSystemKey: 'sol',
+            randomClickCount: 0, discoveredSystems: [],
             ship: { fuelKg: 75000, engineId: 'nuclear' },
-        };
+        } as SavedStateData;
 
         state.bodyMeshes = [{
             isShip: true,
             fuelKg: 100000,
             engineId: 'chemical',
-        }];
+        }] as typeof state.bodyMeshes;
 
         restoreShipState(saved);
 
-        expect(state.bodyMeshes[0].fuelKg).toBe(75000);
-        expect(state.bodyMeshes[0].engineId).toBe('nuclear');
+        expect((state.bodyMeshes[0] as unknown as ShipEntry).fuelKg).toBe(75000);
+        expect((state.bodyMeshes[0] as unknown as ShipEntry).engineId).toBe('nuclear');
     });
 
     it('restoreShipState applies saved ship data', () => {
@@ -168,13 +169,17 @@ describe('ship state persistence', () => {
             isShip: true,
             fuelKg: 100000,
             engineId: 'chemical',
-        }];
+        }] as typeof state.bodyMeshes;
 
-        const saved = { ship: { fuelKg: 75000, engineId: 'nuclear' } };
+        const saved = {
+            version: 1, simTime: 0, currentSystemKey: 'sol',
+            randomClickCount: 0, discoveredSystems: [],
+            ship: { fuelKg: 75000, engineId: 'nuclear' },
+        } as SavedStateData;
         restoreShipState(saved);
 
-        expect(state.bodyMeshes[0].fuelKg).toBe(75000);
-        expect(state.bodyMeshes[0].engineId).toBe('nuclear');
+        expect((state.bodyMeshes[0] as unknown as ShipEntry).fuelKg).toBe(75000);
+        expect((state.bodyMeshes[0] as unknown as ShipEntry).engineId).toBe('nuclear');
     });
 
     it('restoreShipState handles missing ship data gracefully', () => {
@@ -182,15 +187,15 @@ describe('ship state persistence', () => {
             isShip: true,
             fuelKg: 100000,
             engineId: 'chemical',
-        }];
+        }] as typeof state.bodyMeshes;
 
         restoreShipState(null);
-        expect(state.bodyMeshes[0].fuelKg).toBe(100000);
+        expect((state.bodyMeshes[0] as unknown as ShipEntry).fuelKg).toBe(100000);
 
-        restoreShipState({});
-        expect(state.bodyMeshes[0].fuelKg).toBe(100000);
+        restoreShipState({} as unknown as SavedStateData);
+        expect((state.bodyMeshes[0] as unknown as ShipEntry).fuelKg).toBe(100000);
 
-        restoreShipState({ ship: null });
-        expect(state.bodyMeshes[0].fuelKg).toBe(100000);
+        restoreShipState({ ship: null } as unknown as SavedStateData);
+        expect((state.bodyMeshes[0] as unknown as ShipEntry).fuelKg).toBe(100000);
     });
 });

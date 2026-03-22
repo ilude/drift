@@ -1,18 +1,21 @@
+import type { AppState, SavedStateData } from '../types';
+import { isShipEntry } from '../types';
+
 export const MAX_CLICK_DIST = 50;
 
 // Simulation epoch: January 20, 2038 (day after Unix Y2K38 overflow)
-export const SIM_EPOCH = new Date(2038, 0, 20);
+export const SIM_EPOCH: Date = new Date(2038, 0, 20);
 
-export function simTimeToDate(simTime) {
+export function simTimeToDate(simTime: number): Date {
     const ms = simTime * 86400000;
     return new Date(SIM_EPOCH.getTime() + ms);
 }
 
-export function simTimeToDay(simTime) {
+export function simTimeToDay(simTime: number): number {
     return Math.floor(simTime);
 }
 
-export function truncateDate(date, speed) {
+export function truncateDate(date: Date, speed: number): Date {
     if (speed >= 30) { date.setDate(1); date.setHours(0, 0, 0, 0); }
     else if (speed >= 8 / 24) { date.setHours(0, 0, 0, 0); }
     else if (speed >= 1 / 24) { date.setMinutes(0, 0, 0); }
@@ -20,7 +23,7 @@ export function truncateDate(date, speed) {
     return date;
 }
 
-export function formatDateTime(date) {
+export function formatDateTime(date: Date): string {
     const y = date.getFullYear();
     const mo = String(date.getMonth() + 1).padStart(2, '0');
     const d = String(date.getDate()).padStart(2, '0');
@@ -30,18 +33,18 @@ export function formatDateTime(date) {
     return `${y}-${mo}-${d} ${h}:${mi}:${s}`;
 }
 
-export function speedLabel(timeSpeed) {
+export function speedLabel(timeSpeed: number): string {
     if (timeSpeed === 0) return 'Paused';
     if (timeSpeed < 1) return `${Math.round(timeSpeed * 24)} hrs / sec`;
     if (timeSpeed < 30) return `${timeSpeed} day${timeSpeed === 1 ? '' : 's'} / sec`;
     return `${Math.round(timeSpeed / 30)} month${timeSpeed < 60 ? '' : 's'} / sec`;
 }
 
-export const MASTER_SEED = 42;
+export const MASTER_SEED: number = 42;
 const SAVE_KEY = 'solar-sim-state';
 const SAVE_VERSION = 2;
 
-export const state = {
+export const state: AppState = {
     bodyMeshes: [],
     asteroidBelts: [],
     selectedBody: null,
@@ -62,20 +65,20 @@ export const state = {
     debugStepSpeed: 0,
 };
 
-export function saveState() {
-    const systems = [];
+export function saveState(): void {
+    const systems: Array<{ key: string; name: string; seed: number }> = [];
     state.discoveredSystems.forEach((sys, key) => {
         if (key === 'sol') return;
-        systems.push({ key, name: sys.name, seed: sys.seed });
+        systems.push({ key, name: sys.name, seed: sys.seed as number });
     });
     // Capture ship physics state
-    const shipEntry = state.bodyMeshes.find(e => e.isShip);
-    const shipData = shipEntry ? {
+    const shipEntry = state.bodyMeshes.find(e => isShipEntry(e));
+    const shipData = shipEntry && isShipEntry(shipEntry) ? {
         fuelKg: shipEntry.fuelKg,
         engineId: shipEntry.engineId,
     } : null;
 
-    const data = {
+    const data: SavedStateData = {
         version: SAVE_VERSION,
         simTime: state.simTime,
         currentSystemKey: state.currentSystemKey,
@@ -88,11 +91,11 @@ export function saveState() {
     } catch (_) { /* storage full or unavailable */ }
 }
 
-export function loadSavedState() {
+export function loadSavedState(): SavedStateData | null {
     try {
         const raw = localStorage.getItem(SAVE_KEY);
         if (!raw) return null;
-        const data = JSON.parse(raw);
+        const data = JSON.parse(raw) as SavedStateData;
         if (data.version !== SAVE_VERSION) return null;
         return data;
     } catch (_) {
@@ -100,10 +103,10 @@ export function loadSavedState() {
     }
 }
 
-export function restoreShipState(savedData) {
+export function restoreShipState(savedData: SavedStateData | null): void {
     if (!savedData || !savedData.ship) return;
-    const shipEntry = state.bodyMeshes.find(e => e.isShip);
-    if (!shipEntry) return;
+    const shipEntry = state.bodyMeshes.find(e => isShipEntry(e));
+    if (!shipEntry || !isShipEntry(shipEntry)) return;
     if (savedData.ship.fuelKg !== undefined) shipEntry.fuelKg = savedData.ship.fuelKg;
     if (savedData.ship.engineId !== undefined) shipEntry.engineId = savedData.ship.engineId;
 }

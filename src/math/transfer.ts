@@ -1,14 +1,15 @@
-import { DAYS_PER_YEAR, DIST_SCALE, keplerPeriod, orbitSpeed } from './orbit.js';
+import { DAYS_PER_YEAR, DIST_SCALE, keplerPeriod, orbitSpeed } from './orbit';
+import type { BodyData, HohmannResult, LambertResult, Vector2Like } from '../types';
 
 // --- Stumpff functions for universal variable formulation ---
 
-function stumpffC(psi) {
+function stumpffC(psi: number): number {
     if (psi > 1e-6) return (1 - Math.cos(Math.sqrt(psi))) / psi;
     if (psi < -1e-6) return (Math.cosh(Math.sqrt(-psi)) - 1) / (-psi);
     return 0.5 - psi / 24 + psi * psi / 720;
 }
 
-function stumpffS(psi) {
+function stumpffS(psi: number): number {
     if (psi > 1e-6) {
         const sq = Math.sqrt(psi);
         return (sq - Math.sin(sq)) / (sq * sq * sq);
@@ -26,15 +27,15 @@ function stumpffS(psi) {
  * Solve Lambert's problem: find the conic orbit connecting two positions
  * in a given time of flight. Works for elliptic, parabolic, and hyperbolic transfers.
  *
- * @param {number} r1x - departure x (AU)
- * @param {number} r1z - departure z (AU)
- * @param {number} r2x - arrival x (AU)
- * @param {number} r2z - arrival z (AU)
- * @param {number} tof - time of flight (days)
- * @param {number} mu - gravitational parameter (AU³/day²)
- * @returns {{ v1x, v1z, v2x, v2z } | null} velocity vectors at departure and arrival
+ * @param r1x - departure x (AU)
+ * @param r1z - departure z (AU)
+ * @param r2x - arrival x (AU)
+ * @param r2z - arrival z (AU)
+ * @param tof - time of flight (days)
+ * @param mu - gravitational parameter (AU³/day²)
+ * @returns velocity vectors at departure and arrival
  */
-export function lambertSolve(r1x, r1z, r2x, r2z, tof, mu) {
+export function lambertSolve(r1x: number, r1z: number, r2x: number, r2z: number, tof: number, mu: number): LambertResult | null {
     const r1 = Math.hypot(r1x, r1z);
     const r2 = Math.hypot(r2x, r2z);
     if (r1 < 1e-14 || r2 < 1e-14 || tof <= 0) return null;
@@ -57,7 +58,7 @@ export function lambertSolve(r1x, r1z, r2x, r2z, tof, mu) {
     const target = sqrtMu * tof;
 
     // Evaluate F(z) — the time residual for a given z value
-    function evalF(zv) {
+    function evalF(zv: number): number {
         const Cv = stumpffC(zv);
         const Sv = stumpffS(zv);
         const sqCv = Math.sqrt(Math.abs(Cv));
@@ -72,7 +73,7 @@ export function lambertSolve(r1x, r1z, r2x, r2z, tof, mu) {
     // Bracket the root: find zLow (F<=0 or NaN) and zHigh (F>0)
     // F decreases monotonically as z decreases for the direct transfer.
     // When y<0 (evalF returns NaN), we've gone past the minimum-energy boundary.
-    let zLow, zHigh;
+    let zLow: number, zHigh: number;
     const F0 = evalF(0);
 
     if (isNaN(F0)) return null;
@@ -118,7 +119,7 @@ export function lambertSolve(r1x, r1z, r2x, r2z, tof, mu) {
     }
 
     // Bisection: find z where F(z) = 0, treating NaN as "too far negative"
-    let z = (zLow + zHigh) / 2;
+    let z = (zLow! + zHigh) / 2;
     for (let iter = 0; iter < 100; iter++) {
         const Fz = evalF(z);
         if (isNaN(Fz)) {
@@ -131,8 +132,8 @@ export function lambertSolve(r1x, r1z, r2x, r2z, tof, mu) {
         } else {
             zLow = z;
         }
-        if (Math.abs(zHigh - zLow) < 1e-12 * (1 + Math.abs(z))) break;
-        z = (zLow + zHigh) / 2;
+        if (Math.abs(zHigh - zLow!) < 1e-12 * (1 + Math.abs(z))) break;
+        z = (zLow! + zHigh) / 2;
     }
 
     // Final Lagrange coefficients
@@ -163,15 +164,14 @@ export function lambertSolve(r1x, r1z, r2x, r2z, tof, mu) {
  * Propagate a position along an orbit using universal variables.
  * Handles elliptic, parabolic, and hyperbolic orbits uniformly.
  *
- * @param {number} r0x - initial x position (AU)
- * @param {number} r0z - initial z position (AU)
- * @param {number} v0x - initial x velocity (AU/day)
- * @param {number} v0z - initial z velocity (AU/day)
- * @param {number} dt - time step (days)
- * @param {number} mu - gravitational parameter (AU³/day²)
- * @returns {{ x: number, z: number }}
+ * @param r0x - initial x position (AU)
+ * @param r0z - initial z position (AU)
+ * @param v0x - initial x velocity (AU/day)
+ * @param v0z - initial z velocity (AU/day)
+ * @param dt - time step (days)
+ * @param mu - gravitational parameter (AU³/day²)
  */
-export function propagatePosition(r0x, r0z, v0x, v0z, dt, mu) {
+export function propagatePosition(r0x: number, r0z: number, v0x: number, v0z: number, dt: number, mu: number): Vector2Like {
     if (Math.abs(dt) < 1e-14) return { x: r0x, z: r0z };
 
     const r0 = Math.hypot(r0x, r0z);
@@ -183,7 +183,7 @@ export function propagatePosition(r0x, r0z, v0x, v0z, dt, mu) {
     const alpha = 2 / r0 - v0sq / mu; // = 1/a
 
     // Initial chi estimate
-    let chi;
+    let chi: number;
     if (Math.abs(alpha) < 1e-10) {
         // Near-parabolic
         chi = sqrtMu * dt / r0;
@@ -252,7 +252,7 @@ export function propagatePosition(r0x, r0z, v0x, v0z, dt, mu) {
  * Convert world coordinates to AU.
  * World uses sqrt-compressed radii: rWorld = sqrt(rAU) * DIST_SCALE
  */
-export function worldToAU(wx, wz) {
+export function worldToAU(wx: number, wz: number): Vector2Like {
     const rw = Math.hypot(wx, wz);
     if (rw < 1e-10) return { x: 0, z: 0 };
     const rau = (rw / DIST_SCALE) * (rw / DIST_SCALE);
@@ -263,7 +263,7 @@ export function worldToAU(wx, wz) {
 /**
  * Convert AU coordinates to world.
  */
-export function auToWorld(ax, az) {
+export function auToWorld(ax: number, az: number): Vector2Like {
     const rau = Math.hypot(ax, az);
     if (rau < 1e-10) return { x: 0, z: 0 };
     const rw = Math.sqrt(rau) * DIST_SCALE;
@@ -277,7 +277,7 @@ export function auToWorld(ax, az) {
  * scale by 1/(2√r) while tangential distances scale by √r, so a velocity
  * direction in AU space has a different angle in world space.
  */
-export function auVelToWorldDir(ax, az, vx, vz) {
+export function auVelToWorldDir(ax: number, az: number, vx: number, vz: number): number {
     const speed = Math.hypot(vx, vz);
     if (speed < 1e-14) return 0;
     const eps = 1e-8 / speed;
@@ -293,7 +293,7 @@ export function auVelToWorldDir(ax, az, vx, vz) {
  * Kepler: T² = 4π²a³/(GM), in AU+years for M=1 solar mass: GM = 4π².
  * Convert to days: mu = 4π² * starMass / DAYS_PER_YEAR²
  */
-export function computeMu(starMass) {
+export function computeMu(starMass: number): number {
     return 4 * Math.PI * Math.PI * starMass / (DAYS_PER_YEAR * DAYS_PER_YEAR);
 }
 
@@ -301,7 +301,7 @@ export function computeMu(starMass) {
  * Derive star mass from a planet's orbital data using Kepler's third law.
  * starMass = distance³ / period² (AU, years → solar masses)
  */
-export function deriveStarMass(bodies) {
+export function deriveStarMass(bodies: BodyData[]): number {
     const planet = bodies.find(b =>
         (b.type === 'Planet' || b.type === 'Dwarf Planet') && b.period > 0 && b.distance > 0
     );
@@ -311,7 +311,7 @@ export function deriveStarMass(bodies) {
 
 // --- Existing game transfer helpers ---
 
-export function hohmannTransfer(r1, r2, starMass = 1) {
+export function hohmannTransfer(r1: number, r2: number, starMass: number = 1): HohmannResult {
     const a = (r1 + r2) / 2;
     const e = Math.abs(r2 - r1) / (r1 + r2);
     const periodYears = keplerPeriod(a, starMass);
@@ -319,22 +319,22 @@ export function hohmannTransfer(r1, r2, starMass = 1) {
     return { a, e, periodYears, transferTimeDays };
 }
 
-export function transferSpeed(periodYears) {
+export function transferSpeed(periodYears: number): number {
     return orbitSpeed(periodYears);
 }
 
-export function transferStartAngle(r1, r2) {
+export function transferStartAngle(r1: number, r2: number): number {
     return r2 >= r1 ? 0 : Math.PI;
 }
 
-export function gameTransferDays(r1, r2) {
+export function gameTransferDays(r1: number, r2: number): number {
     return 3 + 3 * Math.abs(r2 - r1);
 }
 
-export function gameTransferSpeed(transferDays) {
+export function gameTransferSpeed(transferDays: number): number {
     return Math.PI / transferDays;
 }
 
-export function isTransferComplete(elapsedDays, transferTimeDays) {
+export function isTransferComplete(elapsedDays: number, transferTimeDays: number): boolean {
     return elapsedDays >= transferTimeDays;
 }

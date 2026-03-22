@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { seededRandom, rngInt, rngFloat, rngGaussian, rngWeighted, rngPick } from '../core/utils.js';
-import { keplerPeriod, radiusToMassEarths, hillRadius, categorizePlanet } from '../math/orbit.js';
-import { generateSystem, planetLetter } from '../data/system-generator.js';
-import { getSolSystem } from '../data/sol-data.js';
+import { seededRandom, rngInt, rngFloat, rngGaussian, rngWeighted, rngPick } from '../core/utils';
+import { keplerPeriod, radiusToMassEarths, hillRadius, categorizePlanet } from '../math/orbit';
+import { generateSystem, planetLetter } from '../data/system-generator';
+import { getSolSystem } from '../data/sol-data';
 
 // --- RNG helpers ---
 
@@ -56,7 +56,7 @@ describe('rngWeighted', () => {
             { value: 'a', weight: 90 },
             { value: 'b', weight: 10 },
         ];
-        const counts = { a: 0, b: 0 };
+        const counts: Record<string, number> = { a: 0, b: 0 };
         for (let i = 0; i < 1000; i++) {
             counts[rngWeighted(rng, entries).value]++;
         }
@@ -182,15 +182,15 @@ describe('getSolSystem', () => {
     });
 
     it('has 8 planets', () => {
-        const planets = sol.bodies.filter(b => b.type === 'Planet');
+        const planets = sol.bodies.filter((b: { type: string }) => b.type === 'Planet');
         expect(planets).toHaveLength(8);
     });
 
     it('has Jupiter with 4 Galilean moons', () => {
-        const jupiter = sol.bodies.find(b => b.name === 'Jupiter');
+        const jupiter = sol.bodies.find((b: { name: string }) => b.name === 'Jupiter')!;
         expect(jupiter).toBeDefined();
         expect(jupiter.moons).toHaveLength(4);
-        const moonNames = jupiter.moons.map(m => m.name);
+        const moonNames = jupiter.moons.map((m: { name: string }) => m.name);
         expect(moonNames).toContain('Io');
         expect(moonNames).toContain('Europa');
         expect(moonNames).toContain('Ganymede');
@@ -198,18 +198,18 @@ describe('getSolSystem', () => {
     });
 
     it('has known comets', () => {
-        const cometNames = sol.comets.map(c => c.name);
+        const cometNames = sol.comets.map((c: { name: string }) => c.name);
         expect(cometNames).toContain('Halley');
         expect(cometNames).toContain('Hale-Bopp');
     });
 
     it('has asteroid belts including Main Belt', () => {
-        const beltNames = sol.asteroidBelts.map(b => b.name);
+        const beltNames = sol.asteroidBelts.map((b: { name: string }) => b.name);
         expect(beltNames).toContain('Main Belt');
     });
 
     it('planet distances are monotonically increasing', () => {
-        const planets = sol.bodies.filter(b => b.type === 'Planet');
+        const planets = sol.bodies.filter((b: { type: string }) => b.type === 'Planet');
         for (let i = 1; i < planets.length; i++) {
             expect(planets[i].distance).toBeGreaterThan(planets[i - 1].distance);
         }
@@ -224,7 +224,7 @@ describe('generateSystem', () => {
         const sys2 = generateSystem(42);
         expect(sys1.name).toBe(sys2.name);
         expect(sys1.bodies.length).toBe(sys2.bodies.length);
-        expect(sys1.bodies.map(b => b.name)).toEqual(sys2.bodies.map(b => b.name));
+        expect(sys1.bodies.map((b: { name: string }) => b.name)).toEqual(sys2.bodies.map((b: { name: string }) => b.name));
     });
 
     it('different seeds produce different systems', () => {
@@ -252,8 +252,8 @@ describe('generateSystem', () => {
 
     it('all planets have positive distance, period, and radius', () => {
         const sys = generateSystem(500);
-        const planets = sys.bodies.filter(b => b.type === 'Planet');
-        planets.forEach(p => {
+        const planets = sys.bodies.filter((b: { type: string }) => b.type === 'Planet');
+        planets.forEach((p: { distance: number; period: number; radius: number }) => {
             expect(p.distance).toBeGreaterThan(0);
             expect(p.period).toBeGreaterThan(0);
             expect(p.radius).toBeGreaterThan(0);
@@ -262,7 +262,7 @@ describe('generateSystem', () => {
 
     it('planet distances are sorted', () => {
         const sys = generateSystem(300);
-        const planets = sys.bodies.filter(b => b.type === 'Planet');
+        const planets = sys.bodies.filter((b: { type: string }) => b.type === 'Planet');
         for (let i = 1; i < planets.length; i++) {
             expect(planets[i].distance).toBeGreaterThan(planets[i - 1].distance);
         }
@@ -270,7 +270,7 @@ describe('generateSystem', () => {
 
     it('comets have valid orbital elements', () => {
         const sys = generateSystem(200);
-        sys.comets.forEach(c => {
+        sys.comets.forEach((c: { a: number; e: number; period: number }) => {
             expect(c.a).toBeGreaterThan(0);
             expect(c.e).toBeGreaterThan(0);
             expect(c.e).toBeLessThan(1);
@@ -280,7 +280,7 @@ describe('generateSystem', () => {
 
     it('asteroid belts have valid ranges', () => {
         const sys = generateSystem(400);
-        sys.asteroidBelts.forEach(belt => {
+        sys.asteroidBelts.forEach((belt: { minAU: number; maxAU: number; count: number }) => {
             expect(belt.minAU).toBeLessThan(belt.maxAU);
             expect(belt.count).toBeGreaterThan(0);
         });

@@ -1,4 +1,6 @@
-export function getSolSystem() {
+import type { SystemData } from '../types';
+
+export function getSolSystem(): SystemData {
     return {
         name: 'Sol System',
         bodies: [

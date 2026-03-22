@@ -6,7 +6,7 @@ import {
     hohmannDeltaV, hohmannTransferDays,
     brachistochroneTime, brachistochroneDeltaV,
     ENGINE_TYPES, checkTransfer,
-} from '../math/ship-physics.js';
+} from '../math/ship-physics';
 
 // --- Cycle 1: Constants and conversions ---
 
@@ -231,9 +231,9 @@ describe('checkTransfer', () => {
     it('fuel consumed matches fuelRequired for same delta-v', () => {
         const ship = { fuelKg: 500_000, dryMassKg: 5_000, engineId: 'conventional' };
         const result = checkTransfer(1.0, 1.524, 1.0, ship);
-        const engine = ENGINE_TYPES.find(e => e.id === 'conventional');
+        const engine = ENGINE_TYPES.find(e => e.id === 'conventional')!;
         const veKmS = exhaustVelocity(engine.ispS) / 1000;
-        const expectedFuel = fuelRequired(veKmS, ship.dryMassKg, result.deltaVRequired);
+        const expectedFuel = fuelRequired(veKmS, ship.dryMassKg, result.deltaVRequired!);
         expect(result.fuelUsedKg).toBeCloseTo(expectedFuel, 6);
     });
 

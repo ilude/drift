@@ -1,14 +1,21 @@
 import * as THREE from 'three';
-import { state } from '../core/state.js';
-import { scaleDist, MOON_DIST_SCALE, keplerRadius, orbitSpeed, meanToTrue, inclinedPosition } from '../math/orbit.js';
-import { isTransferComplete, deriveStarMass } from '../math/transfer.js';
-import { ENGINE_TYPES, checkTransfer } from '../math/ship-physics.js';
-import { bodySize, BODY_MIN_SIZE, moonOrbitScale, realisticSize } from '../math/visual.js';
-import { scene, ZOOM_BASE, labelContainer, trailGroups, cometGroup } from './scene.js';
-import { seededRandom } from '../core/utils.js';
-import { generateBodyTexture, generateCloudTextureForBody, createStarMaterial } from './textures.js';
+import { state } from '../core/state';
+import { scaleDist, MOON_DIST_SCALE, keplerRadius, orbitSpeed, meanToTrue, inclinedPosition } from '../math/orbit';
+import { isTransferComplete, deriveStarMass } from '../math/transfer';
+import { ENGINE_TYPES, checkTransfer } from '../math/ship-physics';
+import { bodySize, BODY_MIN_SIZE, moonOrbitScale, realisticSize } from '../math/visual';
+import { scene, ZOOM_BASE, labelContainer, trailGroups, cometGroup } from './scene';
+import { seededRandom } from '../core/utils';
+import { generateBodyTexture, generateCloudTextureForBody, createStarMaterial } from './textures';
+import type {
+    BodyEntry, PlanetEntry, CometEntry, ShipEntry,
+    BodyData, CometEntryData, MoonData, TrailState,
+    AsteroidBeltEntry, AsteroidInfo,
+    Vector3Like,
+} from '../types';
+import { isShipEntry, isCometEntry } from '../types';
 
-function nameHash(str) {
+function nameHash(str: string): number {
     let h = 5381;
     for (let i = 0; i < str.length; i++) {
         h = ((h << 5) + h + str.charCodeAt(i)) & 0x7fffffff;
@@ -17,9 +24,9 @@ function nameHash(str) {
 }
 
 // Transform orbital plane coordinates to 3D world space using Ω, i, ω
-const _orbitOut = { x: 0, y: 0, z: 0 };
+const _orbitOut: Vector3Like = { x: 0, y: 0, z: 0 };
 
-export function orbitToWorld(x, z, incRad, nodeRad, periRad) {
+export function orbitToWorld(x: number, z: number, incRad: number, nodeRad: number, periRad: number): Vector3Like {
     const cosW = Math.cos(periRad), sinW = Math.sin(periRad);
     const x1 = x * cosW - z * sinW;
     const z1 = x * sinW + z * cosW;
@@ -39,25 +46,25 @@ export function orbitToWorld(x, z, incRad, nodeRad, periRad) {
 
 // Shared geometry/materials for identical bodies
 // LOD tiers: [low, medium, high] segment counts
-const LOD_SEGS = [8, 24, 48];
-const STAR_LOD_SEGS = [32, 48, 64];
-const MOON_SIZE = BODY_MIN_SIZE * 0.6;
-const COMET_SIZE = BODY_MIN_SIZE * 0.7;
-const SEL_RING_INNER = 1.3;
-const SEL_RING_OUTER = 1.5;
-const SEL_RING_SEGS = 24;
-const TRAIL_MAX_POINTS = 400;
-export const COMET_ORBIT_OPACITY = 0.03;
-export const COMET_ORBIT_SELECTED_OPACITY = 0.05;
+const LOD_SEGS: number[] = [8, 24, 48];
+const STAR_LOD_SEGS: number[] = [32, 48, 64];
+const MOON_SIZE: number = BODY_MIN_SIZE * 0.6;
+const COMET_SIZE: number = BODY_MIN_SIZE * 0.7;
+const SEL_RING_INNER: number = 1.3;
+const SEL_RING_OUTER: number = 1.5;
+const SEL_RING_SEGS: number = 24;
+const TRAIL_MAX_POINTS: number = 400;
+export const COMET_ORBIT_OPACITY: number = 0.03;
+export const COMET_ORBIT_SELECTED_OPACITY: number = 0.05;
 
-const sharedMoonGeoms = LOD_SEGS.map(s => new THREE.SphereGeometry(MOON_SIZE, s, s));
-const sharedCometGeoms = LOD_SEGS.map(s => new THREE.SphereGeometry(COMET_SIZE, s, s));
-const sharedMoonOrbitMat = new THREE.LineBasicMaterial({ color: '#1a2a1a', transparent: true, opacity: 0.3 });
-const sharedPlanetOrbitMat = new THREE.LineBasicMaterial({ color: '#1a3a1a', transparent: true, opacity: 0.3 });
+const sharedMoonGeoms: THREE.SphereGeometry[] = LOD_SEGS.map(s => new THREE.SphereGeometry(MOON_SIZE, s, s));
+const sharedCometGeoms: THREE.SphereGeometry[] = LOD_SEGS.map(s => new THREE.SphereGeometry(COMET_SIZE, s, s));
+const sharedMoonOrbitMat: THREE.LineBasicMaterial = new THREE.LineBasicMaterial({ color: '#1a2a1a', transparent: true, opacity: 0.3 });
+const sharedPlanetOrbitMat: THREE.LineBasicMaterial = new THREE.LineBasicMaterial({ color: '#1a3a1a', transparent: true, opacity: 0.3 });
 
-export const sharedResources = new Set([...sharedMoonGeoms, ...sharedCometGeoms, sharedMoonOrbitMat, sharedPlanetOrbitMat]);
+export const sharedResources: Set<THREE.BufferGeometry | THREE.Material> = new Set([...sharedMoonGeoms, ...sharedCometGeoms, sharedMoonOrbitMat, sharedPlanetOrbitMat]);
 
-function createLabel(name, color, isMoon) {
+function createLabel(name: string, color: string, isMoon: boolean): HTMLDivElement {
     const div = document.createElement('div');
     div.textContent = name;
     div.style.cssText = `
@@ -73,7 +80,7 @@ function createLabel(name, color, isMoon) {
     return div;
 }
 
-function createOrbitRing(a, e, toScreen, mat) {
+function createOrbitRing(a: number, e: number, toScreen: (d: number) => number, mat: THREE.LineBasicMaterial): THREE.Line {
     const approxR = toScreen(a);
     const segments = Math.min(512, Math.max(128, Math.round(approxR * 4)));
     const positions = new Float32Array((segments + 1) * 3);
@@ -89,7 +96,7 @@ function createOrbitRing(a, e, toScreen, mat) {
     return new THREE.Line(geom, mat);
 }
 
-function createTrail(color, maxPoints) {
+function createTrail(color: string, maxPoints: number): TrailState {
     const geom = new THREE.BufferGeometry();
     const positions = new Float32Array(maxPoints * 3);
     const colors = new Float32Array(maxPoints * 3);
@@ -111,7 +118,7 @@ function createTrail(color, maxPoints) {
     };
 }
 
-export function createBody(data, parentMesh) {
+export function createBody(data: BodyData, parentMesh: THREE.Mesh | null): PlanetEntry {
     const isStar = data.type === 'Star';
     const isMoon = !!parentMesh;
 
@@ -120,7 +127,7 @@ export function createBody(data, parentMesh) {
     const segs = isStar ? STAR_LOD_SEGS : LOD_SEGS;
     const geomLevels = isMoon ? sharedMoonGeoms :
         segs.map(s => new THREE.SphereGeometry(size, s, s));
-    let mat;
+    let mat: THREE.Material;
     if (isStar) {
         mat = createStarMaterial(data.color);
     } else {
@@ -130,7 +137,7 @@ export function createBody(data, parentMesh) {
     const mesh = new THREE.Mesh(geomLevels[0], mat);
 
     // Planetary rings (e.g., Saturn, Jupiter, Uranus, Neptune)
-    let planetRing = null;
+    let planetRing: THREE.Mesh | null = null;
     if (data.rings) {
         const innerR = size * data.rings.inner;
         const outerR = size * data.rings.outer;
@@ -139,9 +146,9 @@ export function createBody(data, parentMesh) {
         const canvas = document.createElement('canvas');
         canvas.width = 256;
         canvas.height = 1;
-        const ctx = canvas.getContext('2d');
+        const ctx = canvas.getContext('2d')!;
         const grad = ctx.createLinearGradient(0, 0, 256, 0);
-        const a = (v) => Math.round(v * opacity * 255);
+        const a = (v: number): number => Math.round(v * opacity * 255);
         grad.addColorStop(0.0, `rgba(180,160,120,${a(0.1) / 255})`);
         grad.addColorStop(0.15, `rgba(200,180,140,${a(0.5) / 255})`);
         grad.addColorStop(0.3, `rgba(160,140,100,${a(0.15) / 255})`);
@@ -152,8 +159,8 @@ export function createBody(data, parentMesh) {
         ctx.fillStyle = grad;
         ctx.fillRect(0, 0, 256, 1);
         const ringTex = new THREE.CanvasTexture(canvas);
-        const uvAttr = ringGeom.attributes.uv;
-        const posAttr = ringGeom.attributes.position;
+        const uvAttr = ringGeom.attributes.uv as THREE.BufferAttribute;
+        const posAttr = ringGeom.attributes.position as THREE.BufferAttribute;
         for (let i = 0; i < uvAttr.count; i++) {
             const x = posAttr.getX(i);
             const z = posAttr.getY(i);
@@ -174,7 +181,7 @@ export function createBody(data, parentMesh) {
     }
 
     // Cloud layer
-    let cloudMesh = null;
+    let cloudMesh: THREE.Mesh | null = null;
     if (!isStar && !isMoon) {
         const cloudTex = generateCloudTextureForBody(data, false);
         if (cloudTex) {
@@ -202,11 +209,11 @@ export function createBody(data, parentMesh) {
 
     scene.add(mesh);
 
-    let orbitLine = null;
+    let orbitLine: THREE.Line | null = null;
     let orbitRadius = 0;
     const ecc = data.e || 0;
     if (data.distance > 0) {
-        const toScreen = isMoon ? d => d * MOON_DIST_SCALE : scaleDist;
+        const toScreen = isMoon ? (d: number) => d * MOON_DIST_SCALE : scaleDist;
         orbitRadius = toScreen(data.distance);
         orbitLine = createOrbitRing(data.distance, ecc, toScreen, isMoon ? sharedMoonOrbitMat : sharedPlanetOrbitMat);
         if (isMoon) orbitLine.visible = false;
@@ -216,7 +223,7 @@ export function createBody(data, parentMesh) {
     const labelDiv = createLabel(data.name, isMoon ? '#4a6a4a' : data.color, isMoon);
     const trail = createTrail(data.color, TRAIL_MAX_POINTS);
 
-    const entry = {
+    const entry: PlanetEntry = {
         data, mesh, selRing, planetRing, cloudMesh, orbitLine, orbitRadius, labelDiv, trail,
         angle: seededRandom(nameHash(data.name))() * Math.PI * 2,
         speed: orbitSpeed(data.period),
@@ -230,7 +237,7 @@ export function createBody(data, parentMesh) {
 
     if (data.moons) {
         data.moons.forEach(moonData => {
-            const moonEntry = createBody({ ...moonData, type: 'Moon' }, mesh);
+            const moonEntry = createBody({ ...moonData, type: 'Moon' as const, moons: [] } as BodyData, mesh);
             entry.moons.push(moonEntry);
         });
     }
@@ -238,14 +245,14 @@ export function createBody(data, parentMesh) {
     return entry;
 }
 
-export function createBodies() {
-    state.BODIES.forEach(b => {
+export function createBodies(): void {
+    state.BODIES!.forEach(b => {
         if (!b.type || b.type !== 'Moon') createBody(b, null);
     });
 }
 
-export function createComets() {
-    state.COMETS.forEach(comet => {
+export function createComets(): void {
+    state.COMETS!.forEach(comet => {
         const { a, e, inc, node, peri, color, name, period } = comet;
         const incRad = (inc * Math.PI) / 180;
         const nodeRad = (node * Math.PI) / 180;
@@ -253,7 +260,7 @@ export function createComets() {
         const perihelionAU = a * (1 - e);
 
         const segments = e > 0.9 ? 2048 : 512;
-        const orbitPoints = [];
+        const orbitPoints: THREE.Vector3[] = [];
         for (let i = 0; i <= segments; i++) {
             const E = (i / segments) * Math.PI * 2;
             const theta = 2 * Math.atan2(
@@ -290,22 +297,22 @@ export function createComets() {
 
         const entry = {
             data: {
-                name, type: 'Comet', distance: perihelionAU, period, radius: 5,
-                color, moons: [], a, e, inc, incRad, nodeRad, periRad
-            },
+                name, type: 'Comet' as const, distance: perihelionAU, period, radius: 5,
+                color, moons: [] as MoonData[], a, e, inc, incRad, nodeRad, periRad
+            } as CometEntryData,
             mesh, selRing, orbitLine, orbitRadius: 0,
             labelDiv, trail,
             angle: seededRandom(nameHash(name))() * Math.PI * 2,
             speed: orbitSpeed(period),
-            parentMesh: null, moons: [], isMoon: false, isComet: true,
+            parentMesh: null, moons: [] as BodyEntry[], isMoon: false, isComet: true as const,
             screenSize: size, geomLevels: sharedCometGeoms, lodLevel: 0
-        };
+        } as CometEntry;
         state.bodyMeshes.push(entry);
     });
 }
 
-export function createAsteroidBelts() {
-    return state.ASTEROID_BELTS.map(belt => {
+export function createAsteroidBelts(): AsteroidBeltEntry[] {
+    return state.ASTEROID_BELTS!.map(belt => {
         const rng = seededRandom(belt.name.length * 7919);
         const prefix = belt.name.includes('Belt') ? belt.name.split(' ')[0].substring(0, 2).toUpperCase() : 'AB';
         const maxIncRad = (belt.maxInc || 0) * Math.PI / 180;
@@ -321,7 +328,7 @@ export function createAsteroidBelts() {
         const cosNode = new Float32Array(count);
         const sinNode = new Float32Array(count);
         const yOffsets = new Float32Array(count);
-        const asteroids = [];
+        const asteroids: AsteroidInfo[] = [];
 
         const kirkwoodGaps = belt.name === 'Main Belt' ? [
             { center: 2.06, width: 0.03 },
@@ -331,7 +338,7 @@ export function createAsteroidBelts() {
             { center: 3.28, width: 0.04 },
         ] : [];
 
-        function isInGap(au) {
+        function isInGap(au: number): boolean {
             for (const gap of kirkwoodGaps) {
                 if (Math.abs(au - gap.center) < gap.width) return true;
             }
@@ -339,7 +346,7 @@ export function createAsteroidBelts() {
         }
 
         for (let i = 0; i < count; i++) {
-            let au;
+            let au: number;
             do {
                 au = belt.minAU + rng() * (belt.maxAU - belt.minAU);
             } while (isInGap(au));
@@ -393,18 +400,18 @@ export function createAsteroidBelts() {
     });
 }
 
-const SHIP_SIZE = 0.02;
-const SHIP_LOCAL_ORBIT = 1.5;       // world-space radius around host planet
-const SHIP_LOCAL_SPEED = Math.PI * 2 / 7;  // ~7 day orbital period (visual clarity over realism)
-const SHIP_TAIL_LENGTH = 20;
-const shipTailMat = new THREE.LineBasicMaterial({ color: '#999999', transparent: true, opacity: 0.6 });
+const SHIP_SIZE: number = 0.02;
+const SHIP_LOCAL_ORBIT: number = 1.5;       // world-space radius around host planet
+const SHIP_LOCAL_SPEED: number = Math.PI * 2 / 7;  // ~7 day orbital period (visual clarity over realism)
+const SHIP_TAIL_LENGTH: number = 20;
+const shipTailMat: THREE.LineBasicMaterial = new THREE.LineBasicMaterial({ color: '#999999', transparent: true, opacity: 0.6 });
 
 /**
  * Blend a position toward the target's local orbit over the full transfer.
- * Uses t⁴ so the blend is negligible early (<1% until t≈0.3) and ramps up smoothly.
+ * Uses t^4 so the blend is negligible early (<1% until t~0.3) and ramps up smoothly.
  * Mutates p in place. Returns 'complete' if within orbit radius, else 'blending'.
  */
-function applyCaptureBlend(p, tgtEntry, t) {
+function applyCaptureBlend(p: Vector3Like, tgtEntry: PlanetEntry | undefined, t: number): string {
     if (!tgtEntry) return 'blending';
     const dist = Math.hypot(p.x - tgtEntry.mesh.position.x, p.z - tgtEntry.mesh.position.z);
     if (dist <= SHIP_LOCAL_ORBIT) return 'complete';
@@ -417,9 +424,9 @@ function applyCaptureBlend(p, tgtEntry, t) {
     return 'blending';
 }
 
-const _hermiteOut = { x: 0, z: 0 };
+const _hermiteOut: Vector3Like = { x: 0, y: 0, z: 0 };
 
-function hermiteEval(p0x, p0z, t0x, t0z, p1x, p1z, t1x, t1z, t) {
+function hermiteEval(p0x: number, p0z: number, t0x: number, t0z: number, p1x: number, p1z: number, t1x: number, t1z: number, t: number): Vector3Like {
     const h00 = (1 + 2 * t) * (1 - t) * (1 - t);
     const h10 = t * (1 - t) * (1 - t);
     const h01 = t * t * (3 - 2 * t);
@@ -429,14 +436,14 @@ function hermiteEval(p0x, p0z, t0x, t0z, p1x, p1z, t1x, t1z, t) {
     return _hermiteOut;
 }
 
-function transferPosition(entry, t) {
+function transferPosition(entry: ShipEntry, t: number): Vector3Like {
     return hermiteEval(
         entry.p0x, entry.p0z, entry.t0x, entry.t0z,
         entry.p1x, entry.p1z, entry.t1x, entry.t1z, t
     );
 }
 
-function predictTargetWorld(targetEntry, daysFromNow) {
+function predictTargetWorld(targetEntry: PlanetEntry, daysFromNow: number): { x: number; z: number } {
     const currentAngle = Math.atan2(targetEntry.mesh.position.z, targetEntry.mesh.position.x);
     const arrivalAngle = currentAngle + targetEntry.speed * daysFromNow;
     const targetR = scaleDist(targetEntry.data.distance);
@@ -446,12 +453,12 @@ function predictTargetWorld(targetEntry, daysFromNow) {
     };
 }
 
-const SHIP_PATH_LOOKAHEAD = 0.25;  // show 25% of curve ahead
-const SHIP_TRANSFER_PTS = 128;     // transfer curve sample points
-const SHIP_MAX_ARC_PTS = 48;       // max orbit arc points
-const SHIP_PATH_BUFFER = SHIP_TRANSFER_PTS + SHIP_MAX_ARC_PTS + 1; // total buffer capacity
+const SHIP_PATH_LOOKAHEAD: number = 0.25;  // show 25% of curve ahead
+const SHIP_TRANSFER_PTS: number = 128;     // transfer curve sample points
+const SHIP_MAX_ARC_PTS: number = 48;       // max orbit arc points
+const SHIP_PATH_BUFFER: number = SHIP_TRANSFER_PTS + SHIP_MAX_ARC_PTS + 1; // total buffer capacity
 
-function createTransferPath() {
+function createTransferPath(): THREE.Line {
     const positions = new Float32Array(SHIP_PATH_BUFFER * 3);
     const colors = new Float32Array(SHIP_PATH_BUFFER * 4);
     const geom = new THREE.BufferGeometry();
@@ -467,10 +474,10 @@ function createTransferPath() {
     return line;
 }
 
-function updateTransferPath(entry, elapsedDays) {
+function updateTransferPath(entry: ShipEntry, elapsedDays: number): void {
     if (!entry.transferPath) return;
-    const positions = entry.transferPath.geometry.attributes.position.array;
-    const colors = entry.transferPath.geometry.attributes.color.array;
+    const positions = entry.transferPath.geometry.attributes.position.array as Float32Array;
+    const colors = entry.transferPath.geometry.attributes.color.array as Float32Array;
     const isSelected = (state.selectedBody === entry);
     const baseAlpha = isSelected ? 0.5 : 0.2;
 
@@ -478,7 +485,7 @@ function updateTransferPath(entry, elapsedDays) {
     const tEnd = Math.min(tCurrent + SHIP_PATH_LOOKAHEAD, 1.0);
     const tRange = tEnd - tCurrent;
 
-    const tgt = findPlanetEntry(entry.transferTarget);
+    const tgt = findPlanetEntry(entry.transferTarget!);
 
     for (let i = 0; i <= SHIP_TRANSFER_PTS; i++) {
         const frac = i / SHIP_TRANSFER_PTS;
@@ -501,7 +508,7 @@ function updateTransferPath(entry, elapsedDays) {
 }
 
 
-function computeHermiteKnots(departX, departZ, departAngle, targetEntry, gameDays) {
+function computeHermiteKnots(departX: number, departZ: number, departAngle: number, targetEntry: PlanetEntry, gameDays: number): { p0x: number; p0z: number; t0x: number; t0z: number; p1x: number; p1z: number; t1x: number; t1z: number } {
     const targetWorld = predictTargetWorld(targetEntry, gameDays);
     const dist = Math.hypot(targetWorld.x - departX, targetWorld.z - departZ);
     const tangentDir = departAngle + Math.PI / 2;
@@ -518,12 +525,12 @@ function computeHermiteKnots(departX, departZ, departAngle, targetEntry, gameDay
     };
 }
 
-function updateDepartureArc(entry) {
+function updateDepartureArc(entry: ShipEntry): void {
     if (!entry.transferPath || !entry.pendingTransfer) return;
     const host = findPlanetEntry(entry.hostPlanetName);
     if (!host) return;
-    const positions = entry.transferPath.geometry.attributes.position.array;
-    const colors = entry.transferPath.geometry.attributes.color.array;
+    const positions = entry.transferPath.geometry.attributes.position.array as Float32Array;
+    const colors = entry.transferPath.geometry.attributes.color.array as Float32Array;
     const isSelected = (state.selectedBody === entry);
     const baseAlpha = isSelected ? 0.5 : 0.2;
     const pt = entry.pendingTransfer;
@@ -531,7 +538,7 @@ function updateDepartureArc(entry) {
     // Recompute departure angle every 15 frames as planets move
     entry.departFrameCount = (entry.departFrameCount || 0) + 1;
     if (entry.departFrameCount % 15 === 0) {
-        const targetEntry = state.bodyMeshes.find(e => e.data.name === pt.targetName && !e.isMoon && !e.isShip);
+        const targetEntry = state.bodyMeshes.find(e => e.data.name === pt.targetName && !e.isMoon && !isShipEntry(e)) as PlanetEntry | undefined;
         if (targetEntry) {
             const targetWorld = predictTargetWorld(targetEntry, pt.gameDays);
             const toTargetDir = Math.atan2(
@@ -570,7 +577,7 @@ function updateDepartureArc(entry) {
     }
 
     // Part 2: Hermite spline from departure to predicted target
-    const targetEntry = state.bodyMeshes.find(e => e.data.name === pt.targetName && !e.isMoon && !e.isShip);
+    const targetEntry = state.bodyMeshes.find(e => e.data.name === pt.targetName && !e.isMoon && !isShipEntry(e)) as PlanetEntry | undefined;
     if (targetEntry) {
         const departX = host.mesh.position.x + Math.cos(pt.optimalLocalAngle) * SHIP_LOCAL_ORBIT;
         const departZ = host.mesh.position.z + Math.sin(pt.optimalLocalAngle) * SHIP_LOCAL_ORBIT;
@@ -600,21 +607,21 @@ function updateDepartureArc(entry) {
     entry.transferPath.geometry.setDrawRange(0, idx);
 }
 
-function removeTransferPath(entry) {
+function removeTransferPath(entry: ShipEntry): void {
     if (entry.transferPath) {
         scene.remove(entry.transferPath);
         entry.transferPath.geometry.dispose();
-        entry.transferPath.material.dispose();
+        (entry.transferPath.material as THREE.Material).dispose();
         entry.transferPath = null;
     }
 }
 
-function findPlanetEntry(name) {
-    return state.bodyMeshes.find(e => e.data.name === name && !e.isMoon && !e.isShip);
+function findPlanetEntry(name: string): PlanetEntry | undefined {
+    return state.bodyMeshes.find(e => e.data.name === name && !e.isMoon && !isShipEntry(e)) as PlanetEntry | undefined;
 }
 
-export function createShip() {
-    const planets = state.BODIES.filter(b => b.type === 'Planet');
+export function createShip(): ShipEntry | undefined {
+    const planets = state.BODIES!.filter(b => b.type === 'Planet');
     if (planets.length === 0) return;
     const homePlanet = planets.find(b => b.name === 'Earth')
         || planets.reduce((best, b) => Math.abs(b.distance - 1) < Math.abs(best.distance - 1) ? b : best);
@@ -637,12 +644,12 @@ export function createShip() {
 
     const defaultEngine = ENGINE_TYPES[0]; // conventional TN
     const entry = {
-        data: { name: 'Ship', type: 'Ship', distance: homePlanet.distance, period: 0, radius: 1, color: '#bbbbbb', moons: [] },
+        data: { name: 'Ship', type: 'Ship' as const, distance: homePlanet.distance, period: 0, radius: 1, color: '#bbbbbb', moons: [] as MoonData[] },
         mesh, selRing, planetRing: null, cloudMesh: null, orbitLine: null, orbitRadius: 0,
         labelDiv, trail,
         angle: 0,
         speed: SHIP_LOCAL_SPEED,
-        parentMesh: null, moons: [], isMoon: false, isShip: true,
+        parentMesh: null, moons: [] as BodyEntry[], isMoon: false, isShip: true as const,
         screenSize: SHIP_SIZE, baseSize: SHIP_SIZE, realisticSize: SHIP_SIZE,
         geomLevels: null, lodLevel: 0,
         // Ship physics
@@ -651,7 +658,7 @@ export function createShip() {
         fuelKg: 50_000,
         fuelCapacityKg: 50_000,
         // Ship state
-        shipState: 'orbiting',
+        shipState: 'orbiting' as const,
         hostPlanetName: homePlanet.name,
         orbitA: homePlanet.distance,
         // Transfer fields (Hermite spline)
@@ -667,7 +674,8 @@ export function createShip() {
         tailPositions: new Float32Array(SHIP_TAIL_LENGTH * 3),
         tailIndex: 0,
         tailCount: 0,
-    };
+        tailLine: null! as THREE.Line, // set immediately below
+    } as ShipEntry;
 
     // Velocity tail — always visible, short trail showing direction
     const tailGeom = new THREE.BufferGeometry();
@@ -680,12 +688,12 @@ export function createShip() {
     return entry;
 }
 
-function completeTransfer(entry) {
+function completeTransfer(entry: ShipEntry): void {
     removeTransferPath(entry);
-    const target = findPlanetEntry(entry.transferTarget);
+    const target = findPlanetEntry(entry.transferTarget!);
 
     entry.shipState = 'orbiting';
-    entry.hostPlanetName = entry.transferTarget;
+    entry.hostPlanetName = entry.transferTarget!;
     entry.transferTarget = null;
     entry.pendingTransfer = null;
     entry.speed = SHIP_LOCAL_SPEED;
@@ -719,8 +727,8 @@ function completeTransfer(entry) {
     }
 }
 
-function beginTransfer(entry) {
-    const p = entry.pendingTransfer;
+function beginTransfer(entry: ShipEntry): void {
+    const p = entry.pendingTransfer!;
 
     const tgt = findPlanetEntry(p.targetName);
     if (!tgt) return;
@@ -756,17 +764,19 @@ function beginTransfer(entry) {
 
 }
 
-function showTransferStatus(msg) {
+let statusTimer: ReturnType<typeof setTimeout> | null = null;
+
+function showTransferStatus(msg: string): void {
     const el = document.getElementById('transfer-status-value');
     const row = document.getElementById('info-transfer-status');
     if (!el || !row) return;
     el.textContent = msg;
     row.classList.remove('hidden');
-    if (showTransferStatus._timer) window.clearTimeout(showTransferStatus._timer);
-    showTransferStatus._timer = window.setTimeout(() => row.classList.add('hidden'), 4000);
+    if (statusTimer) window.clearTimeout(statusTimer);
+    statusTimer = window.setTimeout(() => row.classList.add('hidden'), 4000);
 }
 
-export function initiateTransfer(entry, targetEntry) {
+export function initiateTransfer(entry: ShipEntry, targetEntry: PlanetEntry): void {
     if (!entry.isShip || entry.shipState === 'transferring' || entry.shipState === 'departing') return;
     const host = findPlanetEntry(entry.hostPlanetName);
     if (!host) return;
@@ -775,7 +785,7 @@ export function initiateTransfer(entry, targetEntry) {
     if (r1 === r2) return;
 
     // Physics-based transfer feasibility check
-    const starMass = deriveStarMass(state.BODIES);
+    const starMass = deriveStarMass(state.BODIES!);
     const result = checkTransfer(r1, r2, starMass, {
         fuelKg: entry.fuelKg,
         dryMassKg: entry.dryMassKg,
@@ -783,15 +793,15 @@ export function initiateTransfer(entry, targetEntry) {
     });
 
     if (!result.feasible) {
-        showTransferStatus(`Need ${result.deltaVRequired.toFixed(1)} km/s, have ${result.deltaVAvailable.toFixed(1)} km/s`);
+        showTransferStatus(`Need ${result.deltaVRequired!.toFixed(1)} km/s, have ${result.deltaVAvailable!.toFixed(1)} km/s`);
         return;
     }
 
     // Deduct fuel
-    entry.fuelKg -= result.fuelUsedKg;
+    entry.fuelKg -= result.fuelUsedKg!;
 
     // Brachistochrone time drives both physics and visuals
-    const gameDays = result.transferDays;
+    const gameDays = result.transferDays!;
 
     entry.orbitA = (r1 + r2) / 2;
 
@@ -815,7 +825,7 @@ export function initiateTransfer(entry, targetEntry) {
 }
 
 
-export function updateAsteroids(dt) {
+export function updateAsteroids(dt: number): void {
     const simDt = dt * state.timeSpeed;
     if (simDt === 0) return;
 
@@ -835,7 +845,7 @@ export function updateAsteroids(dt) {
     });
 }
 
-export function updatePositions(dt, camDist) {
+export function updatePositions(dt: number, camDist: number): void {
     const simDt = dt * state.timeSpeed;
     state.simTime += simDt;
     if (simDt === 0) return;
@@ -845,7 +855,7 @@ export function updatePositions(dt, camDist) {
     const recordTrails = state.showTrails;
 
     state.bodyMeshes.forEach(entry => {
-        if (entry.data.distance === 0 && !entry.isComet && !entry.isShip) return;
+        if (entry.data.distance === 0 && !isCometEntry(entry) && !isShipEntry(entry)) return;
 
         // Skip invisible moons
         if (entry.isMoon && !entry.mesh.visible) {
@@ -853,7 +863,7 @@ export function updatePositions(dt, camDist) {
             return;
         }
 
-        if (entry.isShip) {
+        if (isShipEntry(entry)) {
             if (entry.shipState === 'orbiting' || entry.shipState === 'departing') {
                 entry.lastAngle = entry.angle;
                 entry.angle += entry.speed * simDt;
@@ -873,7 +883,7 @@ export function updatePositions(dt, camDist) {
                     if (entry.shipState === 'departing' && entry.pendingTransfer) {
                         const TWO_PI = Math.PI * 2;
                         const tgt = ((entry.pendingTransfer.optimalLocalAngle % TWO_PI) + TWO_PI) % TWO_PI;
-                        const prev = ((entry.lastAngle % TWO_PI) + TWO_PI) % TWO_PI;
+                        const prev = ((entry.lastAngle! % TWO_PI) + TWO_PI) % TWO_PI;
                         const cur = ((entry.angle % TWO_PI) + TWO_PI) % TWO_PI;
                         const crossed = (prev <= tgt && cur >= tgt) ||
                                         (prev > cur && (prev <= tgt || cur >= tgt));
@@ -892,7 +902,7 @@ export function updatePositions(dt, camDist) {
                         entry.transferRecalcCounter++;
                         if (entry.transferRecalcCounter >= 15) {
                             entry.transferRecalcCounter = 0;
-                            const tgt = findPlanetEntry(entry.transferTarget);
+                            const tgt = findPlanetEntry(entry.transferTarget!);
                             if (tgt) {
                                 const remainingDays = entry.transferTimeDays - elapsed;
                                 const targetWorld = predictTargetWorld(tgt, remainingDays);
@@ -911,12 +921,12 @@ export function updatePositions(dt, camDist) {
                     const p = transferPosition(entry, t);
 
                     // Blend toward target's local orbit over the full transfer
-                    const tgt = findPlanetEntry(entry.transferTarget);
+                    const tgt = findPlanetEntry(entry.transferTarget!);
                     const captureResult = applyCaptureBlend(p, tgt, t);
 
                     if (captureResult === 'complete') {
-                        const dx = p.x - tgt.mesh.position.x;
-                        const dz = p.z - tgt.mesh.position.z;
+                        const dx = p.x - tgt!.mesh.position.x;
+                        const dz = p.z - tgt!.mesh.position.z;
                         entry.blendTarget = { entryAngle: Math.atan2(dz, dx) };
                         completeTransfer(entry);
                         return;
@@ -956,7 +966,7 @@ export function updatePositions(dt, camDist) {
                 entry.tailCount = 0;
                 entry.tailLine.geometry.setDrawRange(0, 0);
             }
-        } else if (entry.isComet) {
+        } else if (isCometEntry(entry)) {
             const { a, e, incRad, nodeRad, periRad } = entry.data;
             entry.angle += entry.speed * simDt;
 
@@ -993,7 +1003,7 @@ export function updatePositions(dt, camDist) {
         }
 
         // Cloud rotation
-        if (entry.cloudMesh && entry.cloudMesh.visible) {
+        if (!isShipEntry(entry) && !isCometEntry(entry) && entry.cloudMesh && entry.cloudMesh.visible) {
             entry.cloudMesh.rotation.y += simDt * 0.002;
         }
 

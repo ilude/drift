@@ -2,6 +2,7 @@
  * @vitest-environment jsdom
  */
 import { describe, it, expect, vi, beforeAll } from 'vitest';
+import type { BodyEntry } from '../types';
 
 // Set up required DOM elements before ui.js loads
 beforeAll(() => {
@@ -24,7 +25,7 @@ beforeAll(() => {
                 const input = document.createElement('input');
                 input.type = 'checkbox';
                 input.id = id;
-                input.checked = true;
+                (input as HTMLInputElement).checked = true;
                 document.body.appendChild(input);
             } else {
                 document.body.appendChild(el);
@@ -34,7 +35,7 @@ beforeAll(() => {
 });
 
 // Mock scene.js and selection.js to avoid Three.js side effects
-vi.mock('../rendering/scene.js', () => ({
+vi.mock('../rendering/scene', () => ({
     scene: { add: vi.fn() },
     camera: {
         position: {
@@ -58,15 +59,15 @@ vi.mock('../rendering/scene.js', () => ({
     ZOOM_BASE: 120,
 }));
 
-vi.mock('../rendering/rendering.js', () => ({
+vi.mock('../rendering/rendering', () => ({
     COMET_ORBIT_OPACITY: 0.03,
     COMET_ORBIT_SELECTED_OPACITY: 0.05,
     initiateTransfer: vi.fn(),
 }));
 
-import { hashString } from '../ui/ui.js';
-import { selectBody } from '../ui/selection.js';
-import { state } from '../core/state.js';
+import { hashString } from '../ui/ui';
+import { selectBody } from '../ui/selection';
+import { state } from '../core/state';
 
 describe('ship info panel', () => {
     it('shows engine, fuel, and delta-v elements for ships', () => {
@@ -88,8 +89,8 @@ describe('ship info panel', () => {
         });
 
         state.BODIES = [
-            { name: 'Sun', type: 'Star', distance: 0, period: 0, radius: 696340, color: '#ffdd44', moons: [] },
-            { name: 'Earth', type: 'Planet', distance: 1.0, period: 1.0, radius: 6371, color: '#4488ff', moons: [] },
+            { name: 'Sun', type: 'Star' as const, distance: 0, e: 0, period: 0, radius: 696340, color: '#ffdd44', moons: [] },
+            { name: 'Earth', type: 'Planet' as const, distance: 1.0, e: 0, period: 1.0, radius: 6371, color: '#4488ff', moons: [] },
         ];
         state.bodyMeshes = [];
 
@@ -102,20 +103,20 @@ describe('ship info panel', () => {
             screenSize: 0.02, orbitA: 1.0,
             engineId: 'conventional', dryMassKg: 5000, fuelKg: 50000, fuelCapacityKg: 50000,
         };
-        state.bodyMeshes.push(shipEntry);
+        state.bodyMeshes.push(shipEntry as unknown as BodyEntry);
         state.bodyMeshes.push({
-            data: state.BODIES[1], mesh: { position: { x: 100, y: 0, z: 0 } },
+            data: state.BODIES![1], mesh: { position: { x: 100, y: 0, z: 0 } },
             isShip: false, isMoon: false, isComet: false,
-        });
+        } as unknown as BodyEntry);
 
-        selectBody(shipEntry);
+        selectBody(shipEntry as unknown as BodyEntry);
 
-        expect(document.getElementById('info-ship-engine').classList.contains('hidden')).toBe(false);
-        expect(document.getElementById('info-ship-fuel').classList.contains('hidden')).toBe(false);
-        expect(document.getElementById('info-ship-deltav').classList.contains('hidden')).toBe(false);
-        expect(document.getElementById('ship-engine-value').textContent).toBe('Conventional TN');
-        expect(document.getElementById('ship-fuel-value').textContent).toContain('50.00t');
-        expect(document.getElementById('ship-deltav-value').textContent).toContain('km/s');
+        expect(document.getElementById('info-ship-engine')!.classList.contains('hidden')).toBe(false);
+        expect(document.getElementById('info-ship-fuel')!.classList.contains('hidden')).toBe(false);
+        expect(document.getElementById('info-ship-deltav')!.classList.contains('hidden')).toBe(false);
+        expect(document.getElementById('ship-engine-value')!.textContent).toBe('Conventional TN');
+        expect(document.getElementById('ship-fuel-value')!.textContent).toContain('50.00t');
+        expect(document.getElementById('ship-deltav-value')!.textContent).toContain('km/s');
     });
 });
 

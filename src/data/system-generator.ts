@@ -1,12 +1,56 @@
 // ---------------------------------------------------------------------------
 // Procedural Star System Generator
 // ---------------------------------------------------------------------------
-import { seededRandom, rngInt, rngFloat, rngGaussian, rngWeighted, rngPick } from '../core/utils.js';
-import { keplerPeriod, categorizePlanet } from '../math/orbit.js';
+import { seededRandom, rngInt, rngFloat, rngGaussian, rngWeighted, rngPick } from '../core/utils';
+import { keplerPeriod, categorizePlanet } from '../math/orbit';
+import type { BodyData, CometData, SystemData, AsteroidBeltData, SpectralType, MoonData, PlanetCategory } from '../types';
+
+// --- Local types ---
+
+interface BinaryConfig {
+    type: 'single' | 'p-type' | 's-type';
+    secondary: BodyData | null;
+    separation: number;
+    secondaryMass?: number;
+    maxPlanetDist?: number;
+    minPlanetDist?: number;
+}
+
+interface RawPlanetEntry {
+    distance: number;
+    e: number;
+    period: number;
+    radius: number;
+    color: string;
+    moons: MoonData[];
+    _radiusEarths: number;
+    _category: PlanetCategory;
+    _isDwarf?: boolean;
+    _isDetached?: boolean;
+}
+
+interface StarResult {
+    body: BodyData;
+    mass: number;
+    luminosity: number;
+    spectralType: string;
+}
+
+interface CatalogPrefix {
+    prefix: string;
+    weight: number;
+    min: number;
+    max: number;
+}
+
+interface SystemClass {
+    name: string;
+    weight: number;
+}
 
 // --- Lookup Tables ---
 
-const SPECTRAL_TYPES = [
+const SPECTRAL_TYPES: SpectralType[] = [
     { type: 'M', weight: 0.50, massMin: 0.08, massMax: 0.45, radMin: 0.1, radMax: 0.6, tempMin: 2400, tempMax: 3700, color: '#ff6633', lumMin: 0.001, lumMax: 0.08 },
     { type: 'K', weight: 0.20, massMin: 0.45, massMax: 0.8, radMin: 0.6, radMax: 0.9, tempMin: 3700, tempMax: 5200, color: '#ff9944', lumMin: 0.08, lumMax: 0.6 },
     { type: 'G', weight: 0.12, massMin: 0.8, massMax: 1.04, radMin: 0.9, radMax: 1.15, tempMin: 5200, tempMax: 6000, color: '#ffdd44', lumMin: 0.6, lumMax: 1.5 },
@@ -16,7 +60,7 @@ const SPECTRAL_TYPES = [
     { type: 'O', weight: 0.02, massMin: 16, massMax: 90, radMin: 6.6, radMax: 15, tempMin: 30000, tempMax: 50000, color: '#9999ff', lumMin: 30000, lumMax: 1000000 },
 ];
 
-const SYSTEM_CLASSES = [
+const SYSTEM_CLASSES: SystemClass[] = [
     { name: 'peas-in-a-pod', weight: 0.40 },
     { name: 'solar-like', weight: 0.15 },
     { name: 'hot-jupiter', weight: 0.10 },
@@ -25,43 +69,43 @@ const SYSTEM_CLASSES = [
     { name: 'giant-dominated', weight: 0.10 },
 ];
 
-const PLANET_COLORS = {
+const PLANET_COLORS: Record<PlanetCategory, string[]> = {
     rocky: ['#aaaaaa', '#cc5533', '#ddaa66', '#4488cc', '#bb9977', '#ccaa88', '#998877', '#887766'],
     subNeptune: ['#88bbcc', '#aaccbb', '#99aacc', '#bbccdd', '#77aaaa', '#88aa99'],
     gasGiant: ['#ddaa77', '#ccbb77', '#cc9966', '#ddcc88', '#bbaa66', '#ddbb88'],
     iceGiant: ['#88bbcc', '#4466cc', '#6688aa', '#5577bb', '#77aacc'],
 };
 
-const MOON_COLORS = ['#999999', '#887766', '#aaaaaa', '#777788', '#aabbbb', '#99aaaa', '#888888', '#776655'];
+const MOON_COLORS: string[] = ['#999999', '#887766', '#aaaaaa', '#777788', '#aabbbb', '#99aaaa', '#888888', '#776655'];
 
-const COMET_COLORS = ['#99ccff', '#aaddff', '#88bbaa', '#bbaaff', '#ccddff', '#ddeeff', '#aa9988', '#998877'];
+const COMET_COLORS: string[] = ['#99ccff', '#aaddff', '#88bbaa', '#bbaaff', '#ccddff', '#ddeeff', '#aa9988', '#998877'];
 
-const CATALOG_PREFIXES = [
+const CATALOG_PREFIXES: CatalogPrefix[] = [
     { prefix: 'HD', weight: 0.4, min: 100000, max: 399999 },
     { prefix: 'GJ', weight: 0.3, min: 1000, max: 9999 },
     { prefix: 'HIP', weight: 0.3, min: 10000, max: 99999 },
 ];
 
-const ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'];
+const ROMAN: string[] = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'];
 
-const EARTH_RADIUS_KM = 6371;
-const SOLAR_RADIUS_KM = 695700;
+const EARTH_RADIUS_KM: number = 6371;
+const SOLAR_RADIUS_KM: number = 695700;
 
 // --- Naming ---
 
-function generateSystemName(rng) {
+function generateSystemName(rng: () => number): string {
     const cat = rngWeighted(rng, CATALOG_PREFIXES);
     const num = rngInt(rng, cat.min, cat.max);
     return `${cat.prefix} ${num}`;
 }
 
-export function planetLetter(index) {
+export function planetLetter(index: number): string {
     return String.fromCharCode(98 + index); // b, c, d, ...
 }
 
 // --- Star Generation ---
 
-function generateStar(rng, name) {
+function generateStar(rng: () => number, name: string): StarResult {
     const spec = rngWeighted(rng, SPECTRAL_TYPES);
     const t = rng(); // position within spectral range
     const mass = spec.massMin + t * (spec.massMax - spec.massMin);
@@ -88,7 +132,7 @@ function generateStar(rng, name) {
 
 // --- Binary Configuration ---
 
-function generateBinaryConfig(rng, primaryStar, systemName) {
+function generateBinaryConfig(rng: () => number, primaryStar: StarResult, systemName: string): BinaryConfig {
     const roll = rng();
     if (roll < 0.65) return { type: 'single', secondary: null, separation: 0 };
 
@@ -100,7 +144,7 @@ function generateBinaryConfig(rng, primaryStar, systemName) {
     const secondaryMass = primaryStar.mass * massRatio;
 
     // Find spectral type for secondary
-    let secSpec = SPECTRAL_TYPES[0];
+    let secSpec: SpectralType = SPECTRAL_TYPES[0];
     for (const s of SPECTRAL_TYPES) {
         if (secondaryMass >= s.massMin && secondaryMass <= s.massMax) {
             secSpec = s;
@@ -111,10 +155,11 @@ function generateBinaryConfig(rng, primaryStar, systemName) {
     const secRadius = secSpec.radMin + t * (secSpec.radMax - secSpec.radMin);
     const secPeriod = Math.sqrt(Math.pow(clampedSep, 3) / (primaryStar.mass + secondaryMass));
 
-    const secondaryBody = {
+    const secondaryBody: BodyData = {
         name: systemName + ' B',
         type: 'Star',
         distance: clampedSep,
+        e: 0,
         period: secPeriod,
         radius: Math.round(secRadius * SOLAR_RADIUS_KM),
         color: secSpec.color,
@@ -136,9 +181,9 @@ function generateBinaryConfig(rng, primaryStar, systemName) {
 // --- Planet Generation ---
 
 
-function generatePlanets(rng, systemClass, starMass, starLuminosity, binary) {
+function generatePlanets(rng: () => number, systemClass: string, starMass: number, starLuminosity: number, binary: BinaryConfig): RawPlanetEntry[] {
     const snowLine = Math.sqrt(starLuminosity) * 2.7;
-    const planets = [];
+    const planets: RawPlanetEntry[] = [];
 
     switch (systemClass) {
         case 'peas-in-a-pod':
@@ -192,7 +237,7 @@ function generatePlanets(rng, systemClass, starMass, starLuminosity, binary) {
     return planets;
 }
 
-function makePlanetEntry(rng, distAU, radiusEarths, starMass) {
+function makePlanetEntry(rng: () => number, distAU: number, radiusEarths: number, starMass: number): RawPlanetEntry {
     const cat = categorizePlanet(radiusEarths);
     const color = rngPick(rng, PLANET_COLORS[cat]);
     const radiusKm = Math.round(radiusEarths * EARTH_RADIUS_KM);
@@ -212,17 +257,17 @@ function makePlanetEntry(rng, distAU, radiusEarths, starMass) {
     };
 }
 
-function applyBinaryConstraints(planets, binary) {
+function applyBinaryConstraints(planets: RawPlanetEntry[], binary: BinaryConfig): RawPlanetEntry[] {
     if (binary.type === 'single') return planets;
     return planets.filter(p =>
-        p.distance >= binary.minPlanetDist &&
-        p.distance <= binary.maxPlanetDist
+        p.distance >= binary.minPlanetDist! &&
+        p.distance <= binary.maxPlanetDist!
     );
 }
 
 // --- System Class Generators ---
 
-function generatePeasInAPod(rng, planets, starMass, binary) {
+function generatePeasInAPod(rng: () => number, planets: RawPlanetEntry[], starMass: number, binary: BinaryConfig): void {
     const count = rngInt(rng, 3, 7);
     const templateRadius = rngFloat(rng, 1.2, 3.5);
     let dist = rngFloat(rng, 0.05, 0.15);
@@ -239,7 +284,7 @@ function generatePeasInAPod(rng, planets, starMass, binary) {
     planets.push(...filtered);
 }
 
-function generateSolarLike(rng, planets, starMass, luminosity, snowLine, binary) {
+function generateSolarLike(rng: () => number, planets: RawPlanetEntry[], starMass: number, _luminosity: number, snowLine: number, binary: BinaryConfig): void {
     // Inner rocky planets
     const rockyCount = rngInt(rng, 2, 4);
     let dist = rngFloat(rng, 0.3, 0.5);
@@ -271,7 +316,7 @@ function generateSolarLike(rng, planets, starMass, luminosity, snowLine, binary)
     planets.push(...filtered);
 }
 
-function generateHotJupiter(rng, planets, starMass, binary) {
+function generateHotJupiter(rng: () => number, planets: RawPlanetEntry[], starMass: number, binary: BinaryConfig): void {
     // Hot Jupiter
     const hjDist = rngFloat(rng, 0.02, 0.1);
     const hjRadius = rngFloat(rng, 10, 15);
@@ -290,7 +335,7 @@ function generateHotJupiter(rng, planets, starMass, binary) {
     planets.push(...filtered);
 }
 
-function generateWarmJupiterMixed(rng, planets, starMass, binary) {
+function generateWarmJupiterMixed(rng: () => number, planets: RawPlanetEntry[], starMass: number, binary: BinaryConfig): void {
     const gjDist = rngFloat(rng, 0.5, 3.0);
     const gjRadius = rngFloat(rng, 8, 12);
     planets.push(makePlanetEntry(rng, gjDist, gjRadius, starMass));
@@ -316,7 +361,7 @@ function generateWarmJupiterMixed(rng, planets, starMass, binary) {
     planets.push(...filtered);
 }
 
-function generateCompactMulti(rng, planets, starMass, binary) {
+function generateCompactMulti(rng: () => number, planets: RawPlanetEntry[], starMass: number, binary: BinaryConfig): void {
     const count = rngInt(rng, 4, 8);
     let dist = rngFloat(rng, 0.02, 0.06);
 
@@ -332,7 +377,7 @@ function generateCompactMulti(rng, planets, starMass, binary) {
     planets.push(...filtered);
 }
 
-function generateGiantDominated(rng, planets, starMass, binary) {
+function generateGiantDominated(rng: () => number, planets: RawPlanetEntry[], starMass: number, binary: BinaryConfig): void {
     const count = rngInt(rng, 2, 3);
     let dist = rngFloat(rng, 1.0, 3.0);
 
@@ -350,17 +395,17 @@ function generateGiantDominated(rng, planets, starMass, binary) {
 
 // --- Moon Generation ---
 
-function generateMoons(rng, planetName, radiusEarths, category) {
-    let maxMoons;
+function generateMoons(rng: () => number, planetName: string, radiusEarths: number, category: PlanetCategory): MoonData[] {
+    let maxMoons: number;
     if (category === 'rocky') maxMoons = 2;
     else if (category === 'gasGiant') maxMoons = 6;
     else maxMoons = 4; // subNeptune, iceGiant
 
     const count = rngInt(rng, 0, maxMoons);
-    const moons = [];
+    const moons: MoonData[] = [];
 
     for (let i = 0; i < count; i++) {
-        let moonRadiusKm;
+        let moonRadiusKm: number;
         if (category === 'gasGiant') moonRadiusKm = rngInt(rng, 50, 2500);
         else if (category === 'rocky') moonRadiusKm = rngInt(rng, 10, 500);
         else moonRadiusKm = rngInt(rng, 30, 1000);
@@ -383,12 +428,12 @@ function generateMoons(rng, planetName, radiusEarths, category) {
 
 // --- Asteroid Belt Generation ---
 
-function generateAsteroidBelts(rng, planets, starMass, systemName) {
-    const belts = [];
-    const beltColors = ['#555544', '#333344', '#334455', '#443355', '#444433', '#335544'];
+function generateAsteroidBelts(rng: () => number, planets: RawPlanetEntry[], starMass: number, systemName: string): AsteroidBeltData[] {
+    const belts: AsteroidBeltData[] = [];
+    const beltColors: string[] = ['#555544', '#333344', '#334455', '#443355', '#444433', '#335544'];
 
     // Find largest gas giant for resonance-based belt placement
-    let largestGiant = null;
+    let largestGiant: RawPlanetEntry | null = null;
     let largestGiantRadius = 0;
     for (const p of planets) {
         if (p._radiusEarths > 6 && p._radiusEarths > largestGiantRadius) {
@@ -397,7 +442,7 @@ function generateAsteroidBelts(rng, planets, starMass, systemName) {
         }
     }
 
-    // Inner belt (if giant exists, place at ~60% of giant's distance — near 2:1 resonance)
+    // Inner belt (if giant exists, place at ~60% of giant's distance -- near 2:1 resonance)
     if (largestGiant && largestGiant.distance > 1.5) {
         const innerEdge = largestGiant.distance * rngFloat(rng, 0.35, 0.45);
         const outerEdge = largestGiant.distance * rngFloat(rng, 0.55, 0.65);
@@ -414,14 +459,14 @@ function generateAsteroidBelts(rng, planets, starMass, systemName) {
         }
     }
 
-    // Outer belt complex (Kuiper analog) — beyond outermost planet
+    // Outer belt complex (Kuiper analog) -- beyond outermost planet
     // Split into 2-3 sub-populations like Sol's Kuiper Belt
     const outermost = planets[planets.length - 1];
     if (outermost && outermost.distance > 3) {
         const baseInner = outermost.distance * rngFloat(rng, 1.2, 1.4);
         const baseOuter = outermost.distance * rngFloat(rng, 1.8, 2.5);
 
-        // Cold population — narrow, flat, densest
+        // Cold population -- narrow, flat, densest
         const coldInner = baseInner * rngFloat(rng, 1.0, 1.1);
         const coldOuter = baseInner * rngFloat(rng, 1.2, 1.4);
         belts.push({
@@ -434,7 +479,7 @@ function generateAsteroidBelts(rng, planets, starMass, systemName) {
             maxInc: rngInt(rng, 1, 2),
         });
 
-        // Hot population — wider, more inclined
+        // Hot population -- wider, more inclined
         belts.push({
             name: `${systemName} Outer Belt - Hot`,
             minAU: Math.round(baseInner * 100) / 100,
@@ -445,7 +490,7 @@ function generateAsteroidBelts(rng, planets, starMass, systemName) {
             maxInc: rngInt(rng, 3, 5),
         });
 
-        // Resonant population — overlapping region
+        // Resonant population -- overlapping region
         if (rng() < 0.7) {
             const resInner = coldInner * rngFloat(rng, 0.9, 1.0);
             const resOuter = coldOuter * rngFloat(rng, 1.0, 1.1);
@@ -460,7 +505,7 @@ function generateAsteroidBelts(rng, planets, starMass, systemName) {
             });
         }
     } else if (!largestGiant) {
-        // No giant and compact system — place a debris belt mid-system
+        // No giant and compact system -- place a debris belt mid-system
         const midDist = outermost ? outermost.distance * 1.5 : 3;
         const inner = midDist * 0.8;
         const outer = midDist * 1.2;
@@ -480,9 +525,9 @@ function generateAsteroidBelts(rng, planets, starMass, systemName) {
 
 // --- Comet Generation ---
 
-function generateComets(rng, outerEdgeAU, starMass, systemName) {
+function generateComets(rng: () => number, outerEdgeAU: number, starMass: number, systemName: string): CometData[] {
     const count = rngInt(rng, 3, 10);
-    const comets = [];
+    const comets: CometData[] = [];
 
     for (let i = 0; i < count; i++) {
         const a = rngFloat(rng, 10, Math.max(500, outerEdgeAU * 3));
@@ -506,7 +551,7 @@ function generateComets(rng, outerEdgeAU, starMass, systemName) {
 
 // --- Main Generator ---
 
-export function generateSystem(seed) {
+export function generateSystem(seed: number): SystemData {
     const rng = seededRandom(seed);
     const systemName = generateSystemName(rng);
 
@@ -523,7 +568,7 @@ export function generateSystem(seed) {
     const rawPlanets = generatePlanets(rng, systemClass, primary.mass, primary.luminosity, binary);
 
     // Assign names, types, moons
-    const bodies = [primary.body];
+    const bodies: BodyData[] = [primary.body];
 
     if (binary.secondary) {
         bodies.push(binary.secondary);
@@ -532,7 +577,7 @@ export function generateSystem(seed) {
     rawPlanets.forEach((p, i) => {
         const letter = planetLetter(i);
         const name = `${systemName} ${letter}`;
-        const type = p._isDetached ? 'Detached Object' : p._isDwarf ? 'Dwarf Planet' : 'Planet';
+        const type: BodyData['type'] = p._isDetached ? 'Detached Object' : p._isDwarf ? 'Dwarf Planet' : 'Planet';
         const moons = generateMoons(rng, name, p._radiusEarths, p._category);
 
         bodies.push({
@@ -561,4 +606,3 @@ export function generateSystem(seed) {
         asteroidBelts,
     };
 }
-

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { bodySize, screenRadius, lodLevel, easeOutCubic, moonOrbitScale, realisticSize, bodyScaleFactor, BODY_MIN_SIZE, BODY_MAX_SIZE, MOON_LOD_ZOOM, MOON_REALISTIC_SCALE, MOON_ZOOM_MAX, BODY_SCALE_ZOOM_MIN, BODY_SCALE_ZOOM_MAX } from '../math/visual.js';
+import { bodySize, screenRadius, lodLevel, easeOutCubic, moonOrbitScale, realisticSize, bodyScaleFactor, BODY_MIN_SIZE, BODY_MAX_SIZE, MOON_LOD_ZOOM, MOON_REALISTIC_SCALE, MOON_ZOOM_MAX, BODY_SCALE_ZOOM_MIN, BODY_SCALE_ZOOM_MAX } from '../math/visual';
 
 describe('bodySize', () => {
     it('returns BODY_MAX_SIZE for stars', () => {

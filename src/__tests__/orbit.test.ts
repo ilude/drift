@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { scaleDist, keplerRadius, orbitSpeed, DAYS_PER_YEAR, meanToTrue, inclinedPosition, DIST_SCALE } from '../math/orbit.js';
+import { scaleDist, keplerRadius, orbitSpeed, DAYS_PER_YEAR, meanToTrue, inclinedPosition, DIST_SCALE } from '../math/orbit';
 
 describe('scaleDist', () => {
     it('returns 0 for 0 AU', () => {
