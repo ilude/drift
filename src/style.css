@@ -279,21 +279,6 @@ body {
     font-size: 10px;
 }
 
-#ship-size-input {
-    background: #141420;
-    border: 1px solid #2a3a2a;
-    color: #88cc88;
-    font-family: inherit;
-    font-size: 10px;
-    padding: 1px 4px;
-    width: 60px;
-}
-
-#ship-size-input:focus {
-    border-color: #4a6a4a;
-    outline: none;
-}
-
 #transfer-target {
     background: #141420;
     border: 1px solid #2a3a2a;

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { state } from '../core/state.js';
 import { scaleDist, MOON_DIST_SCALE, keplerRadius, orbitSpeed, meanToTrue, inclinedPosition } from '../math/orbit.js';
-import { isTransferComplete, gameTransferDays, deriveStarMass } from '../math/transfer.js';
+import { isTransferComplete, deriveStarMass } from '../math/transfer.js';
 import { ENGINE_TYPES, checkTransfer } from '../math/ship-physics.js';
 import { bodySize, BODY_MIN_SIZE, moonOrbitScale, realisticSize } from '../math/visual.js';
 import { scene, ZOOM_BASE, labelContainer, trailGroups, cometGroup } from './scene.js';
@@ -417,15 +417,16 @@ function applyCaptureBlend(p, tgtEntry, t) {
     return 'blending';
 }
 
+const _hermiteOut = { x: 0, z: 0 };
+
 function hermiteEval(p0x, p0z, t0x, t0z, p1x, p1z, t1x, t1z, t) {
     const h00 = (1 + 2 * t) * (1 - t) * (1 - t);
     const h10 = t * (1 - t) * (1 - t);
     const h01 = t * t * (3 - 2 * t);
     const h11 = t * t * (t - 1);
-    return {
-        x: h00 * p0x + h10 * t0x + h01 * p1x + h11 * t1x,
-        z: h00 * p0z + h10 * t0z + h01 * p1z + h11 * t1z,
-    };
+    _hermiteOut.x = h00 * p0x + h10 * t0x + h01 * p1x + h11 * t1x;
+    _hermiteOut.z = h00 * p0z + h10 * t0z + h01 * p1z + h11 * t1z;
+    return _hermiteOut;
 }
 
 function transferPosition(entry, t) {
@@ -634,7 +635,7 @@ export function createShip() {
     const labelDiv = createLabel('Ship', '#bbbbbb', false);
     const trail = createTrail('#bbbbbb', TRAIL_MAX_POINTS);
 
-    const defaultEngine = ENGINE_TYPES[0]; // chemical
+    const defaultEngine = ENGINE_TYPES[0]; // conventional TN
     const entry = {
         data: { name: 'Ship', type: 'Ship', distance: homePlanet.distance, period: 0, radius: 1, color: '#bbbbbb', moons: [] },
         mesh, selRing, planetRing: null, cloudMesh: null, orbitLine: null, orbitRadius: 0,
@@ -647,8 +648,8 @@ export function createShip() {
         // Ship physics
         engineId: defaultEngine.id,
         dryMassKg: defaultEngine.dryMassKg,
-        fuelKg: 500_000,
-        fuelCapacityKg: 500_000,
+        fuelKg: 50_000,
+        fuelCapacityKg: 50_000,
         // Ship state
         shipState: 'orbiting',
         hostPlanetName: homePlanet.name,
@@ -789,9 +790,8 @@ export function initiateTransfer(entry, targetEntry) {
     // Deduct fuel
     entry.fuelKg -= result.fuelUsedKg;
 
-    // Use game formula for visual path duration (short, direct transfers)
-    // Physics math is only for fuel/feasibility
-    const gameDays = gameTransferDays(r1, r2);
+    // Brachistochrone time drives both physics and visuals
+    const gameDays = result.transferDays;
 
     entry.orbitA = (r1 + r2) / 2;
 
@@ -926,15 +926,20 @@ export function updatePositions(dt, camDist) {
                 }
             }
 
-            // Transfer path: update lookahead window each frame
+            // Transfer path: update every 3 frames (visually identical at 60Hz)
             if (entry.transferPath) {
+                entry.transferPathFrameCount = (entry.transferPathFrameCount || 0) + 1;
                 if (entry.shipState === 'transferring') {
-                    const elapsed = state.simTime - entry.transferStartTime;
-                    updateTransferPath(entry, elapsed);
+                    if (entry.transferPathFrameCount % 3 === 0) {
+                        const elapsed = state.simTime - entry.transferStartTime;
+                        updateTransferPath(entry, elapsed);
+                    }
                     entry.transferPath.visible = true;
                 } else if (entry.shipState === 'departing' && entry.pendingTransfer) {
                     // Show arc from ship to optimal departure point
-                    updateDepartureArc(entry);
+                    if (entry.transferPathFrameCount % 3 === 0) {
+                        updateDepartureArc(entry);
+                    }
                     entry.transferPath.visible = true;
                 } else {
                     entry.transferPath.visible = false;
@@ -1006,30 +1011,30 @@ export function updatePositions(dt, camDist) {
             t.index = (t.index + 1) % t.maxPoints;
             t.count = Math.min(t.count + 1, t.maxPoints);
 
-            const total = t.count;
-            for (let j = 0; j < total; j++) {
-                const bufIdx = (t.count >= t.maxPoints)
-                    ? (t.index + j) % t.maxPoints
-                    : j;
-                const fade = j / total;
-                t.colors[bufIdx * 3] = t.baseColor.r * fade;
-                t.colors[bufIdx * 3 + 1] = t.baseColor.g * fade;
-                t.colors[bufIdx * 3 + 2] = t.baseColor.b * fade;
+            if (t.count < t.maxPoints) {
+                // O(1): just set the new point to full brightness
+                const newIdx = (t.index === 0 ? t.maxPoints : t.index) - 1;
+                t.colors[newIdx * 3] = t.baseColor.r;
+                t.colors[newIdx * 3 + 1] = t.baseColor.g;
+                t.colors[newIdx * 3 + 2] = t.baseColor.b;
             }
 
             if (t.count >= t.maxPoints) {
                 const pa = t.positions;
-                const ca = t.colors;
                 const tmpP = t.tmpP;
-                const tmpC = t.tmpC;
                 for (let j = 0; j < t.maxPoints; j++) {
                     const src = ((t.index + j) % t.maxPoints) * 3;
                     const dst = j * 3;
                     tmpP[dst] = pa[src]; tmpP[dst + 1] = pa[src + 1]; tmpP[dst + 2] = pa[src + 2];
-                    tmpC[dst] = ca[src]; tmpC[dst + 1] = ca[src + 1]; tmpC[dst + 2] = ca[src + 2];
                 }
                 t.positions.set(tmpP);
-                t.colors.set(tmpC);
+                // Full fade recalc after reorder (linear index = draw order)
+                for (let j = 0; j < t.maxPoints; j++) {
+                    const fade = j / t.maxPoints;
+                    t.colors[j * 3] = t.baseColor.r * fade;
+                    t.colors[j * 3 + 1] = t.baseColor.g * fade;
+                    t.colors[j * 3 + 2] = t.baseColor.b * fade;
+                }
                 t.index = 0;
                 t.count = t.maxPoints;
             }

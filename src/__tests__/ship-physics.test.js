@@ -4,6 +4,7 @@ import {
     muKmS, exhaustVelocity,
     rocketDeltaV, fuelRequired,
     hohmannDeltaV, hohmannTransferDays,
+    brachistochroneTime, brachistochroneDeltaV,
     ENGINE_TYPES, checkTransfer,
 } from '../math/ship-physics.js';
 
@@ -80,7 +81,7 @@ describe('fuelRequired', () => {
     });
 });
 
-// --- Cycle 3: Hohmann transfer math ---
+// --- Cycle 3: Hohmann transfer math (retained for reference) ---
 
 describe('hohmannDeltaV', () => {
     it('Earth to Mars (~5.59 km/s total)', () => {
@@ -126,62 +127,127 @@ describe('hohmannTransferDays', () => {
     });
 });
 
-// --- Cycle 4: Engine presets and transfer feasibility ---
+// --- Brachistochrone transfer math ---
+
+describe('brachistochroneTime', () => {
+    it('Earth to Mars at 20g ≈ 0.42 days', () => {
+        const accelMS2 = 20 * G_ACCEL; // 196.133 m/s²
+        const days = brachistochroneTime(1.0, 1.524, accelMS2);
+        expect(days).toBeCloseTo(0.42, 1);
+    });
+
+    it('symmetry: same time regardless of direction', () => {
+        const accel = 20 * G_ACCEL;
+        const outbound = brachistochroneTime(1.0, 1.524, accel);
+        const inbound = brachistochroneTime(1.524, 1.0, accel);
+        expect(outbound).toBeCloseTo(inbound, 10);
+    });
+
+    it('higher accel = shorter time', () => {
+        const t20g = brachistochroneTime(1.0, 1.524, 20 * G_ACCEL);
+        const t200g = brachistochroneTime(1.0, 1.524, 200 * G_ACCEL);
+        expect(t200g).toBeLessThan(t20g);
+    });
+
+    it('Earth to Neptune at 20g under 5 days', () => {
+        const days = brachistochroneTime(1.0, 30.07, 20 * G_ACCEL);
+        expect(days).toBeLessThan(5);
+        expect(days).toBeGreaterThan(1);
+    });
+});
+
+describe('brachistochroneDeltaV', () => {
+    it('Earth to Mars at 20g ≈ 7840 km/s', () => {
+        const accelMS2 = 20 * G_ACCEL;
+        const dv = brachistochroneDeltaV(1.0, 1.524, accelMS2);
+        expect(dv).toBeCloseTo(7840, -2);
+    });
+
+    it('symmetry: same dv regardless of direction', () => {
+        const accel = 20 * G_ACCEL;
+        const outbound = brachistochroneDeltaV(1.0, 1.524, accel);
+        const inbound = brachistochroneDeltaV(1.524, 1.0, accel);
+        expect(outbound).toBeCloseTo(inbound, 10);
+    });
+
+    it('higher accel = higher delta-v', () => {
+        const dv20g = brachistochroneDeltaV(1.0, 1.524, 20 * G_ACCEL);
+        const dv200g = brachistochroneDeltaV(1.0, 1.524, 200 * G_ACCEL);
+        expect(dv200g).toBeGreaterThan(dv20g);
+    });
+});
+
+// --- TN Engine presets ---
 
 describe('ENGINE_TYPES', () => {
-    it('has chemical, ion, nuclear, fusion entries', () => {
+    it('has conventional, improved, advanced, extreme entries', () => {
         const ids = ENGINE_TYPES.map(e => e.id);
-        expect(ids).toContain('chemical');
-        expect(ids).toContain('ion');
-        expect(ids).toContain('nuclear');
-        expect(ids).toContain('fusion');
+        expect(ids).toContain('conventional');
+        expect(ids).toContain('improved');
+        expect(ids).toContain('advanced');
+        expect(ids).toContain('extreme');
     });
 
     it('each engine has required fields', () => {
         ENGINE_TYPES.forEach(engine => {
             expect(engine).toHaveProperty('id');
             expect(engine).toHaveProperty('name');
-            expect(engine).toHaveProperty('thrustN');
+            expect(engine).toHaveProperty('accelG');
             expect(engine).toHaveProperty('ispS');
             expect(engine).toHaveProperty('dryMassKg');
         });
     });
+
+    it('accelG values are 1, 10, 50, 200', () => {
+        const accels = ENGINE_TYPES.map(e => e.accelG);
+        expect(accels).toEqual([1, 10, 50, 200]);
+    });
 });
 
+// --- Transfer feasibility with brachistochrone ---
+
 describe('checkTransfer', () => {
-    it('feasible for well-fueled chemical ship (Earth to Mars)', () => {
-        const ship = { fuelKg: 80000, dryMassKg: 10000, engineId: 'chemical' };
+    it('Earth to Mars with conventional TN (1g): feasible, under 5 days', () => {
+        const ship = { fuelKg: 500_000, dryMassKg: 5_000, engineId: 'conventional' };
         const result = checkTransfer(1.0, 1.524, 1.0, ship);
         expect(result.feasible).toBe(true);
-        expect(result.fuelUsedKg).toBeGreaterThan(0);
-        expect(result.deltaVRequired).toBeCloseTo(5.59, 1);
-        expect(result.transferDays).toBeCloseTo(259, -1);
+        expect(result.transferDays).toBeLessThan(5);
+        expect(result.deltaVRequired).toBeCloseTo(1755, -2);
+    });
+
+    it('Earth to Neptune with extreme TN: feasible, under 5 days', () => {
+        const ship = { fuelKg: 500_000, dryMassKg: 5_000, engineId: 'extreme' };
+        const result = checkTransfer(1.0, 30.07, 1.0, ship);
+        expect(result.feasible).toBe(true);
+        expect(result.transferDays).toBeLessThan(5);
     });
 
     it('infeasible with near-zero fuel', () => {
-        const ship = { fuelKg: 1, dryMassKg: 10000, engineId: 'chemical' };
+        const ship = { fuelKg: 1, dryMassKg: 5_000, engineId: 'conventional' };
         const result = checkTransfer(1.0, 1.524, 1.0, ship);
         expect(result.feasible).toBe(false);
     });
 
     it('fuel consumed matches fuelRequired for same delta-v', () => {
-        const ship = { fuelKg: 200000, dryMassKg: 10000, engineId: 'chemical' };
+        const ship = { fuelKg: 500_000, dryMassKg: 5_000, engineId: 'conventional' };
         const result = checkTransfer(1.0, 1.524, 1.0, ship);
-        const engine = ENGINE_TYPES.find(e => e.id === 'chemical');
+        const engine = ENGINE_TYPES.find(e => e.id === 'conventional');
         const veKmS = exhaustVelocity(engine.ispS) / 1000;
         const expectedFuel = fuelRequired(veKmS, ship.dryMassKg, result.deltaVRequired);
         expect(result.fuelUsedKg).toBeCloseTo(expectedFuel, 6);
     });
 
     it('infeasible with unknown engine', () => {
-        const ship = { fuelKg: 100000, dryMassKg: 10000, engineId: 'warp' };
+        const ship = { fuelKg: 500_000, dryMassKg: 5_000, engineId: 'warp' };
         const result = checkTransfer(1.0, 1.524, 1.0, ship);
         expect(result.feasible).toBe(false);
     });
 
-    it('fusion engine makes Jupiter transfer feasible', () => {
-        const ship = { fuelKg: 50000, dryMassKg: 10000, engineId: 'fusion' };
-        const result = checkTransfer(1.0, 5.203, 1.0, ship);
+    it('TN engines have low fuel fraction (high Isp)', () => {
+        const ship = { fuelKg: 500_000, dryMassKg: 5_000, engineId: 'extreme' };
+        const result = checkTransfer(1.0, 30.07, 1.0, ship);
         expect(result.feasible).toBe(true);
+        // High Isp means fuel usage is a small fraction of total
+        expect(result.fuelUsedKg).toBeLessThan(ship.fuelKg * 0.5);
     });
 });

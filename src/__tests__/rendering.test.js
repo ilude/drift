@@ -126,11 +126,12 @@ describe('initiateTransfer', () => {
         expect(ship.shipState).toBe('orbiting');
     });
 
-    it('uses game transfer time for visual path', () => {
+    it('uses brachistochrone transfer time (~2 days for Earth-Mars at 1g)', () => {
         const ship = setupSystem();
         const mars = state.bodyMeshes.find(e => e.data.name === 'Mars');
         initiateTransfer(ship, mars);
-        // Game formula: 3 + 3 * |1.524 - 1.0| ≈ 4.6 days (short visual transfers)
-        expect(ship.pendingTransfer.gameDays).toBeLessThan(10);
+        // Brachistochrone at 1g: ~2 days Earth→Mars
+        expect(ship.pendingTransfer.gameDays).toBeLessThan(5);
+        expect(ship.pendingTransfer.gameDays).toBeGreaterThan(1);
     });
 });

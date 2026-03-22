@@ -39,7 +39,7 @@ export function speedLabel(timeSpeed) {
 
 export const MASTER_SEED = 42;
 const SAVE_KEY = 'solar-sim-state';
-const SAVE_VERSION = 1;
+const SAVE_VERSION = 2;
 
 export const state = {
     bodyMeshes: [],

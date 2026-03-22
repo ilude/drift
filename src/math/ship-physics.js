@@ -104,22 +104,50 @@ export function hohmannTransferDays(r1AU, r2AU, starMassSolar) {
     return T / 86400; // seconds to days
 }
 
-// --- Engine presets ---
+// --- Brachistochrone transfer math ---
+
+/**
+ * Brachistochrone transfer time: accelerate halfway, flip, decelerate.
+ * @param {number} r1AU - departure orbit radius (AU)
+ * @param {number} r2AU - arrival orbit radius (AU)
+ * @param {number} accelMS2 - sustained acceleration in m/s²
+ * @returns {number} transfer time in days
+ */
+export function brachistochroneTime(r1AU, r2AU, accelMS2) {
+    const d = Math.abs(r2AU - r1AU) * AU_TO_KM * 1000; // meters
+    const T = 2 * Math.sqrt(d / accelMS2); // seconds
+    return T / 86400; // days
+}
+
+/**
+ * Brachistochrone delta-v: dv = 2 * sqrt(d * a).
+ * @param {number} r1AU - departure orbit radius (AU)
+ * @param {number} r2AU - arrival orbit radius (AU)
+ * @param {number} accelMS2 - sustained acceleration in m/s²
+ * @returns {number} delta-v in km/s
+ */
+export function brachistochroneDeltaV(r1AU, r2AU, accelMS2) {
+    const d = Math.abs(r2AU - r1AU) * AU_TO_KM * 1000; // meters
+    const dv = 2 * Math.sqrt(d * accelMS2); // m/s
+    return dv / 1000; // km/s
+}
+
+// --- Engine presets (Trans-Newtonian) ---
 
 export const ENGINE_TYPES = [
-    { id: 'chemical',  name: 'Chemical',       thrustN: 200_000,  ispS: 320,   dryMassKg: 2_000 },
-    { id: 'ion',       name: 'Ion Drive',      thrustN: 0.5,      ispS: 3_000, dryMassKg: 500 },
-    { id: 'nuclear',   name: 'Nuclear Thermal', thrustN: 50_000,  ispS: 900,   dryMassKg: 5_000 },
-    { id: 'fusion',    name: 'Fusion Drive',   thrustN: 100_000,  ispS: 15_000, dryMassKg: 10_000 },
+    { id: 'conventional', name: 'Conventional TN', accelG: 1,   ispS: 1_000_000,  dryMassKg: 5_000 },
+    { id: 'improved',     name: 'Improved TN',     accelG: 10,  ispS: 2_000_000,  dryMassKg: 5_000 },
+    { id: 'advanced',     name: 'Advanced TN',     accelG: 50,  ispS: 5_000_000,  dryMassKg: 5_000 },
+    { id: 'extreme',      name: 'Extreme TN',      accelG: 200, ispS: 10_000_000, dryMassKg: 5_000 },
 ];
 
 // --- Transfer feasibility check ---
 
 /**
- * Check if a ship can perform a Hohmann transfer between two orbits.
+ * Check if a ship can perform a brachistochrone transfer between two orbits.
  * @param {number} r1AU - departure orbit radius (AU)
  * @param {number} r2AU - arrival orbit radius (AU)
- * @param {number} starMassSolar - star mass in solar masses
+ * @param {number} starMassSolar - star mass in solar masses (unused, kept for API compat)
  * @param {{ fuelKg: number, dryMassKg: number, engineId: string }} shipState
  * @returns {{ feasible: boolean, fuelUsedKg?: number, deltaVRequired?: number,
  *             deltaVAvailable?: number, transferDays?: number }}
@@ -128,12 +156,13 @@ export function checkTransfer(r1AU, r2AU, starMassSolar, shipState) {
     const engine = ENGINE_TYPES.find(e => e.id === shipState.engineId);
     if (!engine) return { feasible: false };
 
-    const { dvTotal } = hohmannDeltaV(r1AU, r2AU, starMassSolar);
+    const accelMS2 = engine.accelG * G_ACCEL;
+    const dvTotal = brachistochroneDeltaV(r1AU, r2AU, accelMS2);
     const veKmS = exhaustVelocity(engine.ispS) / 1000; // m/s to km/s
     const wetMass = shipState.dryMassKg + shipState.fuelKg;
     const deltaVAvailable = rocketDeltaV(veKmS, wetMass, shipState.dryMassKg);
     const fuelUsedKg = fuelRequired(veKmS, shipState.dryMassKg, dvTotal);
-    const transferDays = hohmannTransferDays(r1AU, r2AU, starMassSolar);
+    const transferDays = brachistochroneTime(r1AU, r2AU, accelMS2);
 
     if (dvTotal > deltaVAvailable || fuelUsedKg > shipState.fuelKg) {
         return {

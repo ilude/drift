@@ -72,15 +72,14 @@ describe('ship info panel', () => {
     it('shows engine, fuel, and delta-v elements for ships', () => {
         // Set up minimal DOM elements selectBody needs
         ['info-panel', 'info-title', 'info-type', 'info-distance', 'info-period',
-         'info-radius', 'info-moons', 'info-transfer', 'info-ship-size',
+         'info-radius', 'info-moons', 'info-transfer',
          'info-ship-engine', 'ship-engine-value', 'info-ship-fuel', 'ship-fuel-value',
-         'info-ship-deltav', 'ship-deltav-value', 'transfer-target', 'ship-size-input',
+         'info-ship-deltav', 'ship-deltav-value', 'transfer-target',
         ].forEach(id => {
             if (!document.getElementById(id)) {
-                const el = document.createElement(id === 'transfer-target' ? 'select' :
-                    id === 'ship-size-input' ? 'input' : 'div');
+                const el = document.createElement(id === 'transfer-target' ? 'select' : 'div');
                 el.id = id;
-                if (id === 'info-panel' || id === 'info-transfer' || id === 'info-ship-size' ||
+                if (id === 'info-panel' || id === 'info-transfer' ||
                     id === 'info-ship-engine' || id === 'info-ship-fuel' || id === 'info-ship-deltav') {
                     el.classList.add('hidden');
                 }
@@ -101,7 +100,7 @@ describe('ship info panel', () => {
             isShip: true, isMoon: false, isComet: false,
             shipState: 'orbiting', hostPlanetName: 'Earth',
             screenSize: 0.02, orbitA: 1.0,
-            engineId: 'chemical', dryMassKg: 2000, fuelKg: 100000, fuelCapacityKg: 100000,
+            engineId: 'conventional', dryMassKg: 5000, fuelKg: 50000, fuelCapacityKg: 50000,
         };
         state.bodyMeshes.push(shipEntry);
         state.bodyMeshes.push({
@@ -114,8 +113,8 @@ describe('ship info panel', () => {
         expect(document.getElementById('info-ship-engine').classList.contains('hidden')).toBe(false);
         expect(document.getElementById('info-ship-fuel').classList.contains('hidden')).toBe(false);
         expect(document.getElementById('info-ship-deltav').classList.contains('hidden')).toBe(false);
-        expect(document.getElementById('ship-engine-value').textContent).toBe('Chemical');
-        expect(document.getElementById('ship-fuel-value').textContent).toContain('100');
+        expect(document.getElementById('ship-engine-value').textContent).toBe('Conventional TN');
+        expect(document.getElementById('ship-fuel-value').textContent).toContain('50.00t');
         expect(document.getElementById('ship-deltav-value').textContent).toContain('km/s');
     });
 });

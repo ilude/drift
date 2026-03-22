@@ -24,6 +24,16 @@ export default [
         },
     },
     {
+        files: ['serve.js'],
+        languageOptions: {
+            globals: {
+                Bun: 'readonly',
+                Response: 'readonly',
+                URL: 'readonly',
+            },
+        },
+    },
+    {
         ignores: ['node_modules/', 'dist/', 'coverage/'],
     },
 ];
