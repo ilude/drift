@@ -2,12 +2,12 @@ import * as THREE from 'three';
 import { state, MAX_CLICK_DIST } from './state.js';
 import { easeOutCubic } from './visual.js';
 import { camera, controls, ZOOM_BASE, renderer } from './scene.js';
-import { COMET_ORBIT_OPACITY, COMET_ORBIT_SELECTED_OPACITY } from './rendering.js';
+import { COMET_ORBIT_OPACITY, COMET_ORBIT_SELECTED_OPACITY, initiateTransfer } from './rendering.js';
 
 const ZOOM_DIST_RECENTER = ZOOM_BASE / 0.25;
-const ZOOM_DIST_STAR = 30;
-const ZOOM_DIST_PLANET = 15;
-const ZOOM_DIST_MOON = 8;
+const ZOOM_DIST_STAR = 75;
+const ZOOM_DIST_PLANET = 38;
+const ZOOM_DIST_MOON = 20;
 
 const flyEndTarget = new THREE.Vector3();
 const flyEndCam = new THREE.Vector3();
@@ -81,18 +81,34 @@ export function selectBody(entry) {
     panel.classList.remove('hidden');
     document.getElementById('info-title').textContent = entry.data.name;
     document.getElementById('info-type').textContent = entry.data.type;
-    if (entry.isComet) {
+    if (entry.isShip) {
+        document.getElementById('info-distance').textContent =
+            entry.shipState === 'transferring' ? `${entry.orbitA.toFixed(2)} AU (transfer)` : `${entry.data.distance} AU`;
+        const statusText = entry.shipState === 'transferring'
+            ? `Transfer → ${entry.transferTarget}`
+            : entry.shipState === 'departing'
+            ? `Departing ${entry.hostPlanetName}...`
+            : `Orbiting ${entry.hostPlanetName}`;
+        document.getElementById('info-period').textContent = statusText;
+        document.getElementById('info-radius').textContent = '-';
+        document.getElementById('info-moons').textContent = '-';
+    } else if (entry.isComet) {
         document.getElementById('info-distance').textContent =
             `Perihelion: ${entry.data.distance.toFixed(2)} AU | e: ${entry.data.e}`;
+        document.getElementById('info-period').textContent = entry.data.period > 0
+            ? `${entry.data.period} years` : '-';
+        document.getElementById('info-radius').textContent = `${entry.data.radius.toLocaleString()} km`;
+        document.getElementById('info-moons').textContent = entry.data.moons
+            ? entry.data.moons.length.toString() : '0';
     } else {
         document.getElementById('info-distance').textContent = entry.data.distance > 0
             ? `${entry.data.distance} AU` : 'Center';
+        document.getElementById('info-period').textContent = entry.data.period > 0
+            ? `${entry.data.period} years` : '-';
+        document.getElementById('info-radius').textContent = `${entry.data.radius.toLocaleString()} km`;
+        document.getElementById('info-moons').textContent = entry.data.moons
+            ? entry.data.moons.length.toString() : '0';
     }
-    document.getElementById('info-period').textContent = entry.data.period > 0
-        ? `${entry.data.period} years` : '-';
-    document.getElementById('info-radius').textContent = `${entry.data.radius.toLocaleString()} km`;
-    document.getElementById('info-moons').textContent = entry.data.moons
-        ? entry.data.moons.length.toString() : '0';
 
     document.querySelectorAll('.body-list-item').forEach(el => el.classList.remove('selected'));
     const items = document.querySelectorAll('.body-list-item');
@@ -101,6 +117,28 @@ export function selectBody(entry) {
             el.classList.add('selected');
         }
     });
+
+    // Ship-specific UI
+    const transferRow = document.getElementById('info-transfer');
+    const sizeRow = document.getElementById('info-ship-size');
+    if (entry.isShip) {
+        transferRow.classList.remove('hidden');
+        sizeRow.classList.remove('hidden');
+        document.getElementById('ship-size-input').value = entry.screenSize;
+        const select = document.getElementById('transfer-target');
+        select.innerHTML = '';
+        state.bodyMeshes
+            .filter(e => e.data.type === 'Planet' || e.data.type === 'Dwarf Planet')
+            .forEach(e => {
+                const opt = document.createElement('option');
+                opt.value = e.data.name;
+                opt.textContent = e.data.name;
+                select.appendChild(opt);
+            });
+    } else {
+        transferRow.classList.add('hidden');
+        sizeRow.classList.add('hidden');
+    }
 }
 
 export function selectAsteroid(hit) {
@@ -190,6 +228,22 @@ export function setupClickHandlers() {
         } else if (closest && closestDist < MAX_CLICK_DIST) {
             selectBody(closest);
         }
+    });
+
+    document.getElementById('ship-size-input').addEventListener('input', (e) => {
+        if (!state.selectedBody || !state.selectedBody.isShip) return;
+        const size = parseFloat(e.target.value);
+        if (!size || size <= 0) return;
+        const s = size / state.selectedBody.baseSize;
+        state.selectedBody.mesh.scale.set(s, s, s);
+        state.selectedBody.screenSize = size;
+    });
+
+    document.getElementById('btn-transfer').addEventListener('click', () => {
+        if (!state.selectedBody || !state.selectedBody.isShip) return;
+        const targetName = document.getElementById('transfer-target').value;
+        const targetEntry = state.bodyMeshes.find(e => e.data.name === targetName);
+        if (targetEntry) initiateTransfer(state.selectedBody, targetEntry);
     });
 
     document.getElementById('info-close').addEventListener('click', () => {

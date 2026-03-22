@@ -2,8 +2,8 @@ import * as THREE from 'three';
 import { state, MASTER_SEED, saveState, loadSavedState } from './state.js';
 import { seededRandom } from './utils.js';
 import { scene, camera, renderer, controls, trailGroups, cometGroup } from './scene.js';
-import { createBodies, createComets, createAsteroidBelts, updateAsteroids, updatePositions, sharedResources } from './rendering.js';
-import { setupClickHandlers, updateFlyTo, updateFollow, updateInfoPosition } from './selection.js';
+import { createBodies, createComets, createShip, createAsteroidBelts, updateAsteroids, updatePositions, sharedResources } from './rendering.js';
+import { setupClickHandlers, updateFlyTo, updateFollow, updateInfoPosition, selectBody } from './selection.js';
 import { buildBodyList, setupUI, updateLabels, updateHUD } from './ui.js';
 import { getSolSystem } from './sol-data.js';
 import { generateSystem } from './system-generator.js';
@@ -44,7 +44,7 @@ if (saved) {
         state.ASTEROID_BELTS = active.systemData.asteroidBelts;
         state.simTime = saved.simTime;
         document.querySelector('.system-name').textContent = active.systemData.name + ' \u25be';
-        document.title = `System Map - ${active.systemData.name}`;
+        document.title = `Drift - ${active.systemData.name}`;
     } else {
         state.BODIES = sol.bodies;
         state.COMETS = sol.comets;
@@ -58,9 +58,15 @@ if (saved) {
 
 createBodies();
 createComets();
+createShip();
 state.asteroidBelts = createAsteroidBelts();
+
 buildBodyList();
 cacheStarEntry();
+
+// Select ship by default
+const shipEntry = state.bodyMeshes.find(e => e.isShip);
+if (shipEntry) selectBody(shipEntry);
 
 // Auto-save on page unload
 window.addEventListener('beforeunload', saveState);
@@ -104,6 +110,14 @@ function teardownSystem() {
             entry.trail.line.geometry.dispose();
             entry.trail.line.material.dispose();
         }
+        if (entry.tailLine) {
+            scene.remove(entry.tailLine);
+            entry.tailLine.geometry.dispose();
+        }
+        if (entry.transferPath) {
+            scene.remove(entry.transferPath);
+            entry.transferPath.geometry.dispose();
+        }
     });
     state.bodyMeshes.length = 0;
 
@@ -133,11 +147,13 @@ function loadSystem(systemData) {
     state.ASTEROID_BELTS = systemData.asteroidBelts;
     createBodies();
     createComets();
+    createShip();
     state.asteroidBelts = createAsteroidBelts();
+    
     buildBodyList();
     cacheStarEntry();
     document.querySelector('.system-name').textContent = systemData.name + ' ▾';
-    document.title = `System Map - ${systemData.name}`;
+    document.title = `Drift - ${systemData.name}`;
     state.simTime = 0;
 }
 
@@ -150,17 +166,39 @@ setupClickHandlers();
 // ---------------------------------------------------------------------------
 // Animation loop
 // ---------------------------------------------------------------------------
-const clock = new THREE.Clock();
+const timer = new THREE.Timer();
 
 function animate() {
     requestAnimationFrame(animate);
-    const dt = clock.getDelta();
+    timer.update();
+    const dt = timer.getDelta();
 
-    controls.update();
-    updateFlyTo();
+    // Debug step-through: count down frames then pause
+    if (state.debugStepFrames > 0) {
+        state.debugStepFrames--;
+        if (state.debugStepFrames === 0) {
+            state.timeSpeed = 0;
+            window.dispatchEvent(new Event('debug-step-done'));
+            const ship = state.bodyMeshes.find(e => e.isShip);
+            if (ship) {
+                const elapsed = state.simTime - ship.transferStartTime;
+                const t = ship.transferTimeDays > 0 ? elapsed / ship.transferTimeDays : 0;
+                console.log('DEBUG STEP PAUSED:', {
+                    simTime: state.simTime.toFixed(3),
+                    shipState: ship.shipState,
+                    t: t.toFixed(4),
+                    shipPos: `(${ship.mesh.position.x.toFixed(2)}, ${ship.mesh.position.z.toFixed(2)})`,
+                    hasBlend: !!ship.blendTarget,
+                });
+            }
+        }
+    }
+
     updatePositions(dt, camera.position.distanceTo(controls.target));
     updateAsteroids(dt);
+    updateFlyTo();
     updateFollow();
+    controls.update();
 
     const camDist = camera.position.distanceTo(controls.target);
     updateLabels(camDist);
@@ -168,7 +206,7 @@ function animate() {
     updateHUD(camDist);
 
     if (starEntry && starEntry.mesh.material.uniforms) {
-        starEntry.mesh.material.uniforms.uTime.value = clock.elapsedTime;
+        starEntry.mesh.material.uniforms.uTime.value = timer.getElapsed();
     }
 
     renderer.render(scene, camera);

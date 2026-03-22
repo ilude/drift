@@ -58,6 +58,8 @@ export const state = {
     showLabels: true,
     showOrbits: true,
     showTrails: false,
+    debugStepFrames: 0,
+    debugStepSpeed: 0,
 };
 
 export function saveState() {

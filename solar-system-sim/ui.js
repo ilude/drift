@@ -13,7 +13,7 @@ export function buildBodyList() {
     bodyListEl.innerHTML = '';
 
     const groups = {};
-    const groupOrder = ['Star', 'Planet', 'Dwarf Planet', 'Detached Object', 'Comet'];
+    const groupOrder = ['Star', 'Planet', 'Dwarf Planet', 'Detached Object', 'Comet', 'Ship'];
     state.bodyMeshes.forEach(entry => {
         if (entry.isMoon) return;
         const type = entry.data.type;
@@ -26,7 +26,8 @@ export function buildBodyList() {
         'Planet': 'Planets',
         'Dwarf Planet': 'Dwarf Planets',
         'Detached Object': 'Detached Objects',
-        'Comet': 'Comets'
+        'Comet': 'Comets',
+        'Ship': 'Ships'
     };
 
     groupOrder.forEach(type => {
@@ -162,7 +163,7 @@ export function updateLabels(camDist) {
             }
         }
 
-        if (!entry.isMoon && !entry.isComet && entry.baseSize) {
+        if (!entry.isMoon && !entry.isComet && !entry.isShip && entry.baseSize) {
             const scaledSize = entry.baseSize + scaleFactor * (entry.realisticSize - entry.baseSize);
             const s = scaledSize / entry.baseSize;
             entry.mesh.scale.set(s, s, s);
@@ -332,9 +333,42 @@ export function setupUI(loadSystem) {
         }
     });
 
-    pauseBtn.addEventListener('click', () => {
+    function togglePause() {
         paused = !paused;
         state.timeSpeed = paused ? 0 : TIME_SCALES[activeScaleIndex].speed;
+        updateSpeedBtn();
+    }
+
+    pauseBtn.addEventListener('click', togglePause);
+
+    window.addEventListener('keydown', (e) => {
+        const onFormElement = ['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName);
+        if (e.code === 'Space' || e.key === ' ') {
+            if (onFormElement) return;
+            e.preventDefault();
+            togglePause();
+        } else if (e.key === 'n' || e.key === 'N' || e.key === 'b' || e.key === 'B') {
+            if (onFormElement) return;
+            e.preventDefault();
+            const backward = e.key === 'b' || e.key === 'B';
+            const speed = TIME_SCALES[activeScaleIndex].speed * (backward ? -1 : 1);
+            state.debugStepFrames = 15;
+            state.timeSpeed = speed;
+            paused = false;
+            updateSpeedBtn();
+            const ship = state.bodyMeshes.find(b => b.isShip);
+            const elapsed = ship ? state.simTime - ship.transferStartTime : 0;
+            const t = ship && ship.transferTimeDays > 0 ? elapsed / ship.transferTimeDays : 0;
+            console.log(`DEBUG STEP [${backward ? 'B' : 'N'}]:`, {
+                speed, simTime: state.simTime.toFixed(3),
+                shipState: ship?.shipState, t: t.toFixed(4),
+            });
+        }
+    });
+
+    // Sync UI when something externally sets timeSpeed=0 (debug step, blend-start)
+    window.addEventListener('debug-step-done', () => {
+        paused = true;
         updateSpeedBtn();
     });
 

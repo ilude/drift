@@ -1,4 +1,4 @@
-export const DIST_SCALE = 40;
+export const DIST_SCALE = 100;
 export const MOON_DIST_SCALE = 25;
 
 export function scaleDist(au) {

@@ -86,6 +86,7 @@ function fbm(noise, x, y, z, octaves, lacunarity = 2.0, gain = 0.5) {
 // --- Color helpers ---
 
 function parseColor(hex) {
+    if (typeof hex === 'string' && hex[0] !== '#') hex = '#' + hex;
     const c = new THREE.Color(hex);
     return [c.r, c.g, c.b];
 }

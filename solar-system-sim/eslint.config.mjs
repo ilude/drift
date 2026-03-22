@@ -14,6 +14,8 @@ export default [
                 requestAnimationFrame: 'readonly',
                 console: 'readonly',
                 HTMLCanvasElement: 'readonly',
+                Event: 'readonly',
+                CustomEvent: 'readonly',
             },
         },
         rules: {
