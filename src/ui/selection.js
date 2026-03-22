@@ -3,6 +3,8 @@ import { state, MAX_CLICK_DIST } from '../core/state.js';
 import { easeOutCubic } from '../math/visual.js';
 import { camera, controls, ZOOM_BASE, renderer } from '../rendering/scene.js';
 import { COMET_ORBIT_OPACITY, COMET_ORBIT_SELECTED_OPACITY, initiateTransfer } from '../rendering/rendering.js';
+import { ENGINE_TYPES, hohmannDeltaV, rocketDeltaV, exhaustVelocity } from '../math/ship-physics.js';
+import { deriveStarMass } from '../math/transfer.js';
 
 const ZOOM_DIST_RECENTER = ZOOM_BASE / 0.25;
 const ZOOM_DIST_STAR = 75;
@@ -121,23 +123,56 @@ export function selectBody(entry) {
     // Ship-specific UI
     const transferRow = document.getElementById('info-transfer');
     const sizeRow = document.getElementById('info-ship-size');
+    const engineRow = document.getElementById('info-ship-engine');
+    const fuelRow = document.getElementById('info-ship-fuel');
+    const deltaVRow = document.getElementById('info-ship-deltav');
     if (entry.isShip) {
         transferRow.classList.remove('hidden');
         sizeRow.classList.remove('hidden');
+        engineRow.classList.remove('hidden');
+        fuelRow.classList.remove('hidden');
+        deltaVRow.classList.remove('hidden');
         document.getElementById('ship-size-input').value = entry.screenSize;
+
+        // Engine info
+        const engine = ENGINE_TYPES.find(e => e.id === entry.engineId);
+        document.getElementById('ship-engine-value').textContent = engine ? engine.name : entry.engineId;
+
+        // Fuel info
+        const fuelPct = entry.fuelCapacityKg > 0 ? Math.round(entry.fuelKg / entry.fuelCapacityKg * 100) : 0;
+        document.getElementById('ship-fuel-value').textContent =
+            `${Math.round(entry.fuelKg).toLocaleString()} / ${Math.round(entry.fuelCapacityKg).toLocaleString()} kg (${fuelPct}%)`;
+
+        // Delta-v budget
+        const veKmS = engine ? exhaustVelocity(engine.ispS) / 1000 : 0;
+        const dvBudget = rocketDeltaV(veKmS, entry.dryMassKg + entry.fuelKg, entry.dryMassKg);
+        document.getElementById('ship-deltav-value').textContent = `${dvBudget.toFixed(2)} km/s`;
+
+        // Transfer dropdown with delta-v costs
         const select = document.getElementById('transfer-target');
         select.innerHTML = '';
+        const starMass = deriveStarMass(state.BODIES);
+        const hostEntry = state.bodyMeshes.find(e => e.data.name === entry.hostPlanetName && !e.isMoon && !e.isShip);
+        const r1 = hostEntry ? hostEntry.data.distance : entry.data.distance;
         state.bodyMeshes
             .filter(e => e.data.type === 'Planet' || e.data.type === 'Dwarf Planet')
             .forEach(e => {
                 const opt = document.createElement('option');
                 opt.value = e.data.name;
-                opt.textContent = e.data.name;
+                if (e.data.distance !== r1) {
+                    const { dvTotal } = hohmannDeltaV(r1, e.data.distance, starMass);
+                    opt.textContent = `${e.data.name} (${dvTotal.toFixed(1)} km/s)`;
+                } else {
+                    opt.textContent = `${e.data.name} (here)`;
+                }
                 select.appendChild(opt);
             });
     } else {
         transferRow.classList.add('hidden');
         sizeRow.classList.add('hidden');
+        engineRow.classList.add('hidden');
+        fuelRow.classList.add('hidden');
+        deltaVRow.classList.add('hidden');
     }
 }
 
