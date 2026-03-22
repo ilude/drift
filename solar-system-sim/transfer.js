@@ -271,6 +271,21 @@ export function auToWorld(ax, az) {
     return { x: ax * scale, z: az * scale };
 }
 
+/**
+ * Convert an AU-space velocity direction to world-space direction.
+ * The sqrt-compressed coordinate mapping distorts angles: radial distances
+ * scale by 1/(2√r) while tangential distances scale by √r, so a velocity
+ * direction in AU space has a different angle in world space.
+ */
+export function auVelToWorldDir(ax, az, vx, vz) {
+    const speed = Math.hypot(vx, vz);
+    if (speed < 1e-14) return 0;
+    const eps = 1e-8 / speed;
+    const w0 = auToWorld(ax, az);
+    const w1 = auToWorld(ax + vx * eps, az + vz * eps);
+    return Math.atan2(w1.z - w0.z, w1.x - w0.x);
+}
+
 // --- Gravitational parameter ---
 
 /**
