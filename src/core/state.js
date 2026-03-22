@@ -68,12 +68,20 @@ export function saveState() {
         if (key === 'sol') return;
         systems.push({ key, name: sys.name, seed: sys.seed });
     });
+    // Capture ship physics state
+    const shipEntry = state.bodyMeshes.find(e => e.isShip);
+    const shipData = shipEntry ? {
+        fuelKg: shipEntry.fuelKg,
+        engineId: shipEntry.engineId,
+    } : null;
+
     const data = {
         version: SAVE_VERSION,
         simTime: state.simTime,
         currentSystemKey: state.currentSystemKey,
         randomClickCount: state.randomClickCount,
         discoveredSystems: systems,
+        ship: shipData,
     };
     try {
         localStorage.setItem(SAVE_KEY, JSON.stringify(data));
@@ -90,4 +98,12 @@ export function loadSavedState() {
     } catch (_) {
         return null;
     }
+}
+
+export function restoreShipState(savedData) {
+    if (!savedData || !savedData.ship) return;
+    const shipEntry = state.bodyMeshes.find(e => e.isShip);
+    if (!shipEntry) return;
+    if (savedData.ship.fuelKg !== undefined) shipEntry.fuelKg = savedData.ship.fuelKg;
+    if (savedData.ship.engineId !== undefined) shipEntry.engineId = savedData.ship.engineId;
 }

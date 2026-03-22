@@ -1,5 +1,8 @@
+/**
+ * @vitest-environment jsdom
+ */
 import { describe, it, expect } from 'vitest';
-import { simTimeToDay, simTimeToDate, speedLabel, truncateDate, formatDateTime } from '../core/state.js';
+import { simTimeToDay, simTimeToDate, speedLabel, truncateDate, formatDateTime, state, restoreShipState } from '../core/state.js';
 
 describe('simTimeToDay', () => {
     it('returns 0 for simTime 0', () => {
@@ -137,5 +140,57 @@ describe('speedLabel', () => {
     it('shows months for 30+', () => {
         expect(speedLabel(30)).toBe('1 month / sec');
         expect(speedLabel(90)).toBe('3 months / sec');
+    });
+});
+
+describe('ship state persistence', () => {
+    it('restoreShipState round-trips fuelKg and engineId', () => {
+        // Simulate a save payload (what saveState would produce)
+        const saved = {
+            version: 1,
+            ship: { fuelKg: 75000, engineId: 'nuclear' },
+        };
+
+        state.bodyMeshes = [{
+            isShip: true,
+            fuelKg: 100000,
+            engineId: 'chemical',
+        }];
+
+        restoreShipState(saved);
+
+        expect(state.bodyMeshes[0].fuelKg).toBe(75000);
+        expect(state.bodyMeshes[0].engineId).toBe('nuclear');
+    });
+
+    it('restoreShipState applies saved ship data', () => {
+        state.bodyMeshes = [{
+            isShip: true,
+            fuelKg: 100000,
+            engineId: 'chemical',
+        }];
+
+        const saved = { ship: { fuelKg: 75000, engineId: 'nuclear' } };
+        restoreShipState(saved);
+
+        expect(state.bodyMeshes[0].fuelKg).toBe(75000);
+        expect(state.bodyMeshes[0].engineId).toBe('nuclear');
+    });
+
+    it('restoreShipState handles missing ship data gracefully', () => {
+        state.bodyMeshes = [{
+            isShip: true,
+            fuelKg: 100000,
+            engineId: 'chemical',
+        }];
+
+        restoreShipState(null);
+        expect(state.bodyMeshes[0].fuelKg).toBe(100000);
+
+        restoreShipState({});
+        expect(state.bodyMeshes[0].fuelKg).toBe(100000);
+
+        restoreShipState({ ship: null });
+        expect(state.bodyMeshes[0].fuelKg).toBe(100000);
     });
 });

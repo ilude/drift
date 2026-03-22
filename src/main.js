@@ -1,6 +1,6 @@
 import './style.css';
 import * as THREE from 'three';
-import { state, MASTER_SEED, saveState, loadSavedState } from './core/state.js';
+import { state, MASTER_SEED, saveState, loadSavedState, restoreShipState } from './core/state.js';
 import { seededRandom } from './core/utils.js';
 import { scene, camera, renderer, controls, trailGroups, cometGroup } from './rendering/scene.js';
 import { createBodies, createComets, createShip, createAsteroidBelts, updateAsteroids, updatePositions, sharedResources } from './rendering/rendering.js';
@@ -60,6 +60,7 @@ if (saved) {
 createBodies();
 createComets();
 createShip();
+if (saved) restoreShipState(saved);
 state.asteroidBelts = createAsteroidBelts();
 
 buildBodyList();
