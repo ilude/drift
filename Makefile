@@ -1,21 +1,25 @@
 .PHONY: dev build test test-watch coverage lint clean check install
 
-dev:
+node_modules: bun.lock package.json
+	bun install
+	@touch node_modules
+
+dev: node_modules
 	bun run dev
 
-build:
+build: node_modules
 	bun run build
 
-test:
+test: node_modules
 	bun run test
 
-test-watch:
+test-watch: node_modules
 	bun run test:watch
 
-coverage:
+coverage: node_modules
 	bun run test:coverage
 
-lint:
+lint: node_modules
 	bun run lint
 
 check: lint test build
