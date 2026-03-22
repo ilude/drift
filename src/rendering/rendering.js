@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { state } from '../core/state.js';
 import { scaleDist, MOON_DIST_SCALE, keplerRadius, orbitSpeed, meanToTrue, inclinedPosition } from '../math/orbit.js';
 import { isTransferComplete, gameTransferDays } from '../math/transfer.js';
+import { ENGINE_TYPES } from '../math/ship-physics.js';
 import { bodySize, BODY_MIN_SIZE, moonOrbitScale, realisticSize } from '../math/visual.js';
 import { scene, ZOOM_BASE, labelContainer, trailGroups, cometGroup } from './scene.js';
 import { seededRandom } from '../core/utils.js';
@@ -633,6 +634,7 @@ export function createShip() {
     const labelDiv = createLabel('Ship', '#bbbbbb', false);
     const trail = createTrail('#bbbbbb', TRAIL_MAX_POINTS);
 
+    const defaultEngine = ENGINE_TYPES[0]; // chemical
     const entry = {
         data: { name: 'Ship', type: 'Ship', distance: homePlanet.distance, period: 0, radius: 1, color: '#bbbbbb', moons: [] },
         mesh, selRing, planetRing: null, cloudMesh: null, orbitLine: null, orbitRadius: 0,
@@ -642,6 +644,11 @@ export function createShip() {
         parentMesh: null, moons: [], isMoon: false, isShip: true,
         screenSize: SHIP_SIZE, baseSize: SHIP_SIZE, realisticSize: SHIP_SIZE,
         geomLevels: null, lodLevel: 0,
+        // Ship physics
+        engineId: defaultEngine.id,
+        dryMassKg: defaultEngine.dryMassKg,
+        fuelKg: 100_000,
+        fuelCapacityKg: 100_000,
         // Ship state
         shipState: 'orbiting',
         hostPlanetName: homePlanet.name,

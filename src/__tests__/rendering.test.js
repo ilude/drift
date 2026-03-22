@@ -1,3 +1,6 @@
+/**
+ * @vitest-environment jsdom
+ */
 import { describe, it, expect, vi } from 'vitest';
 
 // Mock scene.js to avoid DOM/Three.js side effects at import time
@@ -8,7 +11,8 @@ vi.mock('../rendering/scene.js', () => ({
     cometGroup: { add: vi.fn() },
 }));
 
-import { orbitToWorld } from '../rendering/rendering.js';
+import { orbitToWorld, createShip } from '../rendering/rendering.js';
+import { state } from '../core/state.js';
 
 describe('orbitToWorld', () => {
     const PI = Math.PI;
@@ -56,5 +60,27 @@ describe('orbitToWorld', () => {
         expect(w.x).toBeCloseTo(0);
         expect(w.y).toBeCloseTo(expectedY);
         expect(w.z).toBeCloseTo(expectedZ);
+    });
+});
+
+describe('createShip', () => {
+    it('returns ship entry with physics properties', () => {
+        state.BODIES = [
+            { name: 'Sun', type: 'Star', distance: 0, period: 0, radius: 696340, color: '#ffdd44', moons: [] },
+            { name: 'Earth', type: 'Planet', distance: 1.0, period: 1.0, radius: 6371, color: '#4488ff', moons: [] },
+        ];
+        state.bodyMeshes = [];
+
+        const entry = createShip();
+        expect(entry).toBeDefined();
+        expect(entry.isShip).toBe(true);
+        expect(entry).toHaveProperty('dryMassKg');
+        expect(entry).toHaveProperty('fuelKg');
+        expect(entry).toHaveProperty('fuelCapacityKg');
+        expect(entry).toHaveProperty('engineId');
+        expect(entry.dryMassKg).toBeGreaterThan(0);
+        expect(entry.fuelKg).toBeGreaterThan(0);
+        expect(entry.fuelCapacityKg).toBeGreaterThan(0);
+        expect(typeof entry.engineId).toBe('string');
     });
 });
