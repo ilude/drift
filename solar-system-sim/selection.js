@@ -84,8 +84,12 @@ export function selectBody(entry) {
     if (entry.isShip) {
         document.getElementById('info-distance').textContent =
             entry.shipState === 'transferring' ? `${entry.orbitA.toFixed(2)} AU (transfer)` : `${entry.data.distance} AU`;
-        document.getElementById('info-period').textContent =
-            entry.shipState === 'transferring' ? `Transfer → ${entry.transferTarget}` : `Orbiting ${entry.hostPlanetName}`;
+        const statusText = entry.shipState === 'transferring'
+            ? `Transfer → ${entry.transferTarget}`
+            : entry.shipState === 'departing'
+            ? `Departing ${entry.hostPlanetName}...`
+            : `Orbiting ${entry.hostPlanetName}`;
+        document.getElementById('info-period').textContent = statusText;
         document.getElementById('info-radius').textContent = '-';
         document.getElementById('info-moons').textContent = '-';
     } else if (entry.isComet) {
@@ -114,10 +118,13 @@ export function selectBody(entry) {
         }
     });
 
-    // Transfer UI for ships
+    // Ship-specific UI
     const transferRow = document.getElementById('info-transfer');
+    const sizeRow = document.getElementById('info-ship-size');
     if (entry.isShip) {
         transferRow.classList.remove('hidden');
+        sizeRow.classList.remove('hidden');
+        document.getElementById('ship-size-input').value = entry.screenSize;
         const select = document.getElementById('transfer-target');
         select.innerHTML = '';
         state.bodyMeshes
@@ -130,6 +137,7 @@ export function selectBody(entry) {
             });
     } else {
         transferRow.classList.add('hidden');
+        sizeRow.classList.add('hidden');
     }
 }
 
@@ -220,6 +228,15 @@ export function setupClickHandlers() {
         } else if (closest && closestDist < MAX_CLICK_DIST) {
             selectBody(closest);
         }
+    });
+
+    document.getElementById('ship-size-input').addEventListener('input', (e) => {
+        if (!state.selectedBody || !state.selectedBody.isShip) return;
+        const size = parseFloat(e.target.value);
+        if (!size || size <= 0) return;
+        const s = size / state.selectedBody.baseSize;
+        state.selectedBody.mesh.scale.set(s, s, s);
+        state.selectedBody.screenSize = size;
     });
 
     document.getElementById('btn-transfer').addEventListener('click', () => {
