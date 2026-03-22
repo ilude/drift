@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { state, MASTER_SEED, saveState, loadSavedState } from './state.js';
 import { seededRandom } from './utils.js';
 import { scene, camera, renderer, controls, trailGroups, cometGroup } from './scene.js';
-import { createBodies, createComets, createShip, createAsteroidBelts, updateAsteroids, updatePositions, sharedResources } from './rendering.js';
+import { createBodies, createComets, createShip, createAsteroidBelts, updateAsteroids, updatePositions, sharedResources, updateSystemMu } from './rendering.js';
 import { setupClickHandlers, updateFlyTo, updateFollow, updateInfoPosition, selectBody } from './selection.js';
 import { buildBodyList, setupUI, updateLabels, updateHUD } from './ui.js';
 import { getSolSystem } from './sol-data.js';
@@ -60,6 +60,7 @@ createBodies();
 createComets();
 createShip();
 state.asteroidBelts = createAsteroidBelts();
+updateSystemMu();
 buildBodyList();
 cacheStarEntry();
 
@@ -148,6 +149,7 @@ function loadSystem(systemData) {
     createComets();
     createShip();
     state.asteroidBelts = createAsteroidBelts();
+    updateSystemMu();
     buildBodyList();
     cacheStarEntry();
     document.querySelector('.system-name').textContent = systemData.name + ' ▾';
@@ -170,6 +172,27 @@ function animate() {
     requestAnimationFrame(animate);
     timer.update();
     const dt = timer.getDelta();
+
+    // Debug step-through: count down frames then pause
+    if (state.debugStepFrames > 0) {
+        state.debugStepFrames--;
+        if (state.debugStepFrames === 0) {
+            state.timeSpeed = 0;
+            window.dispatchEvent(new Event('debug-step-done'));
+            const ship = state.bodyMeshes.find(e => e.isShip);
+            if (ship) {
+                const elapsed = state.simTime - ship.transferStartTime;
+                const t = ship.transferTimeDays > 0 ? elapsed / ship.transferTimeDays : 0;
+                console.log('DEBUG STEP PAUSED:', {
+                    simTime: state.simTime.toFixed(3),
+                    shipState: ship.shipState,
+                    t: t.toFixed(4),
+                    shipPos: `(${ship.mesh.position.x.toFixed(2)}, ${ship.mesh.position.z.toFixed(2)})`,
+                    hasBlend: !!ship.blendTarget,
+                });
+            }
+        }
+    }
 
     updatePositions(dt, camera.position.distanceTo(controls.target));
     updateAsteroids(dt);
