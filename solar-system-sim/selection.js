@@ -5,9 +5,9 @@ import { camera, controls, ZOOM_BASE, renderer } from './scene.js';
 import { COMET_ORBIT_OPACITY, COMET_ORBIT_SELECTED_OPACITY, initiateTransfer } from './rendering.js';
 
 const ZOOM_DIST_RECENTER = ZOOM_BASE / 0.25;
-const ZOOM_DIST_STAR = 30;
-const ZOOM_DIST_PLANET = 15;
-const ZOOM_DIST_MOON = 8;
+const ZOOM_DIST_STAR = 75;
+const ZOOM_DIST_PLANET = 38;
+const ZOOM_DIST_MOON = 20;
 
 const flyEndTarget = new THREE.Vector3();
 const flyEndCam = new THREE.Vector3();

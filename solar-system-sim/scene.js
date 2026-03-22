@@ -14,9 +14,9 @@ sunLight.position.set(0, 0, 0);
 scene.add(sunLight);
 
 // Camera
-export const ZOOM_BASE = 120;
+export const ZOOM_BASE = 300;
 export const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 5000);
-camera.position.set(0, ZOOM_BASE, 80);
+camera.position.set(0, ZOOM_BASE, 200);
 camera.lookAt(0, 0, 0);
 
 // Renderer
