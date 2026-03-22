@@ -22,7 +22,7 @@ export function easeOutCubic(t) {
     return 1 - Math.pow(1 - t, 3);
 }
 
-export const MOON_REALISTIC_SCALE = 4;
+export const MOON_REALISTIC_SCALE = 2;
 export const MOON_ZOOM_MAX = 8;
 
 export function moonOrbitScale(zoomFactor) {
