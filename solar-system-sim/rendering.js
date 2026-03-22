@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { state } from './state.js';
 import { scaleDist, MOON_DIST_SCALE, keplerRadius, orbitSpeed, meanToTrue, inclinedPosition } from './orbit.js';
-import { hohmannTransfer, transferSpeed, isTransferComplete } from './transfer.js';
+import { isTransferComplete, gameTransferDays } from './transfer.js';
 import { bodySize, BODY_MIN_SIZE, moonOrbitScale, realisticSize } from './visual.js';
 import { scene, ZOOM_BASE, labelContainer, trailGroups, cometGroup } from './scene.js';
 import { seededRandom } from './utils.js';
@@ -392,9 +392,44 @@ export function createAsteroidBelts() {
     });
 }
 
-const SHIP_SIZE = BODY_MIN_SIZE * 0.5;
+const SHIP_SIZE = 0.02;
 const SHIP_LOCAL_ORBIT = 1.5;       // world-space radius around host planet
-const SHIP_LOCAL_SPEED = 80;        // rad/day (~90 min period visual)
+const SHIP_LOCAL_SPEED = Math.PI * 2 / 7;  // ~7 day orbital period (visual clarity over realism)
+const SHIP_TAIL_LENGTH = 20;
+const SHIP_PATH_SEGMENTS = 64;
+const shipPathMat = new THREE.LineBasicMaterial({ color: '#555555', transparent: true, opacity: 0.4 });
+const shipTailMat = new THREE.LineBasicMaterial({ color: '#999999', transparent: true, opacity: 0.6 });
+
+function transferPosition(entry, t) {
+    // Cubic Bezier with linear t — curve geometry defines velocity at endpoints
+    const u = t;
+    const inv = 1 - u;
+    return {
+        x: inv * inv * inv * entry.p0x + 3 * inv * inv * u * entry.p1x + 3 * inv * u * u * entry.p2x + u * u * u * entry.p3x,
+        z: inv * inv * inv * entry.p0z + 3 * inv * inv * u * entry.p1z + 3 * inv * u * u * entry.p2z + u * u * u * entry.p3z,
+    };
+}
+
+function createTransferPath(entry) {
+    const points = [];
+    for (let i = 0; i <= SHIP_PATH_SEGMENTS; i++) {
+        const t = i / SHIP_PATH_SEGMENTS;
+        const p = transferPosition(entry, t);
+        points.push(new THREE.Vector3(p.x, 0, p.z));
+    }
+    const geom = new THREE.BufferGeometry().setFromPoints(points);
+    const line = new THREE.Line(geom, shipPathMat);
+    scene.add(line);
+    return line;
+}
+
+function removeTransferPath(entry) {
+    if (entry.transferPath) {
+        scene.remove(entry.transferPath);
+        entry.transferPath.geometry.dispose();
+        entry.transferPath = null;
+    }
+}
 
 function findPlanetEntry(name) {
     return state.bodyMeshes.find(e => e.data.name === name && !e.isMoon && !e.isShip);
@@ -407,7 +442,7 @@ export function createShip() {
         || planets.reduce((best, b) => Math.abs(b.distance - 1) < Math.abs(best.distance - 1) ? b : best);
 
     const geom = new THREE.SphereGeometry(SHIP_SIZE, 8, 8);
-    const mat = new THREE.MeshBasicMaterial({ color: '#00ffff' });
+    const mat = new THREE.MeshStandardMaterial({ color: '#bbbbbb', roughness: 0.6, metalness: 0.4 });
     const mesh = new THREE.Mesh(geom, mat);
     scene.add(mesh);
 
@@ -419,11 +454,11 @@ export function createShip() {
     selRing.rotation.x = -Math.PI / 2;
     mesh.add(selRing);
 
-    const labelDiv = createLabel('Ship', '#00ffff', false);
-    const trail = createTrail('#00ffff', TRAIL_MAX_POINTS);
+    const labelDiv = createLabel('Ship', '#bbbbbb', false);
+    const trail = createTrail('#bbbbbb', TRAIL_MAX_POINTS);
 
     const entry = {
-        data: { name: 'Ship', type: 'Ship', distance: homePlanet.distance, period: 0, radius: 1, color: '#00ffff', moons: [] },
+        data: { name: 'Ship', type: 'Ship', distance: homePlanet.distance, period: 0, radius: 1, color: '#bbbbbb', moons: [] },
         mesh, selRing, planetRing: null, cloudMesh: null, orbitLine: null, orbitRadius: 0,
         labelDiv, trail,
         angle: 0,
@@ -434,52 +469,223 @@ export function createShip() {
         // Ship state
         shipState: 'orbiting',
         hostPlanetName: homePlanet.name,
-        // Heliocentric transfer fields (used only during transfer)
-        orbitA: 0,
-        orbitE: 0,
+        // Transfer fields (Bezier control points set at transfer start)
         transferTarget: null,
         transferStartTime: 0,
         transferTimeDays: 0,
+        p0x: 0, p0z: 0, p1x: 0, p1z: 0, p2x: 0, p2z: 0, p3x: 0, p3z: 0,
+        arrivalAngle: 0, approachDir: 0, targetR: 0,
+        pendingTransfer: null,
+        // Visual: transfer path line and velocity tail
+        transferPath: null,
+        tailPositions: new Float32Array(SHIP_TAIL_LENGTH * 3),
+        tailIndex: 0,
+        tailCount: 0,
     };
+
+    // Velocity tail — always visible, short trail showing direction
+    const tailGeom = new THREE.BufferGeometry();
+    tailGeom.setAttribute('position', new THREE.BufferAttribute(entry.tailPositions, 3));
+    tailGeom.setDrawRange(0, 0);
+    entry.tailLine = new THREE.Line(tailGeom, shipTailMat);
+    scene.add(entry.tailLine);
 
     state.bodyMeshes.push(entry);
     return entry;
 }
 
 function completeTransfer(entry) {
+    removeTransferPath(entry);
     const target = findPlanetEntry(entry.transferTarget);
+
     entry.shipState = 'orbiting';
     entry.hostPlanetName = entry.transferTarget;
     entry.transferTarget = null;
-    entry.angle = 0;
+    entry.pendingTransfer = null;
     entry.speed = SHIP_LOCAL_SPEED;
-    if (target) entry.data.distance = target.data.distance;
+
+    if (target) {
+        entry.data.distance = target.data.distance;
+
+        // Ship is already blended to near-target position
+        // Derive orbit entry angle from current position relative to target
+        const dx = entry.mesh.position.x - target.mesh.position.x;
+        const dz = entry.mesh.position.z - target.mesh.position.z;
+        const dist = Math.hypot(dx, dz);
+        entry.angle = Math.atan2(dz, dx);
+
+        // Only snap if too far from orbit radius (small correction)
+        if (Math.abs(dist - SHIP_LOCAL_ORBIT) > 0.5) {
+            entry.mesh.position.set(
+                target.mesh.position.x + Math.cos(entry.angle) * SHIP_LOCAL_ORBIT,
+                0,
+                target.mesh.position.z + Math.sin(entry.angle) * SHIP_LOCAL_ORBIT
+            );
+        }
+
+        console.log('ENTER ORBIT:', {
+            to: entry.hostPlanetName,
+            entryAngle: (entry.angle * 180 / Math.PI).toFixed(1) + '°',
+        });
+    } else {
+        entry.angle = 0;
+    }
+}
+
+function computeTransferTarget(shipPos, targetEntry, gameDays) {
+    // Predict where target will be at arrival
+    const targetAngle = Math.atan2(targetEntry.mesh.position.z, targetEntry.mesh.position.x);
+    const arrivalAngle = targetAngle + targetEntry.speed * gameDays;
+    const targetR = scaleDist(targetEntry.data.distance);
+    const targetCenterX = Math.cos(arrivalAngle) * targetR;
+    const targetCenterZ = Math.sin(arrivalAngle) * targetR;
+
+    // Entry point: 90° left on screen from approach direction
+    const approachAngle = Math.atan2(
+        targetCenterZ - shipPos.z,
+        targetCenterX - shipPos.x
+    );
+    const approachDir = approachAngle - Math.PI / 2;
+    return {
+        p3x: targetCenterX + Math.cos(approachDir) * SHIP_LOCAL_ORBIT,
+        p3z: targetCenterZ + Math.sin(approachDir) * SHIP_LOCAL_ORBIT,
+        approachDir,
+    };
+}
+
+function beginTransfer(entry) {
+    const p = entry.pendingTransfer;
+
+    // Recompute target prediction NOW at actual departure time
+    const tgt = findPlanetEntry(p.targetName);
+    if (!tgt) return;
+
+    // P0: ship's actual position at departure
+    entry.p0x = entry.mesh.position.x;
+    entry.p0z = entry.mesh.position.z;
+
+    // P3: fresh prediction from current moment
+    const target = computeTransferTarget(
+        { x: entry.p0x, z: entry.p0z }, tgt, p.gameDays
+    );
+    entry.p3x = target.p3x;
+    entry.p3z = target.p3z;
+
+    // Control point scales: departure proportional to transfer distance, arrival to orbit radius
+    const dist = Math.hypot(entry.p3x - entry.p0x, entry.p3z - entry.p0z);
+    const departCpScale = dist * 0.4;
+    const arrivalCpScale = Math.min(dist * 0.3, SHIP_LOCAL_ORBIT * 5);
+
+    // P1: depart tangent to ship's current local orbit velocity (CCW: angle + PI/2)
+    const departVelDir = entry.angle + Math.PI / 2;
+    entry.p1x = entry.p0x + Math.cos(departVelDir) * departCpScale;
+    entry.p1z = entry.p0z + Math.sin(departVelDir) * departCpScale;
+
+    // P2: arrive tangent to target's local orbit velocity (CCW: approachDir + PI/2)
+    const arrivalVelDir = target.approachDir + Math.PI / 2;
+    entry.p2x = entry.p3x - Math.cos(arrivalVelDir) * arrivalCpScale;
+    entry.p2z = entry.p3z - Math.sin(arrivalVelDir) * arrivalCpScale;
+
+    entry.approachDir = target.approachDir;
+    entry.transferStartTime = state.simTime;
+    entry.transferTimeDays = p.gameDays;
+    entry.transferTarget = p.targetName;
+    entry.shipState = 'transferring';
+    entry.pendingTransfer = null;
+    entry.corrected1 = false;
+    entry.corrected2 = false;
+
+    removeTransferPath(entry);
+    entry.transferPath = createTransferPath(entry);
+
+    console.log('LEAVE ORBIT:', {
+        from: entry.hostPlanetName, to: entry.transferTarget,
+        p0: { x: entry.p0x.toFixed(2), z: entry.p0z.toFixed(2) },
+        p3: { x: entry.p3x.toFixed(2), z: entry.p3z.toFixed(2) },
+        dist: dist.toFixed(2),
+        gameDays: p.gameDays.toFixed(1),
+    });
 }
 
 export function initiateTransfer(entry, targetEntry) {
-    if (!entry.isShip || entry.shipState === 'transferring') return;
+    if (!entry.isShip || entry.shipState === 'transferring' || entry.shipState === 'departing') return;
     const host = findPlanetEntry(entry.hostPlanetName);
     if (!host) return;
     const r1 = host.data.distance;
     const r2 = targetEntry.data.distance;
     if (r1 === r2) return;
 
-    const transfer = hohmannTransfer(r1, r2);
-    entry.orbitA = transfer.a;
-    entry.orbitE = transfer.e;
-    entry.speed = transferSpeed(transfer.periodYears);
-    entry.transferStartTime = state.simTime;
-    entry.transferTimeDays = transfer.transferTimeDays;
-    entry.transferTarget = targetEntry.data.name;
-    entry.shipState = 'transferring';
+    const gameDays = gameTransferDays(r1, r2);
 
-    // Compute heliocentric starting angle from host planet's current position
-    const px = host.mesh.position.x;
-    const pz = host.mesh.position.z;
-    const helioAngle = Math.atan2(pz, px);
-    // For outward: depart at periapsis; for inward: depart at apoapsis
-    // Offset the mean anomaly so the Kepler position matches the planet's current angle
-    entry.angle = r2 >= r1 ? helioAngle : helioAngle + Math.PI;
+    // Compute preliminary target to determine optimal departure angle
+    const target = computeTransferTarget(
+        { x: host.mesh.position.x, z: host.mesh.position.z }, targetEntry, gameDays
+    );
+
+    // Optimal departure: local orbit angle where velocity points toward target
+    const toTargetDir = Math.atan2(
+        target.p3z - host.mesh.position.z,
+        target.p3x - host.mesh.position.x
+    );
+    const optimalLocalAngle = toTargetDir - Math.PI / 2;
+
+    entry.pendingTransfer = {
+        gameDays,
+        targetName: targetEntry.data.name,
+        optimalLocalAngle,
+    };
+    entry.shipState = 'departing';
+}
+
+function midCourseCorrection(entry) {
+    const tgt = findPlanetEntry(entry.transferTarget);
+    if (!tgt) return;
+
+    // Remaining transfer time
+    const elapsed = state.simTime - entry.transferStartTime;
+    const remaining = entry.transferTimeDays - elapsed;
+    if (remaining <= 0) return;
+
+    // Current position becomes new P0
+    const pos = transferPosition(entry, elapsed / entry.transferTimeDays);
+    entry.p0x = pos.x;
+    entry.p0z = pos.z;
+
+    // Current velocity direction from Bezier tangent
+    const dt2 = 0.01;
+    const t = elapsed / entry.transferTimeDays;
+    const pos2 = transferPosition(entry, t + dt2);
+    const velDir = Math.atan2(pos2.z - pos.z, pos2.x - pos.x);
+
+    // Recompute target prediction for remaining time
+    const target = computeTransferTarget(
+        { x: entry.p0x, z: entry.p0z }, tgt, remaining
+    );
+    entry.p3x = target.p3x;
+    entry.p3z = target.p3z;
+    entry.approachDir = target.approachDir;
+
+    // Rebuild control points
+    const dist = Math.hypot(entry.p3x - entry.p0x, entry.p3z - entry.p0z);
+    const departCpScale = dist * 0.4;
+    const arrivalCpScale = Math.min(dist * 0.3, SHIP_LOCAL_ORBIT * 5);
+
+    // P1: continue in current velocity direction
+    entry.p1x = entry.p0x + Math.cos(velDir) * departCpScale;
+    entry.p1z = entry.p0z + Math.sin(velDir) * departCpScale;
+
+    // P2: arrive tangent to orbit
+    const arrivalVelDir = target.approachDir + Math.PI / 2;
+    entry.p2x = entry.p3x - Math.cos(arrivalVelDir) * arrivalCpScale;
+    entry.p2z = entry.p3z - Math.sin(arrivalVelDir) * arrivalCpScale;
+
+    // Reset timing for remaining segment
+    entry.transferStartTime = state.simTime;
+    entry.transferTimeDays = remaining;
+
+    // Update path visualization
+    removeTransferPath(entry);
+    entry.transferPath = createTransferPath(entry);
 }
 
 export function updateAsteroids(dt) {
@@ -521,17 +727,10 @@ export function updatePositions(dt, camDist) {
         }
 
         if (entry.isShip) {
-            entry.angle += entry.speed * simDt;
+            if (entry.shipState === 'orbiting' || entry.shipState === 'departing') {
+                entry.angle += entry.speed * simDt;
 
-            if (entry.shipState === 'transferring') {
-                const elapsed = state.simTime - entry.transferStartTime;
-                if (isTransferComplete(elapsed, entry.transferTimeDays)) {
-                    completeTransfer(entry);
-                }
-            }
-
-            if (entry.shipState === 'orbiting') {
-                // Local orbit around host planet (like ISS)
+                // Local orbit around host planet
                 const host = findPlanetEntry(entry.hostPlanetName);
                 if (host) {
                     const lx = Math.cos(entry.angle) * SHIP_LOCAL_ORBIT;
@@ -541,13 +740,81 @@ export function updatePositions(dt, camDist) {
                         0,
                         host.mesh.position.z + lz
                     );
+
+                    // Check if we've reached the optimal departure angle
+                    if (entry.shipState === 'departing' && entry.pendingTransfer) {
+                        const cur = ((entry.angle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+                        const tgt = ((entry.pendingTransfer.optimalLocalAngle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+                        const diff = Math.abs(cur - tgt);
+                        if (diff < 0.2 || diff > Math.PI * 2 - 0.2) {
+                            beginTransfer(entry);
+                        }
+                    }
                 }
+            } else if (entry.shipState === 'transferring') {
+                const elapsed = state.simTime - entry.transferStartTime;
+                if (isTransferComplete(elapsed, entry.transferTimeDays)) {
+                    completeTransfer(entry);
+                } else {
+                    const t = elapsed / entry.transferTimeDays;
+
+                    // Mid-course corrections at 40% and 70%
+                    if (!entry.corrected1 && t > 0.4) {
+                        entry.corrected1 = true;
+                        midCourseCorrection(entry);
+                        return; // restart with new curve next frame
+                    }
+                    if (!entry.corrected2 && t > 0.4) {
+                        // Second correction (t resets after first, so this fires at 40% of remaining)
+                        entry.corrected2 = true;
+                        midCourseCorrection(entry);
+                        return;
+                    }
+
+                    const p = transferPosition(entry, t);
+
+                    // End blend: last 15% smoothly lerp toward actual target orbit position
+                    if (t > 0.85) {
+                        const tgt = findPlanetEntry(entry.transferTarget);
+                        if (tgt) {
+                            const appAngle = Math.atan2(
+                                tgt.mesh.position.z - p.z,
+                                tgt.mesh.position.x - p.x
+                            );
+                            const appDir = appAngle - Math.PI / 2;
+                            const endX = tgt.mesh.position.x + Math.cos(appDir) * SHIP_LOCAL_ORBIT;
+                            const endZ = tgt.mesh.position.z + Math.sin(appDir) * SHIP_LOCAL_ORBIT;
+                            const blend = (t - 0.85) / 0.15;
+                            p.x = p.x + (endX - p.x) * blend;
+                            p.z = p.z + (endZ - p.z) * blend;
+                        }
+                    }
+
+                    entry.mesh.position.set(p.x, 0, p.z);
+                }
+            }
+
+            // Transfer path: only visible when ship is selected
+            if (entry.transferPath) {
+                entry.transferPath.visible = (state.selectedBody === entry);
+            }
+
+            // Velocity tail: only during transfer
+            if (entry.shipState === 'transferring') {
+                entry.tailLine.visible = true;
+                const ti = entry.tailIndex * 3;
+                entry.tailPositions[ti] = entry.mesh.position.x;
+                entry.tailPositions[ti + 1] = 0;
+                entry.tailPositions[ti + 2] = entry.mesh.position.z;
+                entry.tailIndex = (entry.tailIndex + 1) % SHIP_TAIL_LENGTH;
+                entry.tailCount = Math.min(entry.tailCount + 1, SHIP_TAIL_LENGTH);
+                entry.tailLine.geometry.attributes.position.needsUpdate = true;
+                entry.tailLine.geometry.setDrawRange(0, entry.tailCount);
             } else {
-                // Heliocentric transfer orbit
-                const theta = meanToTrue(entry.angle, entry.orbitE);
-                const r = keplerRadius(entry.orbitA, entry.orbitE, theta);
-                const rScaled = scaleDist(r);
-                entry.mesh.position.set(Math.cos(theta) * rScaled, 0, Math.sin(theta) * rScaled);
+                entry.tailLine.visible = false;
+                entry.tailCount = 0;
+                entry.tailIndex = 0;
+                entry.tailLine.geometry.setDrawRange(0, 0);
             }
         } else if (entry.isComet) {
             const { a, e, incRad, nodeRad, periRad } = entry.data;
