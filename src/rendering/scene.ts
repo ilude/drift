@@ -50,7 +50,7 @@ configureControls(controls);
 const zoomRay: THREE.Raycaster = new THREE.Raycaster();
 const zoomMouse: THREE.Vector2 = new THREE.Vector2();
 const zoomIntersect: THREE.Vector3 = new THREE.Vector3();
-const zoomPlane: THREE.Plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+const zoomPlane: THREE.Plane = new THREE.Plane();
 const zoomOffset: THREE.Vector3 = new THREE.Vector3();
 
 function attachZoomHandler(canvas: HTMLCanvasElement): void {
@@ -68,7 +68,8 @@ function attachZoomHandler(canvas: HTMLCanvasElement): void {
 			zoomMouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
 			zoomRay.setFromCamera(zoomMouse, camera);
 
-			// Intersect cursor ray with ecliptic plane (y=0)
+			// Intersect cursor ray with horizontal plane at target's y
+			zoomPlane.set(new THREE.Vector3(0, 1, 0), -controls.target.y);
 			if (!zoomRay.ray.intersectPlane(zoomPlane, zoomIntersect)) return;
 
 			// Pan target toward cursor on ecliptic (xz only)
