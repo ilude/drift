@@ -188,7 +188,6 @@ export interface ShipEntry extends BaseEntry {
 	tailLine: THREE.Line | null;
 	// Frame counters
 	lastAngle?: number;
-	transferPathFrameCount?: number;
 	departFrameCount?: number;
 	blendTarget?: { entryAngle: number } | null;
 	baseSize: number;

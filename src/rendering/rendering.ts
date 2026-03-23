@@ -785,9 +785,9 @@ function updateDepartureArc(entry: ShipEntry): void {
 	const baseAlpha = isSelected ? 0.5 : 0.2;
 	const pt = entry.pendingTransfer;
 
-	// Recompute departure angle every 15 frames as planets move
+	// Recompute departure angle every 8 frames (~4x/sec at 30fps)
 	entry.departFrameCount = (entry.departFrameCount || 0) + 1;
-	if (entry.departFrameCount % 15 === 0) {
+	if (entry.departFrameCount % 8 === 0) {
 		const targetEntry = state.bodyMeshes.find(
 			(e) => e.data.name === pt.targetName && !e.isMoon && !isShipEntry(e),
 		) as PlanetEntry | undefined;
@@ -1317,20 +1317,13 @@ export function updatePositions(dt: number, camDist: number): void {
 				}
 			}
 
-			// Transfer path: update every 3 frames (visually identical at 60Hz)
 			if (entry.transferPath) {
-				entry.transferPathFrameCount = (entry.transferPathFrameCount || 0) + 1;
 				if (entry.shipState === "transferring") {
-					if (entry.transferPathFrameCount % 3 === 0) {
-						const elapsed = state.simTime - entry.transferStartTime;
-						updateTransferPath(entry, elapsed);
-					}
+					const elapsed = state.simTime - entry.transferStartTime;
+					updateTransferPath(entry, elapsed);
 					entry.transferPath.visible = true;
 				} else if (entry.shipState === "departing" && entry.pendingTransfer) {
-					// Show arc from ship to optimal departure point
-					if (entry.transferPathFrameCount % 3 === 0) {
-						updateDepartureArc(entry);
-					}
+					updateDepartureArc(entry);
 					entry.transferPath.visible = true;
 				} else {
 					entry.transferPath.visible = false;
