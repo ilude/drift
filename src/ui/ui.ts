@@ -674,6 +674,9 @@ function setupViewMenu(): void {
 	// Toggle dropdown
 	btn.addEventListener("click", () => {
 		dropdown.classList.toggle("hidden");
+		if (!dropdown.classList.contains("hidden")) {
+			dropdown.style.left = `${btn.getBoundingClientRect().left}px`;
+		}
 	});
 
 	// Close on outside click

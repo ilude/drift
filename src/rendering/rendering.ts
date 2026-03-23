@@ -78,6 +78,7 @@ const SEL_RING_INNER: number = 1.3;
 const SEL_RING_OUTER: number = 1.5;
 const SEL_RING_SEGS: number = 24;
 const TRAIL_MAX_POINTS: number = 400;
+const COMET_TRAIL_MAX_POINTS: number = 1200;
 export const COMET_ORBIT_OPACITY: number = 0.03;
 export const COMET_ORBIT_SELECTED_OPACITY: number = 0.05;
 
@@ -411,7 +412,7 @@ export function createComets(): void {
 		scene.add(mesh);
 
 		const labelDiv = createLabel(name, color, false);
-		const trail = createTrail(color, TRAIL_MAX_POINTS);
+		const trail = createTrail(color, COMET_TRAIL_MAX_POINTS);
 
 		const entry = {
 			data: {
@@ -1282,11 +1283,13 @@ export function updatePositions(dt: number, camDist: number): void {
 
 		const t = entry.trail;
 		t.sampleAccum += simDt;
-		if (t.sampleAccum > 0.02) {
+		// Comets: sample faster when zoomed out so trail covers more orbit
+		const sampleInterval = isCometEntry(entry) ? 0.02 / Math.max(1, camDist / ZOOM_BASE) : 0.02;
+		if (t.sampleAccum > sampleInterval) {
 			t.sampleAccum = 0;
 			const i3 = t.index * 3;
 			t.positions[i3] = entry.mesh.position.x;
-			t.positions[i3 + 1] = 0;
+			t.positions[i3 + 1] = entry.mesh.position.y;
 			t.positions[i3 + 2] = entry.mesh.position.z;
 			t.index = (t.index + 1) % t.maxPoints;
 			t.count = Math.min(t.count + 1, t.maxPoints);
