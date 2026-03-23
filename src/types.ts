@@ -183,7 +183,7 @@ export interface ShipEntry extends BaseEntry {
 	tailPositions: Float32Array;
 	tailIndex: number;
 	tailCount: number;
-	tailLine: THREE.Line;
+	tailLine: THREE.Line | null;
 	// Frame counters
 	lastAngle?: number;
 	transferPathFrameCount?: number;

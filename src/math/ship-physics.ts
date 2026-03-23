@@ -1,7 +1,12 @@
 // Ship physics: fuel, thrust, and delta-v calculations
 // Uses km/kg/s internally; accepts AU at boundaries
 
-import type { EngineType, TransferResult, ShipPhysicsState, HohmannDeltaVResult } from '../types';
+import type {
+	EngineType,
+	HohmannDeltaVResult,
+	ShipPhysicsState,
+	TransferResult,
+} from "../types";
 
 // --- Constants ---
 
@@ -17,7 +22,7 @@ const MU_SUN_KM3S2: number = 1.32712440018e11;
  * Gravitational parameter in km³/s² for a star of given solar masses.
  */
 export function muKmS(solarMasses: number): number {
-    return MU_SUN_KM3S2 * solarMasses;
+	return MU_SUN_KM3S2 * solarMasses;
 }
 
 /**
@@ -25,7 +30,7 @@ export function muKmS(solarMasses: number): number {
  * ve = Isp * g0
  */
 export function exhaustVelocity(ispS: number): number {
-    return ispS * G_ACCEL;
+	return ispS * G_ACCEL;
 }
 
 // --- Tsiolkovsky rocket equation ---
@@ -37,9 +42,13 @@ export function exhaustVelocity(ispS: number): number {
  * @param dryMassKg - final mass (no fuel)
  * @returns delta-v in km/s
  */
-export function rocketDeltaV(veKmS: number, wetMassKg: number, dryMassKg: number): number {
-    if (wetMassKg <= dryMassKg || dryMassKg <= 0) return 0;
-    return veKmS * Math.log(wetMassKg / dryMassKg);
+export function rocketDeltaV(
+	veKmS: number,
+	wetMassKg: number,
+	dryMassKg: number,
+): number {
+	if (wetMassKg <= dryMassKg || dryMassKg <= 0) return 0;
+	return veKmS * Math.log(wetMassKg / dryMassKg);
 }
 
 /**
@@ -50,9 +59,13 @@ export function rocketDeltaV(veKmS: number, wetMassKg: number, dryMassKg: number
  * @param dvKmS - desired delta-v in km/s
  * @returns fuel mass in kg
  */
-export function fuelRequired(veKmS: number, dryMassKg: number, dvKmS: number): number {
-    if (veKmS <= 0 || dryMassKg <= 0 || dvKmS <= 0) return 0;
-    return dryMassKg * (Math.exp(dvKmS / veKmS) - 1);
+export function fuelRequired(
+	veKmS: number,
+	dryMassKg: number,
+	dvKmS: number,
+): number {
+	if (veKmS <= 0 || dryMassKg <= 0 || dvKmS <= 0) return 0;
+	return dryMassKg * (Math.exp(dvKmS / veKmS) - 1);
 }
 
 // --- Hohmann transfer math ---
@@ -64,28 +77,32 @@ export function fuelRequired(veKmS: number, dryMassKg: number, dvKmS: number): n
  * @param starMassSolar - star mass in solar masses
  * @returns delta-v values in km/s
  */
-export function hohmannDeltaV(r1AU: number, r2AU: number, starMassSolar: number): HohmannDeltaVResult {
-    const mu = muKmS(starMassSolar);
-    const r1 = r1AU * AU_TO_KM;
-    const r2 = r2AU * AU_TO_KM;
+export function hohmannDeltaV(
+	r1AU: number,
+	r2AU: number,
+	starMassSolar: number,
+): HohmannDeltaVResult {
+	const mu = muKmS(starMassSolar);
+	const r1 = r1AU * AU_TO_KM;
+	const r2 = r2AU * AU_TO_KM;
 
-    // Vis-viva: v = sqrt(mu * (2/r - 1/a))
-    // Circular orbit velocity: v_circ = sqrt(mu / r)
-    const v1circ = Math.sqrt(mu / r1);
-    const v2circ = Math.sqrt(mu / r2);
+	// Vis-viva: v = sqrt(mu * (2/r - 1/a))
+	// Circular orbit velocity: v_circ = sqrt(mu / r)
+	const v1circ = Math.sqrt(mu / r1);
+	const v2circ = Math.sqrt(mu / r2);
 
-    // Transfer orbit semi-major axis
-    const aTransfer = (r1 + r2) / 2;
+	// Transfer orbit semi-major axis
+	const aTransfer = (r1 + r2) / 2;
 
-    // Velocity at departure and arrival on the transfer orbit
-    const v1transfer = Math.sqrt(mu * (2 / r1 - 1 / aTransfer));
-    const v2transfer = Math.sqrt(mu * (2 / r2 - 1 / aTransfer));
+	// Velocity at departure and arrival on the transfer orbit
+	const v1transfer = Math.sqrt(mu * (2 / r1 - 1 / aTransfer));
+	const v2transfer = Math.sqrt(mu * (2 / r2 - 1 / aTransfer));
 
-    const dvDepart = Math.abs(v1transfer - v1circ);
-    const dvArrive = Math.abs(v2circ - v2transfer);
-    const dvTotal = dvDepart + dvArrive;
+	const dvDepart = Math.abs(v1transfer - v1circ);
+	const dvArrive = Math.abs(v2circ - v2transfer);
+	const dvTotal = dvDepart + dvArrive;
 
-    return { dvDepart, dvArrive, dvTotal };
+	return { dvDepart, dvArrive, dvTotal };
 }
 
 /**
@@ -95,15 +112,19 @@ export function hohmannDeltaV(r1AU: number, r2AU: number, starMassSolar: number)
  * @param starMassSolar - star mass in solar masses
  * @returns transfer time in days
  */
-export function hohmannTransferDays(r1AU: number, r2AU: number, starMassSolar: number): number {
-    const mu = muKmS(starMassSolar);
-    const r1 = r1AU * AU_TO_KM;
-    const r2 = r2AU * AU_TO_KM;
-    const aTransfer = (r1 + r2) / 2;
+export function hohmannTransferDays(
+	r1AU: number,
+	r2AU: number,
+	starMassSolar: number,
+): number {
+	const mu = muKmS(starMassSolar);
+	const r1 = r1AU * AU_TO_KM;
+	const r2 = r2AU * AU_TO_KM;
+	const aTransfer = (r1 + r2) / 2;
 
-    // Half the orbital period of the transfer ellipse
-    const T = Math.PI * Math.sqrt(aTransfer * aTransfer * aTransfer / mu);
-    return T / 86400; // seconds to days
+	// Half the orbital period of the transfer ellipse
+	const T = Math.PI * Math.sqrt((aTransfer * aTransfer * aTransfer) / mu);
+	return T / 86400; // seconds to days
 }
 
 // --- Brachistochrone transfer math ---
@@ -115,10 +136,14 @@ export function hohmannTransferDays(r1AU: number, r2AU: number, starMassSolar: n
  * @param accelMS2 - sustained acceleration in m/s²
  * @returns transfer time in days
  */
-export function brachistochroneTime(r1AU: number, r2AU: number, accelMS2: number): number {
-    const d = Math.abs(r2AU - r1AU) * AU_TO_KM * 1000; // meters
-    const T = 2 * Math.sqrt(d / accelMS2); // seconds
-    return T / 86400; // days
+export function brachistochroneTime(
+	r1AU: number,
+	r2AU: number,
+	accelMS2: number,
+): number {
+	const d = Math.abs(r2AU - r1AU) * AU_TO_KM * 1000; // meters
+	const T = 2 * Math.sqrt(d / accelMS2); // seconds
+	return T / 86400; // days
 }
 
 /**
@@ -128,19 +153,47 @@ export function brachistochroneTime(r1AU: number, r2AU: number, accelMS2: number
  * @param accelMS2 - sustained acceleration in m/s²
  * @returns delta-v in km/s
  */
-export function brachistochroneDeltaV(r1AU: number, r2AU: number, accelMS2: number): number {
-    const d = Math.abs(r2AU - r1AU) * AU_TO_KM * 1000; // meters
-    const dv = 2 * Math.sqrt(d * accelMS2); // m/s
-    return dv / 1000; // km/s
+export function brachistochroneDeltaV(
+	r1AU: number,
+	r2AU: number,
+	accelMS2: number,
+): number {
+	const d = Math.abs(r2AU - r1AU) * AU_TO_KM * 1000; // meters
+	const dv = 2 * Math.sqrt(d * accelMS2); // m/s
+	return dv / 1000; // km/s
 }
 
 // --- Engine presets (Trans-Newtonian) ---
 
 export const ENGINE_TYPES: EngineType[] = [
-    { id: 'conventional', name: 'Conventional TN', accelG: 1,   ispS: 1_000_000,  dryMassKg: 5_000 },
-    { id: 'improved',     name: 'Improved TN',     accelG: 10,  ispS: 2_000_000,  dryMassKg: 5_000 },
-    { id: 'advanced',     name: 'Advanced TN',     accelG: 50,  ispS: 5_000_000,  dryMassKg: 5_000 },
-    { id: 'extreme',      name: 'Extreme TN',      accelG: 200, ispS: 10_000_000, dryMassKg: 5_000 },
+	{
+		id: "conventional",
+		name: "Conventional TN",
+		accelG: 1,
+		ispS: 1_000_000,
+		dryMassKg: 5_000,
+	},
+	{
+		id: "improved",
+		name: "Improved TN",
+		accelG: 10,
+		ispS: 2_000_000,
+		dryMassKg: 5_000,
+	},
+	{
+		id: "advanced",
+		name: "Advanced TN",
+		accelG: 50,
+		ispS: 5_000_000,
+		dryMassKg: 5_000,
+	},
+	{
+		id: "extreme",
+		name: "Extreme TN",
+		accelG: 200,
+		ispS: 10_000_000,
+		dryMassKg: 5_000,
+	},
 ];
 
 // --- Transfer feasibility check ---
@@ -153,33 +206,38 @@ export const ENGINE_TYPES: EngineType[] = [
  * @param shipState - ship physics state
  * @returns transfer feasibility result
  */
-export function checkTransfer(r1AU: number, r2AU: number, starMassSolar: number, shipState: ShipPhysicsState): TransferResult {
-    const engine = ENGINE_TYPES.find(e => e.id === shipState.engineId);
-    if (!engine) return { feasible: false };
+export function checkTransfer(
+	r1AU: number,
+	r2AU: number,
+	_starMassSolar: number,
+	shipState: ShipPhysicsState,
+): TransferResult {
+	const engine = ENGINE_TYPES.find((e) => e.id === shipState.engineId);
+	if (!engine) return { feasible: false };
 
-    const accelMS2 = engine.accelG * G_ACCEL;
-    const dvTotal = brachistochroneDeltaV(r1AU, r2AU, accelMS2);
-    const veKmS = exhaustVelocity(engine.ispS) / 1000; // m/s to km/s
-    const wetMass = shipState.dryMassKg + shipState.fuelKg;
-    const deltaVAvailable = rocketDeltaV(veKmS, wetMass, shipState.dryMassKg);
-    const fuelUsedKg = fuelRequired(veKmS, shipState.dryMassKg, dvTotal);
-    const transferDays = brachistochroneTime(r1AU, r2AU, accelMS2);
+	const accelMS2 = engine.accelG * G_ACCEL;
+	const dvTotal = brachistochroneDeltaV(r1AU, r2AU, accelMS2);
+	const veKmS = exhaustVelocity(engine.ispS) / 1000; // m/s to km/s
+	const wetMass = shipState.dryMassKg + shipState.fuelKg;
+	const deltaVAvailable = rocketDeltaV(veKmS, wetMass, shipState.dryMassKg);
+	const fuelUsedKg = fuelRequired(veKmS, shipState.dryMassKg, dvTotal);
+	const transferDays = brachistochroneTime(r1AU, r2AU, accelMS2);
 
-    if (dvTotal > deltaVAvailable || fuelUsedKg > shipState.fuelKg) {
-        return {
-            feasible: false,
-            deltaVRequired: dvTotal,
-            deltaVAvailable,
-            fuelUsedKg,
-            transferDays,
-        };
-    }
+	if (dvTotal > deltaVAvailable || fuelUsedKg > shipState.fuelKg) {
+		return {
+			feasible: false,
+			deltaVRequired: dvTotal,
+			deltaVAvailable,
+			fuelUsedKg,
+			transferDays,
+		};
+	}
 
-    return {
-        feasible: true,
-        fuelUsedKg,
-        deltaVRequired: dvTotal,
-        deltaVAvailable,
-        transferDays,
-    };
+	return {
+		feasible: true,
+		fuelUsedKg,
+		deltaVRequired: dvTotal,
+		deltaVAvailable,
+		transferDays,
+	};
 }

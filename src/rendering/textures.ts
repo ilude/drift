@@ -1,357 +1,514 @@
-import * as THREE from 'three';
-import { seededRandom } from '../core/utils';
-import { categorizePlanet } from '../math/orbit';
-import type { PlanetCategory, BodyData, MoonData } from '../types';
+import * as THREE from "three";
+import { seededRandom } from "../core/utils";
+import { categorizePlanet } from "../math/orbit";
+import type { BodyData, MoonData, PlanetCategory } from "../types";
 
 interface Crater {
-    cx: number;
-    cy: number;
-    r: number;
-    depth: number;
+	cx: number;
+	cy: number;
+	r: number;
+	depth: number;
 }
 
 type RGB = [number, number, number];
 
 function hashString(str: string): number {
-    let hash = 5381;
-    for (let i = 0; i < str.length; i++) {
-        hash = ((hash << 5) + hash) + str.charCodeAt(i);
-        hash = hash & 0x7fffffff;
-    }
-    return hash || 1;
+	let hash = 5381;
+	for (let i = 0; i < str.length; i++) {
+		hash = (hash << 5) + hash + str.charCodeAt(i);
+		hash = hash & 0x7fffffff;
+	}
+	return hash || 1;
 }
 
 // --- Simplex Noise (seeded) ---
 
 const GRAD3: number[][] = [
-    [1,1,0],[-1,1,0],[1,-1,0],[-1,-1,0],
-    [1,0,1],[-1,0,1],[1,0,-1],[-1,0,-1],
-    [0,1,1],[0,-1,1],[0,1,-1],[0,-1,-1]
+	[1, 1, 0],
+	[-1, 1, 0],
+	[1, -1, 0],
+	[-1, -1, 0],
+	[1, 0, 1],
+	[-1, 0, 1],
+	[1, 0, -1],
+	[-1, 0, -1],
+	[0, 1, 1],
+	[0, -1, 1],
+	[0, 1, -1],
+	[0, -1, -1],
 ];
-const F3 = 1 / 3, G3 = 1 / 6;
+const F3 = 1 / 3,
+	G3 = 1 / 6;
 
 function buildPerm(rng: () => number): Uint8Array {
-    const p = Array.from({ length: 256 }, (_, i) => i);
-    for (let i = 255; i > 0; i--) {
-        const j = Math.floor(rng() * (i + 1));
-        [p[i], p[j]] = [p[j], p[i]];
-    }
-    const perm = new Uint8Array(512);
-    for (let i = 0; i < 512; i++) perm[i] = p[i & 255];
-    return perm;
+	const p = Array.from({ length: 256 }, (_, i) => i);
+	for (let i = 255; i > 0; i--) {
+		const j = Math.floor(rng() * (i + 1));
+		[p[i], p[j]] = [p[j], p[i]];
+	}
+	const perm = new Uint8Array(512);
+	for (let i = 0; i < 512; i++) perm[i] = p[i & 255];
+	return perm;
 }
 
-function createNoise3D(rng: () => number): (x: number, y: number, z: number) => number {
-    const perm = buildPerm(rng);
-    return function noise3D(x: number, y: number, z: number): number {
-        const s = (x + y + z) * F3;
-        const i = Math.floor(x + s), j = Math.floor(y + s), k = Math.floor(z + s);
-        const t = (i + j + k) * G3;
-        const x0 = x - (i - t), y0 = y - (j - t), z0 = z - (k - t);
+function createNoise3D(
+	rng: () => number,
+): (x: number, y: number, z: number) => number {
+	const perm = buildPerm(rng);
+	return function noise3D(x: number, y: number, z: number): number {
+		const s = (x + y + z) * F3;
+		const i = Math.floor(x + s),
+			j = Math.floor(y + s),
+			k = Math.floor(z + s);
+		const t = (i + j + k) * G3;
+		const x0 = x - (i - t),
+			y0 = y - (j - t),
+			z0 = z - (k - t);
 
-        let i1: number, j1: number, k1: number, i2: number, j2: number, k2: number;
-        if (x0 >= y0) {
-            if (y0 >= z0) { i1=1;j1=0;k1=0;i2=1;j2=1;k2=0; }
-            else if (x0 >= z0) { i1=1;j1=0;k1=0;i2=1;j2=0;k2=1; }
-            else { i1=0;j1=0;k1=1;i2=1;j2=0;k2=1; }
-        } else {
-            if (y0 < z0) { i1=0;j1=0;k1=1;i2=0;j2=1;k2=1; }
-            else if (x0 < z0) { i1=0;j1=1;k1=0;i2=0;j2=1;k2=1; }
-            else { i1=0;j1=1;k1=0;i2=1;j2=1;k2=0; }
-        }
+		let i1: number, j1: number, k1: number, i2: number, j2: number, k2: number;
+		if (x0 >= y0) {
+			if (y0 >= z0) {
+				i1 = 1;
+				j1 = 0;
+				k1 = 0;
+				i2 = 1;
+				j2 = 1;
+				k2 = 0;
+			} else if (x0 >= z0) {
+				i1 = 1;
+				j1 = 0;
+				k1 = 0;
+				i2 = 1;
+				j2 = 0;
+				k2 = 1;
+			} else {
+				i1 = 0;
+				j1 = 0;
+				k1 = 1;
+				i2 = 1;
+				j2 = 0;
+				k2 = 1;
+			}
+		} else {
+			if (y0 < z0) {
+				i1 = 0;
+				j1 = 0;
+				k1 = 1;
+				i2 = 0;
+				j2 = 1;
+				k2 = 1;
+			} else if (x0 < z0) {
+				i1 = 0;
+				j1 = 1;
+				k1 = 0;
+				i2 = 0;
+				j2 = 1;
+				k2 = 1;
+			} else {
+				i1 = 0;
+				j1 = 1;
+				k1 = 0;
+				i2 = 1;
+				j2 = 1;
+				k2 = 0;
+			}
+		}
 
-        const x1 = x0 - i1 + G3, y1 = y0 - j1 + G3, z1 = z0 - k1 + G3;
-        const x2 = x0 - i2 + 2*G3, y2 = y0 - j2 + 2*G3, z2 = z0 - k2 + 2*G3;
-        const x3 = x0 - 1 + 3*G3, y3 = y0 - 1 + 3*G3, z3 = z0 - 1 + 3*G3;
+		const x1 = x0 - i1 + G3,
+			y1 = y0 - j1 + G3,
+			z1 = z0 - k1 + G3;
+		const x2 = x0 - i2 + 2 * G3,
+			y2 = y0 - j2 + 2 * G3,
+			z2 = z0 - k2 + 2 * G3;
+		const x3 = x0 - 1 + 3 * G3,
+			y3 = y0 - 1 + 3 * G3,
+			z3 = z0 - 1 + 3 * G3;
 
-        const ii = i & 255, jj = j & 255, kk = k & 255;
+		const ii = i & 255,
+			jj = j & 255,
+			kk = k & 255;
 
-        function contrib(gx: number, gy: number, gz: number, dx: number, dy: number, dz: number): number {
-            const t = 0.6 - dx*dx - dy*dy - dz*dz;
-            if (t < 0) return 0;
-            const g = GRAD3[(perm[ii+gx + perm[jj+gy + perm[kk+gz]]] % 12)];
-            return t * t * t * t * (g[0]*dx + g[1]*dy + g[2]*dz);
-        }
+		function contrib(
+			gx: number,
+			gy: number,
+			gz: number,
+			dx: number,
+			dy: number,
+			dz: number,
+		): number {
+			const t = 0.6 - dx * dx - dy * dy - dz * dz;
+			if (t < 0) return 0;
+			const g = GRAD3[perm[ii + gx + perm[jj + gy + perm[kk + gz]]] % 12];
+			return t * t * t * t * (g[0] * dx + g[1] * dy + g[2] * dz);
+		}
 
-        return 32 * (
-            contrib(0, 0, 0, x0, y0, z0) +
-            contrib(i1, j1, k1, x1, y1, z1) +
-            contrib(i2, j2, k2, x2, y2, z2) +
-            contrib(1, 1, 1, x3, y3, z3)
-        );
-    };
+		return (
+			32 *
+			(contrib(0, 0, 0, x0, y0, z0) +
+				contrib(i1, j1, k1, x1, y1, z1) +
+				contrib(i2, j2, k2, x2, y2, z2) +
+				contrib(1, 1, 1, x3, y3, z3))
+		);
+	};
 }
 
-function fbm(noise: (x: number, y: number, z: number) => number, x: number, y: number, z: number, octaves: number, lacunarity: number = 2.0, gain: number = 0.5): number {
-    let value = 0, amplitude = 1, frequency = 1, maxAmp = 0;
-    for (let i = 0; i < octaves; i++) {
-        value += noise(x * frequency, y * frequency, z * frequency) * amplitude;
-        maxAmp += amplitude;
-        amplitude *= gain;
-        frequency *= lacunarity;
-    }
-    return value / maxAmp;
+function fbm(
+	noise: (x: number, y: number, z: number) => number,
+	x: number,
+	y: number,
+	z: number,
+	octaves: number,
+	lacunarity: number = 2.0,
+	gain: number = 0.5,
+): number {
+	let value = 0,
+		amplitude = 1,
+		frequency = 1,
+		maxAmp = 0;
+	for (let i = 0; i < octaves; i++) {
+		value += noise(x * frequency, y * frequency, z * frequency) * amplitude;
+		maxAmp += amplitude;
+		amplitude *= gain;
+		frequency *= lacunarity;
+	}
+	return value / maxAmp;
 }
 
 // --- Color helpers ---
 
 function parseColor(hex: string): RGB {
-    if (typeof hex === 'string' && hex[0] !== '#') hex = '#' + hex;
-    const c = new THREE.Color(hex);
-    return [c.r, c.g, c.b];
+	if (typeof hex === "string" && hex[0] !== "#") hex = `#${hex}`;
+	const c = new THREE.Color(hex);
+	return [c.r, c.g, c.b];
 }
 
 function lerpColor(a: RGB, b: RGB, t: number): RGB {
-    return [a[0] + (b[0]-a[0])*t, a[1] + (b[1]-a[1])*t, a[2] + (b[2]-a[2])*t];
+	return [
+		a[0] + (b[0] - a[0]) * t,
+		a[1] + (b[1] - a[1]) * t,
+		a[2] + (b[2] - a[2]) * t,
+	];
 }
 
-function clamp01(v: number): number { return v < 0 ? 0 : v > 1 ? 1 : v; }
+function clamp01(v: number): number {
+	return v < 0 ? 0 : v > 1 ? 1 : v;
+}
 
 // --- Spherical mapping ---
 
 function uvToSphere(u: number, v: number): [number, number, number] {
-    const theta = u * Math.PI * 2;
-    const phi = v * Math.PI;
-    return [
-        Math.sin(phi) * Math.cos(theta),
-        Math.sin(phi) * Math.sin(theta),
-        Math.cos(phi)
-    ];
+	const theta = u * Math.PI * 2;
+	const phi = v * Math.PI;
+	return [
+		Math.sin(phi) * Math.cos(theta),
+		Math.sin(phi) * Math.sin(theta),
+		Math.cos(phi),
+	];
 }
 
 // --- Texture generators ---
 
-function generateRockyTexture(rng: () => number, color: string, w: number = 512, h: number = 256): THREE.CanvasTexture {
-    const canvas = document.createElement('canvas');
-    canvas.width = w; canvas.height = h;
-    const ctx = canvas.getContext('2d')!;
-    const img = ctx.createImageData(w, h);
-    const noise = createNoise3D(rng);
+function generateRockyTexture(
+	rng: () => number,
+	color: string,
+	w: number = 512,
+	h: number = 256,
+): THREE.CanvasTexture {
+	const canvas = document.createElement("canvas");
+	canvas.width = w;
+	canvas.height = h;
+	const ctx = canvas.getContext("2d");
+	if (!ctx) throw new Error("Canvas 2D context unavailable");
+	const img = ctx.createImageData(w, h);
+	const noise = createNoise3D(rng);
 
-    const base = parseColor(color);
-    const dark = base.map(c => c * 0.6) as RGB;
-    const light = base.map(c => Math.min(1, c * 1.3)) as RGB;
+	const base = parseColor(color);
+	const dark = base.map((c) => c * 0.6) as RGB;
+	const light = base.map((c) => Math.min(1, c * 1.3)) as RGB;
 
-    const craterCount = 4 + Math.floor(rng() * 5);
-    const craters: Crater[] = [];
-    for (let c = 0; c < craterCount; c++) {
-        craters.push({
-            cx: rng(), cy: rng(),
-            r: 0.02 + rng() * 0.06,
-            depth: 0.15 + rng() * 0.2
-        });
-    }
+	const craterCount = 4 + Math.floor(rng() * 5);
+	const craters: Crater[] = [];
+	for (let c = 0; c < craterCount; c++) {
+		craters.push({
+			cx: rng(),
+			cy: rng(),
+			r: 0.02 + rng() * 0.06,
+			depth: 0.15 + rng() * 0.2,
+		});
+	}
 
-    for (let y = 0; y < h; y++) {
-        for (let x = 0; x < w; x++) {
-            const u = x / w, v = y / h;
-            const [sx, sy, sz] = uvToSphere(u, v);
+	for (let y = 0; y < h; y++) {
+		for (let x = 0; x < w; x++) {
+			const u = x / w,
+				v = y / h;
+			const [sx, sy, sz] = uvToSphere(u, v);
 
-            let n = fbm(noise, sx * 2, sy * 2, sz * 2, 6) * 0.5 + 0.5;
+			let n = fbm(noise, sx * 2, sy * 2, sz * 2, 6) * 0.5 + 0.5;
 
-            for (const cr of craters) {
-                const du = u - cr.cx, dv = v - cr.cy;
-                const d = Math.sqrt(du*du + dv*dv);
-                if (d < cr.r) {
-                    n -= cr.depth * (1 - d / cr.r);
-                }
-            }
+			for (const cr of craters) {
+				const du = u - cr.cx,
+					dv = v - cr.cy;
+				const d = Math.sqrt(du * du + dv * dv);
+				if (d < cr.r) {
+					n -= cr.depth * (1 - d / cr.r);
+				}
+			}
 
-            n = clamp01(n);
-            const rgb = n < 0.5
-                ? lerpColor(dark, base, n * 2)
-                : lerpColor(base, light, (n - 0.5) * 2);
+			n = clamp01(n);
+			const rgb =
+				n < 0.5
+					? lerpColor(dark, base, n * 2)
+					: lerpColor(base, light, (n - 0.5) * 2);
 
-            const idx = (y * w + x) * 4;
-            img.data[idx] = rgb[0] * 255;
-            img.data[idx+1] = rgb[1] * 255;
-            img.data[idx+2] = rgb[2] * 255;
-            img.data[idx+3] = 255;
-        }
-    }
+			const idx = (y * w + x) * 4;
+			img.data[idx] = rgb[0] * 255;
+			img.data[idx + 1] = rgb[1] * 255;
+			img.data[idx + 2] = rgb[2] * 255;
+			img.data[idx + 3] = 255;
+		}
+	}
 
-    ctx.putImageData(img, 0, 0);
-    return new THREE.CanvasTexture(canvas);
+	ctx.putImageData(img, 0, 0);
+	return new THREE.CanvasTexture(canvas);
 }
 
-function generateGasGiantTexture(rng: () => number, color: string, w: number = 512, h: number = 256): THREE.CanvasTexture {
-    const canvas = document.createElement('canvas');
-    canvas.width = w; canvas.height = h;
-    const ctx = canvas.getContext('2d')!;
-    const img = ctx.createImageData(w, h);
-    const noise = createNoise3D(rng);
+function generateGasGiantTexture(
+	rng: () => number,
+	color: string,
+	w: number = 512,
+	h: number = 256,
+): THREE.CanvasTexture {
+	const canvas = document.createElement("canvas");
+	canvas.width = w;
+	canvas.height = h;
+	const ctx = canvas.getContext("2d");
+	if (!ctx) throw new Error("Canvas 2D context unavailable");
+	const img = ctx.createImageData(w, h);
+	const noise = createNoise3D(rng);
 
-    const base = parseColor(color);
-    const hsl = { h: 0, s: 0, l: 0 };
-    new THREE.Color(color).getHSL(hsl);
-    const color2 = parseColor(new THREE.Color().setHSL((hsl.h + 0.05) % 1, hsl.s, Math.min(1, hsl.l * 1.2)).getHexString());
-    const color3 = parseColor(new THREE.Color().setHSL((hsl.h - 0.03 + 1) % 1, hsl.s, hsl.l * 0.8).getHexString());
+	const base = parseColor(color);
+	const hsl = { h: 0, s: 0, l: 0 };
+	new THREE.Color(color).getHSL(hsl);
+	const color2 = parseColor(
+		new THREE.Color()
+			.setHSL((hsl.h + 0.05) % 1, hsl.s, Math.min(1, hsl.l * 1.2))
+			.getHexString(),
+	);
+	const color3 = parseColor(
+		new THREE.Color()
+			.setHSL((hsl.h - 0.03 + 1) % 1, hsl.s, hsl.l * 0.8)
+			.getHexString(),
+	);
 
-    const bandCount = 8 + Math.floor(rng() * 7);
-    const bandOffset = rng() * 10;
+	const bandCount = 8 + Math.floor(rng() * 7);
+	const bandOffset = rng() * 10;
 
-    const hasStorm = rng() < 0.3;
-    const stormU = rng(), stormV = 0.3 + rng() * 0.4;
-    const stormW = 0.08 + rng() * 0.06;
-    const stormH = 0.03 + rng() * 0.03;
+	const hasStorm = rng() < 0.3;
+	const stormU = rng(),
+		stormV = 0.3 + rng() * 0.4;
+	const stormW = 0.08 + rng() * 0.06;
+	const stormH = 0.03 + rng() * 0.03;
 
-    for (let y = 0; y < h; y++) {
-        for (let x = 0; x < w; x++) {
-            const u = x / w, v = y / h;
-            const lat = (v - 0.5) * Math.PI;
-            const [sx, sy, sz] = uvToSphere(u, v);
+	for (let y = 0; y < h; y++) {
+		for (let x = 0; x < w; x++) {
+			const u = x / w,
+				v = y / h;
+			const lat = (v - 0.5) * Math.PI;
+			const [sx, sy, sz] = uvToSphere(u, v);
 
-            const warp = noise(sx * 4, sy * 4, sz * 4) * 0.15;
-            const band = Math.sin((lat + warp) * bandCount + bandOffset);
-            const turb = noise(sx * 8 + 10, sy * 8, sz * 8) * 0.1;
+			const warp = noise(sx * 4, sy * 4, sz * 4) * 0.15;
+			const band = Math.sin((lat + warp) * bandCount + bandOffset);
+			const turb = noise(sx * 8 + 10, sy * 8, sz * 8) * 0.1;
 
-            const t = clamp01((band + turb) * 0.5 + 0.5);
-            let rgb: RGB;
-            if (t < 0.5) {
-                rgb = lerpColor(color3, base, t * 2);
-            } else {
-                rgb = lerpColor(base, color2, (t - 0.5) * 2);
-            }
+			const t = clamp01((band + turb) * 0.5 + 0.5);
+			let rgb: RGB;
+			if (t < 0.5) {
+				rgb = lerpColor(color3, base, t * 2);
+			} else {
+				rgb = lerpColor(base, color2, (t - 0.5) * 2);
+			}
 
-            if (hasStorm) {
-                const du = (u - stormU) / stormW;
-                const dv = (v - stormV) / stormH;
-                const sd = du*du + dv*dv;
-                if (sd < 1) {
-                    const swirl = noise(sx * 12 + 20, sy * 12, sz * 12) * 0.2;
-                    const blend = (1 - sd) * 0.6;
-                    rgb = lerpColor(rgb, [rgb[0] + swirl, rgb[1] - 0.05, rgb[2] - 0.05], blend);
-                }
-            }
+			if (hasStorm) {
+				const du = (u - stormU) / stormW;
+				const dv = (v - stormV) / stormH;
+				const sd = du * du + dv * dv;
+				if (sd < 1) {
+					const swirl = noise(sx * 12 + 20, sy * 12, sz * 12) * 0.2;
+					const blend = (1 - sd) * 0.6;
+					rgb = lerpColor(
+						rgb,
+						[rgb[0] + swirl, rgb[1] - 0.05, rgb[2] - 0.05],
+						blend,
+					);
+				}
+			}
 
-            const idx = (y * w + x) * 4;
-            img.data[idx] = clamp01(rgb[0]) * 255;
-            img.data[idx+1] = clamp01(rgb[1]) * 255;
-            img.data[idx+2] = clamp01(rgb[2]) * 255;
-            img.data[idx+3] = 255;
-        }
-    }
+			const idx = (y * w + x) * 4;
+			img.data[idx] = clamp01(rgb[0]) * 255;
+			img.data[idx + 1] = clamp01(rgb[1]) * 255;
+			img.data[idx + 2] = clamp01(rgb[2]) * 255;
+			img.data[idx + 3] = 255;
+		}
+	}
 
-    ctx.putImageData(img, 0, 0);
-    return new THREE.CanvasTexture(canvas);
+	ctx.putImageData(img, 0, 0);
+	return new THREE.CanvasTexture(canvas);
 }
 
-function generateIceGiantTexture(rng: () => number, color: string, w: number = 512, h: number = 256): THREE.CanvasTexture {
-    const canvas = document.createElement('canvas');
-    canvas.width = w; canvas.height = h;
-    const ctx = canvas.getContext('2d')!;
-    const img = ctx.createImageData(w, h);
-    const noise = createNoise3D(rng);
+function generateIceGiantTexture(
+	rng: () => number,
+	color: string,
+	w: number = 512,
+	h: number = 256,
+): THREE.CanvasTexture {
+	const canvas = document.createElement("canvas");
+	canvas.width = w;
+	canvas.height = h;
+	const ctx = canvas.getContext("2d");
+	if (!ctx) throw new Error("Canvas 2D context unavailable");
+	const img = ctx.createImageData(w, h);
+	const noise = createNoise3D(rng);
 
-    const base = parseColor(color);
-    const hsl = { h: 0, s: 0, l: 0 };
-    new THREE.Color(color).getHSL(hsl);
-    const pole = parseColor(new THREE.Color().setHSL(hsl.h, hsl.s * 0.7, Math.min(1, hsl.l * 1.15)).getHexString());
+	const base = parseColor(color);
+	const hsl = { h: 0, s: 0, l: 0 };
+	new THREE.Color(color).getHSL(hsl);
+	const pole = parseColor(
+		new THREE.Color()
+			.setHSL(hsl.h, hsl.s * 0.7, Math.min(1, hsl.l * 1.15))
+			.getHexString(),
+	);
 
-    for (let y = 0; y < h; y++) {
-        for (let x = 0; x < w; x++) {
-            const u = x / w, v = y / h;
-            const lat = (v - 0.5) * Math.PI;
-            const [sx, sy, sz] = uvToSphere(u, v);
+	for (let y = 0; y < h; y++) {
+		for (let x = 0; x < w; x++) {
+			const u = x / w,
+				v = y / h;
+			const lat = (v - 0.5) * Math.PI;
+			const [sx, sy, sz] = uvToSphere(u, v);
 
-            const grad = Math.abs(lat) / (Math.PI / 2);
-            const band = Math.sin(lat * 4) * 0.05;
-            const n = noise(sx * 2, sy * 2, sz * 2) * 0.08;
+			const grad = Math.abs(lat) / (Math.PI / 2);
+			const band = Math.sin(lat * 4) * 0.05;
+			const n = noise(sx * 2, sy * 2, sz * 2) * 0.08;
 
-            const t = clamp01(grad + band + n);
-            const rgb = lerpColor(base, pole, t);
+			const t = clamp01(grad + band + n);
+			const rgb = lerpColor(base, pole, t);
 
-            const idx = (y * w + x) * 4;
-            img.data[idx] = clamp01(rgb[0]) * 255;
-            img.data[idx+1] = clamp01(rgb[1]) * 255;
-            img.data[idx+2] = clamp01(rgb[2]) * 255;
-            img.data[idx+3] = 255;
-        }
-    }
+			const idx = (y * w + x) * 4;
+			img.data[idx] = clamp01(rgb[0]) * 255;
+			img.data[idx + 1] = clamp01(rgb[1]) * 255;
+			img.data[idx + 2] = clamp01(rgb[2]) * 255;
+			img.data[idx + 3] = 255;
+		}
+	}
 
-    ctx.putImageData(img, 0, 0);
-    return new THREE.CanvasTexture(canvas);
+	ctx.putImageData(img, 0, 0);
+	return new THREE.CanvasTexture(canvas);
 }
 
-function generateSubNeptuneTexture(rng: () => number, color: string, w: number = 512, h: number = 256): THREE.CanvasTexture {
-    const canvas = document.createElement('canvas');
-    canvas.width = w; canvas.height = h;
-    const ctx = canvas.getContext('2d')!;
-    const img = ctx.createImageData(w, h);
-    const noise = createNoise3D(rng);
+function generateSubNeptuneTexture(
+	rng: () => number,
+	color: string,
+	w: number = 512,
+	h: number = 256,
+): THREE.CanvasTexture {
+	const canvas = document.createElement("canvas");
+	canvas.width = w;
+	canvas.height = h;
+	const ctx = canvas.getContext("2d");
+	if (!ctx) throw new Error("Canvas 2D context unavailable");
+	const img = ctx.createImageData(w, h);
+	const noise = createNoise3D(rng);
 
-    const base = parseColor(color);
-    const hsl = { h: 0, s: 0, l: 0 };
-    new THREE.Color(color).getHSL(hsl);
-    const haze = parseColor(new THREE.Color().setHSL(hsl.h, hsl.s * 0.5, Math.min(1, hsl.l * 1.1)).getHexString());
+	const base = parseColor(color);
+	const hsl = { h: 0, s: 0, l: 0 };
+	new THREE.Color(color).getHSL(hsl);
+	const haze = parseColor(
+		new THREE.Color()
+			.setHSL(hsl.h, hsl.s * 0.5, Math.min(1, hsl.l * 1.1))
+			.getHexString(),
+	);
 
-    for (let y = 0; y < h; y++) {
-        for (let x = 0; x < w; x++) {
-            const u = x / w, v = y / h;
-            const lat = (v - 0.5) * Math.PI;
-            const [sx, sy, sz] = uvToSphere(u, v);
+	for (let y = 0; y < h; y++) {
+		for (let x = 0; x < w; x++) {
+			const u = x / w,
+				v = y / h;
+			const lat = (v - 0.5) * Math.PI;
+			const [sx, sy, sz] = uvToSphere(u, v);
 
-            const n = fbm(noise, sx * 2, sy * 2, sz * 2, 3) * 0.3;
-            const band = Math.sin(lat * 3) * 0.08;
-            const limb = Math.abs(Math.cos(lat));
+			const n = fbm(noise, sx * 2, sy * 2, sz * 2, 3) * 0.3;
+			const band = Math.sin(lat * 3) * 0.08;
+			const limb = Math.abs(Math.cos(lat));
 
-            const t = clamp01(0.5 + n + band);
-            let rgb = lerpColor(base, haze, t);
-            rgb = lerpColor(rgb, haze, (1 - limb) * 0.3);
+			const t = clamp01(0.5 + n + band);
+			let rgb = lerpColor(base, haze, t);
+			rgb = lerpColor(rgb, haze, (1 - limb) * 0.3);
 
-            const idx = (y * w + x) * 4;
-            img.data[idx] = clamp01(rgb[0]) * 255;
-            img.data[idx+1] = clamp01(rgb[1]) * 255;
-            img.data[idx+2] = clamp01(rgb[2]) * 255;
-            img.data[idx+3] = 255;
-        }
-    }
+			const idx = (y * w + x) * 4;
+			img.data[idx] = clamp01(rgb[0]) * 255;
+			img.data[idx + 1] = clamp01(rgb[1]) * 255;
+			img.data[idx + 2] = clamp01(rgb[2]) * 255;
+			img.data[idx + 3] = 255;
+		}
+	}
 
-    ctx.putImageData(img, 0, 0);
-    return new THREE.CanvasTexture(canvas);
+	ctx.putImageData(img, 0, 0);
+	return new THREE.CanvasTexture(canvas);
 }
 
-function generateMoonTexture(rng: () => number, color: string, w: number = 256, h: number = 128): THREE.CanvasTexture {
-    const canvas = document.createElement('canvas');
-    canvas.width = w; canvas.height = h;
-    const ctx = canvas.getContext('2d')!;
-    const img = ctx.createImageData(w, h);
-    const noise = createNoise3D(rng);
+function generateMoonTexture(
+	rng: () => number,
+	color: string,
+	w: number = 256,
+	h: number = 128,
+): THREE.CanvasTexture {
+	const canvas = document.createElement("canvas");
+	canvas.width = w;
+	canvas.height = h;
+	const ctx = canvas.getContext("2d");
+	if (!ctx) throw new Error("Canvas 2D context unavailable");
+	const img = ctx.createImageData(w, h);
+	const noise = createNoise3D(rng);
 
-    const base = parseColor(color);
+	const base = parseColor(color);
 
-    const craterCount = 5 + Math.floor(rng() * 11);
-    const craters: Crater[] = [];
-    for (let c = 0; c < craterCount; c++) {
-        craters.push({ cx: rng(), cy: rng(), r: 0.02 + rng() * 0.05, depth: 0.1 + rng() * 0.15 });
-    }
+	const craterCount = 5 + Math.floor(rng() * 11);
+	const craters: Crater[] = [];
+	for (let c = 0; c < craterCount; c++) {
+		craters.push({
+			cx: rng(),
+			cy: rng(),
+			r: 0.02 + rng() * 0.05,
+			depth: 0.1 + rng() * 0.15,
+		});
+	}
 
-    for (let y = 0; y < h; y++) {
-        for (let x = 0; x < w; x++) {
-            const u = x / w, v = y / h;
-            const [sx, sy, sz] = uvToSphere(u, v);
+	for (let y = 0; y < h; y++) {
+		for (let x = 0; x < w; x++) {
+			const u = x / w,
+				v = y / h;
+			const [sx, sy, sz] = uvToSphere(u, v);
 
-            let n = fbm(noise, sx * 3, sy * 3, sz * 3, 4) * 0.3 + 0.5;
+			let n = fbm(noise, sx * 3, sy * 3, sz * 3, 4) * 0.3 + 0.5;
 
-            for (const cr of craters) {
-                const du = u - cr.cx, dv = v - cr.cy;
-                const d = Math.sqrt(du*du + dv*dv);
-                if (d < cr.r) n -= cr.depth * (1 - d / cr.r);
-            }
+			for (const cr of craters) {
+				const du = u - cr.cx,
+					dv = v - cr.cy;
+				const d = Math.sqrt(du * du + dv * dv);
+				if (d < cr.r) n -= cr.depth * (1 - d / cr.r);
+			}
 
-            n = clamp01(n);
-            const rgb = base.map(c => clamp01(c * (0.6 + n * 0.8))) as RGB;
+			n = clamp01(n);
+			const rgb = base.map((c) => clamp01(c * (0.6 + n * 0.8))) as RGB;
 
-            const idx = (y * w + x) * 4;
-            img.data[idx] = rgb[0] * 255;
-            img.data[idx+1] = rgb[1] * 255;
-            img.data[idx+2] = rgb[2] * 255;
-            img.data[idx+3] = 255;
-        }
-    }
+			const idx = (y * w + x) * 4;
+			img.data[idx] = rgb[0] * 255;
+			img.data[idx + 1] = rgb[1] * 255;
+			img.data[idx + 2] = rgb[2] * 255;
+			img.data[idx + 3] = 255;
+		}
+	}
 
-    ctx.putImageData(img, 0, 0);
-    return new THREE.CanvasTexture(canvas);
+	ctx.putImageData(img, 0, 0);
+	return new THREE.CanvasTexture(canvas);
 }
 
 // --- Star shader ---
@@ -444,63 +601,87 @@ void main() {
 `;
 
 export function createStarMaterial(color: string): THREE.ShaderMaterial {
-    return new THREE.ShaderMaterial({
-        uniforms: {
-            uTime: { value: 0 },
-            uBaseColor: { value: new THREE.Color(color) },
-        },
-        vertexShader: STAR_VERT,
-        fragmentShader: STAR_FRAG,
-    });
+	return new THREE.ShaderMaterial({
+		uniforms: {
+			uTime: { value: 0 },
+			uBaseColor: { value: new THREE.Color(color) },
+		},
+		vertexShader: STAR_VERT,
+		fragmentShader: STAR_FRAG,
+	});
 }
 
 // --- Cloud texture generator ---
 
-function generateCloudTexture(rng: () => number, category: PlanetCategory | string, w: number = 512, h: number = 256): THREE.CanvasTexture {
-    const canvas = document.createElement('canvas');
-    canvas.width = w; canvas.height = h;
-    const ctx = canvas.getContext('2d')!;
-    const img = ctx.createImageData(w, h);
-    const noise = createNoise3D(rng);
+function generateCloudTexture(
+	rng: () => number,
+	category: PlanetCategory | string,
+	w: number = 512,
+	h: number = 256,
+): THREE.CanvasTexture {
+	const canvas = document.createElement("canvas");
+	canvas.width = w;
+	canvas.height = h;
+	const ctx = canvas.getContext("2d");
+	if (!ctx) throw new Error("Canvas 2D context unavailable");
+	const img = ctx.createImageData(w, h);
+	const noise = createNoise3D(rng);
 
-    // Cloud parameters by category
-    let coverage: number, sharpness: number, octaves: number, scale: number;
-    switch (category) {
-        case 'gasGiant':
-            coverage = 0.35; sharpness = 2.5; octaves = 5; scale = 3; break;
-        case 'iceGiant':
-            coverage = 0.55; sharpness = 3.0; octaves = 4; scale = 2.5; break;
-        case 'subNeptune':
-            coverage = 0.5; sharpness = 2.0; octaves = 3; scale = 2; break;
-        default: // rocky with atmosphere
-            coverage = 0.5; sharpness = 2.5; octaves = 5; scale = 3; break;
-    }
+	// Cloud parameters by category
+	let coverage: number, sharpness: number, octaves: number, scale: number;
+	switch (category) {
+		case "gasGiant":
+			coverage = 0.35;
+			sharpness = 2.5;
+			octaves = 5;
+			scale = 3;
+			break;
+		case "iceGiant":
+			coverage = 0.55;
+			sharpness = 3.0;
+			octaves = 4;
+			scale = 2.5;
+			break;
+		case "subNeptune":
+			coverage = 0.5;
+			sharpness = 2.0;
+			octaves = 3;
+			scale = 2;
+			break;
+		default: // rocky with atmosphere
+			coverage = 0.5;
+			sharpness = 2.5;
+			octaves = 5;
+			scale = 3;
+			break;
+	}
 
-    for (let y = 0; y < h; y++) {
-        for (let x = 0; x < w; x++) {
-            const u = x / w, v = y / h;
-            const [sx, sy, sz] = uvToSphere(u, v);
+	for (let y = 0; y < h; y++) {
+		for (let x = 0; x < w; x++) {
+			const u = x / w,
+				v = y / h;
+			const [sx, sy, sz] = uvToSphere(u, v);
 
-            let n = fbm(noise, sx * scale, sy * scale, sz * scale, octaves);
-            // Shift and sharpen to create cloud patches
-            n = clamp01((n - coverage + 0.5) * sharpness);
+			let n = fbm(noise, sx * scale, sy * scale, sz * scale, octaves);
+			// Shift and sharpen to create cloud patches
+			n = clamp01((n - coverage + 0.5) * sharpness);
 
-            // Reduce clouds at poles for gas/ice giants (banded look)
-            if (category === 'gasGiant' || category === 'iceGiant') {
-                const lat = Math.abs(v - 0.5) * 2;
-                n *= 1 - lat * lat * 0.4;
-            }
+			// Reduce clouds at poles for gas/ice giants (banded look)
+			if (category === "gasGiant" || category === "iceGiant") {
+				const lat = Math.abs(v - 0.5) * 2;
+				n *= 1 - lat * lat * 0.4;
+			}
 
-            const idx = (y * w + x) * 4;
-            img.data[idx] = 255;
-            img.data[idx + 1] = 255;
-            img.data[idx + 2] = 255;
-            img.data[idx + 3] = n * 180; // semi-transparent
-        }
-    }
+			const idx = (y * w + x) * 4;
+			img.data[idx] = 255;
+			img.data[idx + 1] = 255;
+			img.data[idx + 2] = 255;
+			img.data[idx + 3] = n * 180; // semi-transparent
+		}
+	}
 
-    ctx.putImageData(img, 0, 0);
-    return new THREE.CanvasTexture(canvas);
+	ctx.putImageData(img, 0, 0);
+	return new THREE.CanvasTexture(canvas);
 }
 
 // --- Texture dispatcher ---
@@ -509,35 +690,47 @@ const EARTH_RADIUS_KM = 6371;
 const ROCKY_CLOUD_MIN_RADIUS = 0.8; // Earth radii — smaller rocky bodies have no atmosphere
 
 function bodyCategory(data: BodyData | MoonData): PlanetCategory {
-    if ((data as BodyData)._category) return (data as BodyData)._category!;
-    return categorizePlanet(data.radius / EARTH_RADIUS_KM);
+	const category = (data as BodyData)._category;
+	if (category) return category;
+	return categorizePlanet(data.radius / EARTH_RADIUS_KM);
 }
 
-export function generateBodyTexture(data: BodyData | MoonData, isMoon: boolean): THREE.CanvasTexture {
-    const seed = hashString(data.name);
-    const rng = seededRandom(seed);
+export function generateBodyTexture(
+	data: BodyData | MoonData,
+	isMoon: boolean,
+): THREE.CanvasTexture {
+	const seed = hashString(data.name);
+	const rng = seededRandom(seed);
 
-    if (isMoon) return generateMoonTexture(rng, data.color);
+	if (isMoon) return generateMoonTexture(rng, data.color);
 
-    const category = bodyCategory(data);
-    switch (category) {
-        case 'gasGiant': return generateGasGiantTexture(rng, data.color);
-        case 'iceGiant': return generateIceGiantTexture(rng, data.color);
-        case 'subNeptune': return generateSubNeptuneTexture(rng, data.color);
-        default: return generateRockyTexture(rng, data.color);
-    }
+	const category = bodyCategory(data);
+	switch (category) {
+		case "gasGiant":
+			return generateGasGiantTexture(rng, data.color);
+		case "iceGiant":
+			return generateIceGiantTexture(rng, data.color);
+		case "subNeptune":
+			return generateSubNeptuneTexture(rng, data.color);
+		default:
+			return generateRockyTexture(rng, data.color);
+	}
 }
 
-export function generateCloudTextureForBody(data: BodyData | MoonData, isMoon: boolean): THREE.CanvasTexture | null {
-    if (isMoon) return null;
+export function generateCloudTextureForBody(
+	data: BodyData | MoonData,
+	isMoon: boolean,
+): THREE.CanvasTexture | null {
+	if (isMoon) return null;
 
-    const category = bodyCategory(data);
-    const radiusEarths = data.radius / EARTH_RADIUS_KM;
+	const category = bodyCategory(data);
+	const radiusEarths = data.radius / EARTH_RADIUS_KM;
 
-    // Rocky bodies need minimum size for atmosphere
-    if (category === 'rocky' && radiusEarths < ROCKY_CLOUD_MIN_RADIUS) return null;
+	// Rocky bodies need minimum size for atmosphere
+	if (category === "rocky" && radiusEarths < ROCKY_CLOUD_MIN_RADIUS)
+		return null;
 
-    const seed = hashString(data.name + '_clouds');
-    const rng = seededRandom(seed);
-    return generateCloudTexture(rng, category);
+	const seed = hashString(`${data.name}_clouds`);
+	const rng = seededRandom(seed);
+	return generateCloudTexture(rng, category);
 }
