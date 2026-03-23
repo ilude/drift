@@ -96,14 +96,10 @@ export interface TrailState {
 	line: THREE.Line;
 	positions: Float32Array;
 	colors: Float32Array;
-	index: number;
 	maxPoints: number;
 	count: number;
 	baseColor: THREE.Color;
 	sampleAccum: number;
-	wrapAccum?: number;
-	tmpP: Float32Array;
-	tmpC: Float32Array;
 }
 
 // --- Pending transfer ---

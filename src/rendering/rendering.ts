@@ -181,13 +181,10 @@ function createTrail(color: string, maxPoints: number): TrailState {
 		line,
 		positions,
 		colors,
-		index: 0,
 		maxPoints,
 		count: 0,
 		baseColor: c,
 		sampleAccum: 0,
-		tmpP: new Float32Array(maxPoints * 3),
-		tmpC: new Float32Array(maxPoints * 3),
 	};
 }
 
@@ -468,7 +465,6 @@ export function createComets(): void {
 			t.colors[i3 + 1] = t.baseColor.g * fade;
 			t.colors[i3 + 2] = t.baseColor.b * fade;
 		}
-		t.index = 0;
 		t.count = t.maxPoints;
 		t.line.geometry.attributes.position.needsUpdate = true;
 		t.line.geometry.attributes.color.needsUpdate = true;
@@ -1314,54 +1310,49 @@ export function updatePositions(dt: number, camDist: number): void {
 		if (!state.categoryVisibility[catKey].trails) return;
 
 		const t = entry.trail;
+
+		// Always keep the last-drawn vertex glued to the current mesh position
+		// so there's no visible gap between sample intervals.
+		// Draw order is array indices 0..count-1; the line ends at count-1.
+		if (t.count > 0) {
+			const tailIdx = (t.count - 1) * 3;
+			t.positions[tailIdx] = entry.mesh.position.x;
+			t.positions[tailIdx + 1] = entry.mesh.position.y;
+			t.positions[tailIdx + 2] = entry.mesh.position.z;
+			t.line.geometry.attributes.position.needsUpdate = true;
+		}
+
 		t.sampleAccum += simDt;
 		// Comets: sample faster when zoomed out so trail covers more orbit
 		const sampleInterval = isCometEntry(entry) ? 0.02 / Math.max(1, camDist / ZOOM_BASE) : 0.02;
 		if (t.sampleAccum > sampleInterval) {
 			t.sampleAccum = 0;
-			const i3 = t.index * 3;
-			t.positions[i3] = entry.mesh.position.x;
-			t.positions[i3 + 1] = entry.mesh.position.y;
-			t.positions[i3 + 2] = entry.mesh.position.z;
-			t.index = (t.index + 1) % t.maxPoints;
-			t.count = Math.min(t.count + 1, t.maxPoints);
 
 			if (t.count < t.maxPoints) {
-				// O(1): just set the new point to full brightness
-				const newIdx = (t.index === 0 ? t.maxPoints : t.index) - 1;
-				t.colors[newIdx * 3] = t.baseColor.r;
-				t.colors[newIdx * 3 + 1] = t.baseColor.g;
-				t.colors[newIdx * 3 + 2] = t.baseColor.b;
-			}
-
-			if (t.count >= t.maxPoints) {
-				// Only do the expensive reorder every 20 wraps; just write at t.index between reorders
-				// wrapAccum is added to TrailState by another agent; access via cast until then
-				const trail = t as TrailState & { wrapAccum?: number };
-				trail.wrapAccum = (trail.wrapAccum ?? 0) + 1;
-				if (trail.wrapAccum >= 20) {
-					trail.wrapAccum = 0;
-					const pa = t.positions;
-					const tmpP = t.tmpP;
-					for (let j = 0; j < t.maxPoints; j++) {
-						const src = ((t.index + j) % t.maxPoints) * 3;
-						const dst = j * 3;
-						tmpP[dst] = pa[src];
-						tmpP[dst + 1] = pa[src + 1];
-						tmpP[dst + 2] = pa[src + 2];
-					}
-					t.positions.set(tmpP);
-					// Full fade recalc after reorder (linear index = draw order)
-					for (let j = 0; j < t.maxPoints; j++) {
-						const fade = j / t.maxPoints;
-						t.colors[j * 3] = t.baseColor.r * fade;
-						t.colors[j * 3 + 1] = t.baseColor.g * fade;
-						t.colors[j * 3 + 2] = t.baseColor.b * fade;
-					}
-					t.index = 0;
-					t.count = t.maxPoints;
+				// Buffer not full yet — append at count, advance
+				const i3 = t.count * 3;
+				t.positions[i3] = entry.mesh.position.x;
+				t.positions[i3 + 1] = entry.mesh.position.y;
+				t.positions[i3 + 2] = entry.mesh.position.z;
+				t.colors[i3] = t.baseColor.r;
+				t.colors[i3 + 1] = t.baseColor.g;
+				t.colors[i3 + 2] = t.baseColor.b;
+				t.count++;
+			} else {
+				// Buffer full — shift everything left by 1, append at end
+				// This keeps array order = draw order = temporal order
+				t.positions.copyWithin(0, 3);
+				const last = (t.maxPoints - 1) * 3;
+				t.positions[last] = entry.mesh.position.x;
+				t.positions[last + 1] = entry.mesh.position.y;
+				t.positions[last + 2] = entry.mesh.position.z;
+				// Recompute fade gradient
+				for (let j = 0; j < t.maxPoints; j++) {
+					const fade = j / t.maxPoints;
+					t.colors[j * 3] = t.baseColor.r * fade;
+					t.colors[j * 3 + 1] = t.baseColor.g * fade;
+					t.colors[j * 3 + 2] = t.baseColor.b * fade;
 				}
-				// Between reorders: position already written at t.index above; needsUpdate set below
 			}
 
 			t.line.geometry.attributes.position.needsUpdate = true;
