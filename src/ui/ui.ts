@@ -503,6 +503,8 @@ export function setupUI(loadSystem: (systemData: SystemData) => void): void {
 				updateSpeedBtn();
 				buildSpeedList();
 				speedDropdown.classList.add("hidden");
+				state.renderNeeded = true;
+				window.dispatchEvent(new Event("wake-render"));
 			});
 			speedListEl.appendChild(item);
 		});
@@ -522,6 +524,8 @@ export function setupUI(loadSystem: (systemData: SystemData) => void): void {
 		paused = !paused;
 		state.timeSpeed = paused ? 0 : TIME_SCALES[activeScaleIndex].speed;
 		updateSpeedBtn();
+		state.renderNeeded = true;
+		window.dispatchEvent(new Event("wake-render"));
 	}
 
 	pauseBtn.addEventListener("click", togglePause);
@@ -548,6 +552,8 @@ export function setupUI(loadSystem: (systemData: SystemData) => void): void {
 			state.timeSpeed = speed;
 			paused = false;
 			updateSpeedBtn();
+			state.renderNeeded = true;
+			window.dispatchEvent(new Event("wake-render"));
 			const ship = state.bodyMeshes.find(isShipEntry);
 			const elapsed = ship ? state.simTime - ship.transferStartTime : 0;
 			const t =

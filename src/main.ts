@@ -237,10 +237,48 @@ const _perfTimings: PerfTimings = {
 	total: 0,
 };
 
-function animate(): void {
-	requestAnimationFrame(animate);
+const FRAME_INTERVAL = 1000 / 30; // 30fps cap
+let lastFrameTime = 0;
+let rafId = 0;
+let loopRunning = false;
+
+// Mark scene dirty so next frame renders (used when paused)
+function markDirty(): void {
+	state.renderNeeded = true;
+	if (!loopRunning) startLoop();
+}
+
+// Inputs that dirty the scene while paused
+controls.addEventListener("change", markDirty);
+window.addEventListener("resize", markDirty);
+window.addEventListener("wake-render", markDirty);
+
+function startLoop(): void {
+	if (loopRunning) return;
+	loopRunning = true;
+	lastFrameTime = performance.now();
+	rafId = requestAnimationFrame(animate);
+}
+
+function stopLoop(): void {
+	if (!loopRunning) return;
+	loopRunning = false;
+	cancelAnimationFrame(rafId);
+}
+
+function animate(now: number): void {
+	rafId = requestAnimationFrame(animate);
+
+	// 30fps throttle
+	const elapsed = now - lastFrameTime;
+	if (elapsed < FRAME_INTERVAL) return;
+	lastFrameTime = now - (elapsed % FRAME_INTERVAL);
+
 	timer.update();
 	const dt: number = timer.getDelta();
+
+	const simActive = state.timeSpeed !== 0;
+	const hasActiveCamera = !!state.flyTo;
 
 	// Debug step-through: count down frames then pause
 	if (state.debugStepFrames > 0) {
@@ -267,9 +305,9 @@ function animate(): void {
 	}
 
 	const _t0 = performance.now();
-	updatePositions(dt, cachedCamDist);
+	if (simActive) updatePositions(dt, cachedCamDist);
 	const _t1 = performance.now();
-	updateAsteroids(dt);
+	if (simActive) updateAsteroids(dt);
 	const _t2 = performance.now();
 	updateFlyTo();
 	updateFollow();
@@ -297,6 +335,12 @@ function animate(): void {
 	_perfTimings.render = _t5 - _t4;
 	_perfTimings.total = _t5 - _t0;
 	updatePerfDisplay(_perfTimings);
+
+	// When paused with no camera animation, consume the dirty flag and stop
+	state.renderNeeded = false;
+	if (!simActive && !hasActiveCamera) {
+		stopLoop();
+	}
 }
 
-animate();
+startLoop();

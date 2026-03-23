@@ -63,6 +63,8 @@ function animateCameraTo(
 		startTime: performance.now() / 1000,
 		duration: 0.6,
 	} as FlyToState;
+	state.renderNeeded = true;
+	window.dispatchEvent(new Event("wake-render"));
 }
 
 export function updateFlyTo(): void {

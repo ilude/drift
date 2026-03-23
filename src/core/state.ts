@@ -70,6 +70,7 @@ export const state: AppState = {
 	showTrails: false,
 	debugStepFrames: 0,
 	debugStepSpeed: 0,
+	renderNeeded: true,
 };
 
 export function saveState(): void {

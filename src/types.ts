@@ -309,6 +309,7 @@ export interface AppState {
 	showTrails: boolean;
 	debugStepFrames: number;
 	debugStepSpeed: number;
+	renderNeeded: boolean;
 }
 
 // --- System data ---
