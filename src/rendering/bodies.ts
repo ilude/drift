@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { state } from "../core/state";
 import { seededRandom } from "../core/utils";
+import { estimateMass } from "../data/system-generator";
 import {
 	inclinedPosition,
 	keplerRadius,
@@ -459,6 +460,7 @@ export function createComets(): void {
 				incRad,
 				nodeRad,
 				periRad,
+				mass: comet.mass,
 			} as CometEntryData,
 			mesh,
 			selRing,
@@ -588,6 +590,7 @@ export function createAsteroidBelts(): AsteroidBeltEntry[] {
 				au: Math.round(au * 1000) / 1000,
 				period: Math.round(period * 100) / 100,
 				diameter,
+				mass: estimateMass(diameter / 2, 3000),
 				survey: { surveyLevel: 0, deposits: [] },
 			});
 		}

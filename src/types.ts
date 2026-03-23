@@ -48,6 +48,7 @@ export interface MoonData {
 	e: number;
 	period: number;
 	radius: number;
+	mass: number;
 	color: string;
 }
 
@@ -66,6 +67,7 @@ export interface BodyData {
 	e: number;
 	period: number;
 	radius: number;
+	mass: number;
 	color: string;
 	emissive?: boolean;
 	moons: MoonData[];
@@ -86,6 +88,7 @@ export interface CometData {
 	node: number;
 	peri: number;
 	color: string;
+	mass: number;
 }
 
 export interface CometEntryData {
@@ -102,6 +105,7 @@ export interface CometEntryData {
 	incRad: number;
 	nodeRad: number;
 	periRad: number;
+	mass: number;
 }
 
 export interface ShipEntryData {
@@ -374,6 +378,7 @@ export interface AsteroidInfo extends Surveyable {
 	au: number;
 	period: number;
 	diameter: number;
+	mass: number;
 }
 
 export interface AsteroidBeltEntry {

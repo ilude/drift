@@ -220,17 +220,22 @@ setupClickHandlers();
 // ---------------------------------------------------------------------------
 // Ship command dispatch
 // ---------------------------------------------------------------------------
-const SURVEY_DURATIONS: Record<string, number> = {
-	Planet: 10,
-	"Dwarf Planet": 10,
-	"Detached Object": 10,
-	Moon: 4,
-	Comet: 3,
-};
-const DEFAULT_SURVEY_DURATION = 2; // asteroids, unknown
+// Reference: Earth mass = 5.972e24 kg, base survey = 10 days
+const EARTH_MASS_KG = 5.972e24;
 
-function getSurveyDuration(bodyType: string): number {
-	return SURVEY_DURATIONS[bodyType] ?? DEFAULT_SURVEY_DURATION;
+/**
+ * Compute survey duration based on body mass.
+ * Log scale gives 1 day (small asteroid) to ~40 days (Jupiter).
+ * Adjusted by crew morale and hull condition.
+ */
+function getSurveyDuration(mass: number, ship: ShipEntry): number {
+	const minMass = 1e10; // small asteroid floor
+	const logRatio = Math.log10(Math.max(mass, minMass) / minMass);
+	const maxLog = Math.log10(EARTH_MASS_KG / minMass); // ~14.8
+	const base = Math.max(1, Math.round(1 + (logRatio / maxLog) * 39)); // 1–40 days
+	const morale = Math.max(10, ship.crew.morale) / 100;
+	const hull = Math.max(10, ship.maintenance.hullIntegrity) / 100;
+	return Math.ceil(base / (morale * hull));
 }
 
 function getSystemSeed(): number {
@@ -306,7 +311,7 @@ function dispatchCommand(ship: ShipEntry, result: CommandResult): void {
 				const alreadyThere = isAtTarget || isMoonOfHost;
 
 				if (alreadyThere) {
-					const dur = getSurveyDuration(targetBody.data.type);
+					const dur = getSurveyDuration(targetBody.data.mass, ship);
 					ship.action = mkAction("survey-nearest", "survey", state.simTime, dur, target);
 					ship.stationTarget = null;
 				} else {
@@ -402,10 +407,7 @@ function tickShip(ship: ShipEntry, simDt: number): void {
 		ship.action.duration > 0;
 	if (hasActiveAction) {
 		const elapsed = state.simTime - ship.action.startTime;
-		// Apply morale + hull multiplier to effective speed
-		const efficiency = (ship.crew.morale / 100) * (ship.maintenance.hullIntegrity / 100);
-		const effectiveRate = Math.max(0.01, efficiency);
-		ship.action.progress = Math.min(1, (elapsed * effectiveRate) / ship.action.duration);
+		ship.action.progress = Math.min(1, elapsed / ship.action.duration);
 
 		if (ship.action.progress >= 1) {
 			completeAction(ship);
@@ -425,11 +427,10 @@ export function onTransferComplete(ship: ShipEntry): void {
 	// If ship was en route for a specific action, start it at the destination
 	const actionType = ship.action.type;
 	if (actionType === "survey-nearest") {
-		// Use the survey target body type for duration (may be a moon of the host planet)
 		const surveyTarget = ship.action.target;
 		const targetBody = surveyTarget ? findBodyByName(surveyTarget) : null;
-		const bodyType = targetBody?.data.type ?? "Planet";
-		const dur = getSurveyDuration(bodyType);
+		const mass = targetBody?.data.mass ?? EARTH_MASS_KG;
+		const dur = getSurveyDuration(mass, ship);
 		ship.action.startTime = state.simTime;
 		ship.action.duration = dur;
 		ship.action.progress = 0;

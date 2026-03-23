@@ -11,6 +11,7 @@ export function getSolSystem(): SystemData {
 				e: 0,
 				period: 0,
 				radius: 695700,
+				mass: 1.989e30,
 				color: "#ffdd44",
 				emissive: true,
 				moons: [],
@@ -22,6 +23,7 @@ export function getSolSystem(): SystemData {
 				e: 0.206,
 				period: 0.241,
 				radius: 2440,
+				mass: 3.301e23,
 				color: "#aaaaaa",
 				moons: [],
 			},
@@ -32,6 +34,7 @@ export function getSolSystem(): SystemData {
 				e: 0.007,
 				period: 0.615,
 				radius: 6052,
+				mass: 4.867e24,
 				color: "#ddaa66",
 				moons: [],
 			},
@@ -42,6 +45,7 @@ export function getSolSystem(): SystemData {
 				e: 0.017,
 				period: 1.0,
 				radius: 6371,
+				mass: 5.972e24,
 				color: "#4488cc",
 				moons: [
 					{
@@ -50,6 +54,7 @@ export function getSolSystem(): SystemData {
 						e: 0.055,
 						period: 0.0748,
 						radius: 1737,
+						mass: 7.342e22,
 						color: "#999999",
 					},
 				],
@@ -61,6 +66,7 @@ export function getSolSystem(): SystemData {
 				e: 0.093,
 				period: 1.881,
 				radius: 3390,
+				mass: 6.417e23,
 				color: "#cc5533",
 				moons: [
 					{
@@ -69,6 +75,7 @@ export function getSolSystem(): SystemData {
 						e: 0.015,
 						period: 0.0008,
 						radius: 11,
+						mass: 1.0659e16,
 						color: "#887766",
 					},
 					{
@@ -77,6 +84,7 @@ export function getSolSystem(): SystemData {
 						e: 0.0002,
 						period: 0.003,
 						radius: 6,
+						mass: 1.4762e15,
 						color: "#887766",
 					},
 				],
@@ -88,6 +96,7 @@ export function getSolSystem(): SystemData {
 				e: 0.049,
 				period: 11.86,
 				radius: 69911,
+				mass: 1.898e27,
 				color: "#ddaa77",
 				rings: { inner: 1.3, outer: 1.8, opacity: 0.15, tilt: 3.1 },
 				moons: [
@@ -97,6 +106,7 @@ export function getSolSystem(): SystemData {
 						e: 0.004,
 						period: 0.00484,
 						radius: 1822,
+						mass: 8.932e22,
 						color: "#ddcc44",
 					},
 					{
@@ -105,6 +115,7 @@ export function getSolSystem(): SystemData {
 						e: 0.009,
 						period: 0.00972,
 						radius: 1561,
+						mass: 4.8e22,
 						color: "#ccccdd",
 					},
 					{
@@ -113,6 +124,7 @@ export function getSolSystem(): SystemData {
 						e: 0.001,
 						period: 0.01959,
 						radius: 2634,
+						mass: 1.482e23,
 						color: "#aaaaaa",
 					},
 					{
@@ -121,6 +133,7 @@ export function getSolSystem(): SystemData {
 						e: 0.007,
 						period: 0.0457,
 						radius: 2410,
+						mass: 1.076e23,
 						color: "#777788",
 					},
 				],
@@ -132,6 +145,7 @@ export function getSolSystem(): SystemData {
 				e: 0.054,
 				period: 29.46,
 				radius: 58232,
+				mass: 5.683e26,
 				color: "#ccbb77",
 				rings: { inner: 1.2, outer: 2.3, color: "#ccbb88", tilt: 26.7 },
 				moons: [
@@ -141,6 +155,7 @@ export function getSolSystem(): SystemData {
 						e: 0.029,
 						period: 0.0437,
 						radius: 2575,
+						mass: 1.3452e23,
 						color: "#cc9944",
 					},
 					{
@@ -149,6 +164,7 @@ export function getSolSystem(): SystemData {
 						e: 0.005,
 						period: 0.00375,
 						radius: 252,
+						mass: 1.08e20,
 						color: "#ddddee",
 					},
 				],
@@ -160,6 +176,7 @@ export function getSolSystem(): SystemData {
 				e: 0.047,
 				period: 84.01,
 				radius: 25362,
+				mass: 8.681e25,
 				color: "#88bbcc",
 				rings: { inner: 1.6, outer: 2.0, opacity: 0.12, tilt: 97.8 },
 				moons: [
@@ -169,6 +186,7 @@ export function getSolSystem(): SystemData {
 						e: 0.001,
 						period: 0.00387,
 						radius: 236,
+						mass: 6.59e19,
 						color: "#aabbbb",
 					},
 					{
@@ -177,6 +195,7 @@ export function getSolSystem(): SystemData {
 						e: 0.001,
 						period: 0.02387,
 						radius: 789,
+						mass: 3.527e21,
 						color: "#aaaaaa",
 					},
 				],
@@ -188,6 +207,7 @@ export function getSolSystem(): SystemData {
 				e: 0.009,
 				period: 164.8,
 				radius: 24622,
+				mass: 1.024e26,
 				color: "#4466cc",
 				rings: { inner: 1.7, outer: 2.5, opacity: 0.1, tilt: 28.3 },
 				moons: [
@@ -197,6 +217,7 @@ export function getSolSystem(): SystemData {
 						e: 0.0,
 						period: 0.0161,
 						radius: 1353,
+						mass: 2.14e22,
 						color: "#99aaaa",
 					},
 				],
@@ -208,6 +229,7 @@ export function getSolSystem(): SystemData {
 				e: 0.076,
 				period: 4.6,
 				radius: 473,
+				mass: 9.393e20,
 				color: "#888877",
 				moons: [],
 			},
@@ -218,6 +240,7 @@ export function getSolSystem(): SystemData {
 				e: 0.25,
 				period: 248.0,
 				radius: 1188,
+				mass: 1.303e22,
 				color: "#ccaa88",
 				moons: [
 					{
@@ -226,6 +249,7 @@ export function getSolSystem(): SystemData {
 						e: 0.0,
 						period: 0.01745,
 						radius: 606,
+						mass: 1.586e21,
 						color: "#999988",
 					},
 				],
@@ -237,6 +261,7 @@ export function getSolSystem(): SystemData {
 				e: 0.189,
 				period: 284.1,
 				radius: 816,
+				mass: 4.006e21,
 				color: "#aaaaaa",
 				moons: [
 					{
@@ -245,6 +270,7 @@ export function getSolSystem(): SystemData {
 						e: 0.05,
 						period: 0.1345,
 						radius: 160,
+						mass: 1.79e19,
 						color: "#888888",
 					},
 				],
@@ -256,6 +282,7 @@ export function getSolSystem(): SystemData {
 				e: 0.161,
 				period: 309.9,
 				radius: 715,
+				mass: 3.1e21,
 				color: "#bb9977",
 				moons: [],
 			},
@@ -266,6 +293,7 @@ export function getSolSystem(): SystemData {
 				e: 0.436,
 				period: 559.0,
 				radius: 1163,
+				mass: 1.66e22,
 				color: "#bbbbbb",
 				moons: [
 					{
@@ -274,6 +302,7 @@ export function getSolSystem(): SystemData {
 						e: 0.01,
 						period: 0.04384,
 						radius: 350,
+						mass: 8.2e19,
 						color: "#777777",
 					},
 				],
@@ -285,6 +314,7 @@ export function getSolSystem(): SystemData {
 				e: 0.843,
 				period: 11400,
 				radius: 498,
+				mass: 8.3e20,
 				color: "#cc6644",
 				moons: [],
 			},
@@ -299,6 +329,7 @@ export function getSolSystem(): SystemData {
 				node: 58.42,
 				peri: 111.33,
 				color: "#99ccff",
+				mass: 2.2e14,
 			},
 			{
 				name: "Hale-Bopp",
@@ -309,6 +340,7 @@ export function getSolSystem(): SystemData {
 				node: 282.47,
 				peri: 130.59,
 				color: "#aaddff",
+				mass: 1.3e16,
 			},
 			{
 				name: "Encke",
@@ -319,6 +351,7 @@ export function getSolSystem(): SystemData {
 				node: 334.57,
 				peri: 186.55,
 				color: "#88bbaa",
+				mass: 2.0e13,
 			},
 			{
 				name: "Swift-Tuttle",
@@ -329,6 +362,7 @@ export function getSolSystem(): SystemData {
 				node: 139.38,
 				peri: 152.98,
 				color: "#bbaaff",
+				mass: 5.0e15,
 			},
 			{
 				name: "Tempel 1",
@@ -339,6 +373,7 @@ export function getSolSystem(): SystemData {
 				node: 68.76,
 				peri: 179.19,
 				color: "#aa9988",
+				mass: 7.9e13,
 			},
 			{
 				name: "Churyumov-Ger.",
@@ -349,6 +384,7 @@ export function getSolSystem(): SystemData {
 				node: 45.93,
 				peri: 14.52,
 				color: "#998877",
+				mass: 1.0e13,
 			},
 			{
 				name: "Hyakutake",
@@ -359,6 +395,7 @@ export function getSolSystem(): SystemData {
 				node: 188.05,
 				peri: 130.17,
 				color: "#ccddff",
+				mass: 3.0e13,
 			},
 			{
 				name: "Neowise",
@@ -369,6 +406,7 @@ export function getSolSystem(): SystemData {
 				node: 61.01,
 				peri: 37.28,
 				color: "#ddeeff",
+				mass: 1.0e14,
 			},
 		],
 		asteroidBelts: [
