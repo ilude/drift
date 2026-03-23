@@ -15,13 +15,62 @@ import {
 	initiateTransfer,
 } from "../rendering/rendering";
 import { camera, controls, renderer, ZOOM_BASE } from "../rendering/scene";
-import type { AsteroidBeltData, AsteroidInfo, BodyEntry, FlyToState, PlanetEntry } from "../types";
+import type {
+	AsteroidBeltData,
+	AsteroidInfo,
+	BodyData,
+	BodyEntry,
+	CometEntryData,
+	FlyToState,
+	PlanetEntry,
+} from "../types";
 import { isCometEntry, isShipEntry } from "../types";
 
 const ZOOM_DIST_RECENTER: number = ZOOM_BASE / 0.25;
 const ZOOM_DIST_STAR: number = 75;
 const ZOOM_DIST_PLANET: number = 38;
 const ZOOM_DIST_MOON: number = 20;
+
+export interface InfoFields {
+	distance: string;
+	period: string;
+	radius: string;
+	moons: string;
+}
+
+export function formatCometInfo(data: CometEntryData): InfoFields {
+	return {
+		distance: `Perihelion: ${data.distance.toFixed(2)} AU | e: ${data.e}`,
+		period: data.period > 0 ? `${data.period} years` : "-",
+		radius: `${data.radius.toLocaleString()} km`,
+		moons: data.moons ? data.moons.length.toString() : "0",
+	};
+}
+
+export function formatPlanetInfo(data: BodyData, _isMoon: boolean): InfoFields {
+	return {
+		distance: data.distance > 0 ? `${data.distance} AU` : "Center",
+		period: data.period > 0 ? `${data.period} years` : "-",
+		radius: `${data.radius.toLocaleString()} km`,
+		moons: data.moons ? data.moons.length.toString() : "0",
+	};
+}
+
+export function formatAsteroidInfo(asteroid: AsteroidInfo, _beltName: string): InfoFields {
+	return {
+		distance: `${asteroid.au} AU`,
+		period: `${asteroid.period} years`,
+		radius: `~${asteroid.diameter} km dia.`,
+		moons: "0",
+	};
+}
+
+export function getZoomDistance(bodyType: string, isMoon: boolean): number {
+	if (isMoon) return ZOOM_DIST_MOON;
+	if (bodyType === "Star") return ZOOM_DIST_STAR;
+	if (bodyType === "Moon") return ZOOM_DIST_MOON;
+	return ZOOM_DIST_PLANET;
+}
 
 const flyEndTarget: THREE.Vector3 = new THREE.Vector3();
 const flyEndCam: THREE.Vector3 = new THREE.Vector3();
@@ -80,6 +129,17 @@ export function recenterOnStar(): void {
 	animateCameraTo(star, ZOOM_DIST_RECENTER, INITIAL_CAM_DIR);
 }
 
+function setInfoFields(fields: InfoFields): void {
+	const distanceEl = document.getElementById("info-distance");
+	if (distanceEl) distanceEl.textContent = fields.distance;
+	const periodEl = document.getElementById("info-period");
+	if (periodEl) periodEl.textContent = fields.period;
+	const radiusEl = document.getElementById("info-radius");
+	if (radiusEl) radiusEl.textContent = fields.radius;
+	const moonsEl = document.getElementById("info-moons");
+	if (moonsEl) moonsEl.textContent = fields.moons;
+}
+
 export function selectBody(entry: BodyEntry): void {
 	if (state.selectedBody) {
 		(state.selectedBody.selRing.material as THREE.MeshBasicMaterial).opacity = 0;
@@ -92,13 +152,7 @@ export function selectBody(entry: BodyEntry): void {
 	if (isCometEntry(entry) && entry.orbitLine) {
 		(entry.orbitLine.material as THREE.LineBasicMaterial).opacity = COMET_ORBIT_SELECTED_OPACITY;
 	}
-	const zoomDist: number =
-		entry.data.type === "Star"
-			? ZOOM_DIST_STAR
-			: entry.data.type === "Moon"
-				? ZOOM_DIST_MOON
-				: ZOOM_DIST_PLANET;
-	animateCameraTo(entry, zoomDist);
+	animateCameraTo(entry, getZoomDistance(entry.data.type, entry.isMoon));
 
 	const panel: HTMLElement | null = document.getElementById("info-panel");
 	if (panel) {
@@ -139,39 +193,9 @@ export function selectBody(entry: BodyEntry): void {
 			moonsEl.textContent = "-";
 		}
 	} else if (isCometEntry(entry)) {
-		const distanceEl = document.getElementById("info-distance");
-		if (distanceEl) {
-			distanceEl.textContent = `Perihelion: ${entry.data.distance.toFixed(2)} AU | e: ${entry.data.e}`;
-		}
-		const periodEl = document.getElementById("info-period");
-		if (periodEl) {
-			periodEl.textContent = entry.data.period > 0 ? `${entry.data.period} years` : "-";
-		}
-		const radiusEl = document.getElementById("info-radius");
-		if (radiusEl) {
-			radiusEl.textContent = `${entry.data.radius.toLocaleString()} km`;
-		}
-		const moonsEl = document.getElementById("info-moons");
-		if (moonsEl) {
-			moonsEl.textContent = entry.data.moons ? entry.data.moons.length.toString() : "0";
-		}
+		setInfoFields(formatCometInfo(entry.data));
 	} else {
-		const distanceEl = document.getElementById("info-distance");
-		if (distanceEl) {
-			distanceEl.textContent = entry.data.distance > 0 ? `${entry.data.distance} AU` : "Center";
-		}
-		const periodEl = document.getElementById("info-period");
-		if (periodEl) {
-			periodEl.textContent = entry.data.period > 0 ? `${entry.data.period} years` : "-";
-		}
-		const radiusEl = document.getElementById("info-radius");
-		if (radiusEl) {
-			radiusEl.textContent = `${entry.data.radius.toLocaleString()} km`;
-		}
-		const moonsEl = document.getElementById("info-moons");
-		if (moonsEl) {
-			moonsEl.textContent = entry.data.moons ? entry.data.moons.length.toString() : "0";
-		}
+		setInfoFields(formatPlanetInfo(entry.data, entry.isMoon));
 	}
 
 	document.querySelectorAll(".body-list-item").forEach((el) => {
@@ -277,22 +301,7 @@ export function selectAsteroid(hit: {
 	if (typeEl) {
 		typeEl.textContent = `Asteroid (${belt.name})`;
 	}
-	const distanceEl = document.getElementById("info-distance");
-	if (distanceEl) {
-		distanceEl.textContent = `${asteroid.au} AU`;
-	}
-	const periodEl = document.getElementById("info-period");
-	if (periodEl) {
-		periodEl.textContent = `${asteroid.period} years`;
-	}
-	const radiusEl = document.getElementById("info-radius");
-	if (radiusEl) {
-		radiusEl.textContent = `~${asteroid.diameter} km dia.`;
-	}
-	const moonsEl = document.getElementById("info-moons");
-	if (moonsEl) {
-		moonsEl.textContent = "0";
-	}
+	setInfoFields(formatAsteroidInfo(asteroid, belt.name));
 	if (infoPositionEl) infoPositionEl.textContent = "-";
 }
 

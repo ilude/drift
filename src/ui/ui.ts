@@ -152,6 +152,25 @@ function discoverSystem(seed: number): void {
 
 // --- Labels ---
 
+export function computeLabelPosition(
+	cx: number,
+	cy: number,
+	screenRadius: number,
+	viewW: number,
+	viewH: number,
+	margin: number,
+): { x: number; y: number; visible: boolean } {
+	if (cx < -margin || cx > viewW + margin || cy < -margin || cy > viewH + margin) {
+		return { x: 0, y: 0, visible: false };
+	}
+	const gap = Math.max(6, screenRadius * 0.2);
+	return { x: cx + screenRadius + gap, y: cy - 6, visible: true };
+}
+
+export function formatZoomText(camDist: number, zoomBase: number): string {
+	return `Zoom: ${(zoomBase / camDist).toFixed(2)}x`;
+}
+
 const tempVec = new THREE.Vector3();
 const edgeVec = new THREE.Vector3();
 
@@ -254,9 +273,9 @@ export function updateLabels(camDist: number): void {
 
 		// Only update label transforms every 2 frames
 		if (shouldUpdateTransforms) {
-			const gap = Math.max(6, sr * 0.2);
-			const lx = cx + sr + gap;
-			const ly = cy - 6;
+			const pos = computeLabelPosition(cx, cy, sr, screenW, screenH, margin);
+			const lx = pos.x;
+			const ly = pos.y;
 			if (
 				entry.labelX === undefined ||
 				entry.labelY === undefined ||
@@ -295,7 +314,7 @@ export function updateHUD(camDist: number): void {
 		}
 	}
 
-	const zoomText = `Zoom: ${(ZOOM_BASE / camDist).toFixed(2)}x`;
+	const zoomText = formatZoomText(camDist, ZOOM_BASE);
 	if (zoomText !== lastZoomText) {
 		zoomEl.textContent = zoomText;
 		lastZoomText = zoomText;

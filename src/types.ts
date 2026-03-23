@@ -96,8 +96,10 @@ export interface TrailState {
 	line: THREE.Line;
 	positions: Float32Array;
 	colors: Float32Array;
+	indices: Uint16Array;
 	maxPoints: number;
 	count: number;
+	head: number;
 	baseColor: THREE.Color;
 	sampleAccum: number;
 }
