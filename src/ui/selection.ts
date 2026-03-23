@@ -58,7 +58,7 @@ export function updateFlyTo(): void {
 	const ease: number = easeOutCubic(t);
 
 	const pos: THREE.Vector3 = state.flyTo.entry.mesh.position;
-	flyEndTarget.set(pos.x, 0, pos.z);
+	flyEndTarget.set(pos.x, pos.y, pos.z);
 	flyEndCam.copy(flyEndTarget).addScaledVector(state.flyTo.camOffset, state.flyTo.zoomDist);
 
 	camera.position.lerpVectors(state.flyTo.startCam, flyEndCam, ease);
@@ -300,10 +300,13 @@ export function updateFollow(): void {
 	if (!state.selectedBody || state.flyTo) return;
 	const pos: THREE.Vector3 = state.selectedBody.mesh.position;
 	const dx: number = pos.x - controls.target.x;
+	const dy: number = pos.y - controls.target.y;
 	const dz: number = pos.z - controls.target.z;
 	controls.target.x += dx;
+	controls.target.y += dy;
 	controls.target.z += dz;
 	camera.position.x += dx;
+	camera.position.y += dy;
 	camera.position.z += dz;
 }
 
