@@ -352,7 +352,7 @@ export function createBody(data: BodyData, parentMesh: THREE.Mesh | null): Plane
 		parentMesh,
 		moons: [],
 		isMoon,
-		survey: { surveyed: false },
+		...(isStar ? {} : { survey: { surveyed: false } }),
 		screenSize: size,
 		baseSize: size,
 		realisticSize: isMoon || !data.radius ? size : realisticSize(data.radius),

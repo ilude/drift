@@ -145,10 +145,11 @@ interface BaseEntry {
 	lodLevel: number;
 }
 
-export interface PlanetEntry extends BaseEntry, Surveyable {
+export interface PlanetEntry extends BaseEntry {
 	data: BodyData;
 	isShip?: false;
 	isComet?: false;
+	survey?: SurveyState;
 	planetRing: THREE.Mesh | null;
 	cloudMesh: THREE.Mesh | null;
 	baseSize: number;
