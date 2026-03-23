@@ -7,6 +7,8 @@ import { seededRandom } from "./core/utils";
 import { generateDeposits } from "./data/resources";
 import { getSolSystem } from "./data/sol-data";
 import { generateSystem } from "./data/system-generator";
+import { DIST_SCALE } from "./math/orbit";
+import { AU_TO_KM, checkTransferKm } from "./math/ship-physics";
 import { findPlanetEntry } from "./rendering/bodies";
 import {
 	createAsteroidBelts,
@@ -293,6 +295,45 @@ function findColony(): PlanetEntry | undefined {
 	return findPlanetEntry("Earth") ?? findPlanetEntry(state.bodyMeshes[0]?.data.name ?? "");
 }
 
+/** Compute AU of a body from its world position or data.distance. */
+function bodyAU(body: BodyEntry): number {
+	if (body.data.distance > 0 && !body.isMoon) return body.data.distance;
+	const { x, y, z } = body.mesh.position;
+	return (Math.hypot(x, y, z) / DIST_SCALE) ** 2;
+}
+
+/** Compute distance in km between two bodies. */
+function bodyDistanceKm(a: BodyEntry, b: BodyEntry): number {
+	return Math.abs(bodyAU(b) - bodyAU(a)) * AU_TO_KM;
+}
+
+/** Check if ship has enough fuel for a hop to target AND return to nearest colony. */
+function canAffordRoundTrip(ship: ShipEntry, target: BodyEntry): boolean {
+	const host = findBodyByName(ship.hostPlanetName);
+	if (!host) return false;
+	const colony = findColony();
+	if (!colony) return false;
+
+	// Fuel cost: host → target
+	const distToTarget = bodyDistanceKm(host, target);
+	const leg1 = checkTransferKm(distToTarget, {
+		fuelKg: ship.fuelKg,
+		dryMassKg: ship.dryMassKg,
+		engineId: ship.engineId,
+	});
+	if (!leg1.feasible) return false;
+
+	// Fuel cost: target → colony (with remaining fuel after leg 1)
+	const fuelAfterLeg1 = ship.fuelKg - (leg1.fuelUsedKg ?? 0);
+	const distToColony = bodyDistanceKm(target, colony);
+	const leg2 = checkTransferKm(distToColony, {
+		fuelKg: fuelAfterLeg1,
+		dryMassKg: ship.dryMassKg,
+		engineId: ship.engineId,
+	});
+	return leg2.feasible;
+}
+
 function dispatchCommand(ship: ShipEntry, result: CommandResult): void {
 	switch (result.action) {
 		case "survey": {
@@ -314,13 +355,27 @@ function dispatchCommand(ship: ShipEntry, result: CommandResult): void {
 					const dur = getSurveyDuration(targetBody.data.mass, ship);
 					ship.action = mkAction("survey-nearest", "survey", state.simTime, dur, target);
 					ship.stationTarget = null;
+				} else if (!canAffordRoundTrip(ship, targetBody)) {
+					// Not enough fuel for hop + return — head home to refuel first
+					const colony = findColony();
+					if (colony && colony.data.name !== ship.hostPlanetName) {
+						if (initiateTransfer(ship, colony)) {
+							ship.action = mkAction("refuel", "refuel");
+						} else {
+							addNotification("low-fuel", `Ship stranded at ${ship.hostPlanetName}`);
+							ship.action = noAction();
+						}
+					} else {
+						// Already at colony — refuel and retry
+						ship.fuelKg = ship.fuelCapacityKg;
+						ship.action = noAction();
+					}
 				} else {
 					// Transfer directly to the body
 					if (initiateTransfer(ship, targetBody)) {
 						ship.action = mkAction("survey-nearest", "survey", 0, 0, target);
 						ship.stationTarget = null;
 					} else {
-						// Can't reach target — skip it and try next
 						ship.action = noAction();
 					}
 				}
