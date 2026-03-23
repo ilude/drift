@@ -1,5 +1,5 @@
 import type { CommandCondition, CommandResult, ShipEntry } from "../types";
-import { isSurveyable } from "../types";
+import { isShipEntry, isSurveyable } from "../types";
 import { state } from "./state";
 import { seededRandom } from "./utils";
 
@@ -65,31 +65,63 @@ export function computeMorale(daysSinceLeave: number, deploymentLimit: number): 
 // Malfunction check interval in days
 const MALFUNCTION_INTERVAL = 30;
 
+// Colony names — ships at these locations get shore leave and resupply automatically
+const COLONY_NAMES = new Set(["Earth"]);
+
+function isAtColony(ship: ShipEntry): boolean {
+	return ship.shipState === "orbiting" && COLONY_NAMES.has(ship.hostPlanetName);
+}
+
 export function tickShipSimulation(ship: ShipEntry, simDt: number, simTime: number): void {
-	// Update morale based on time since last shore leave
-	const daysSinceLeave = simTime - ship.crew.lastShoreLeave;
-	ship.crew.morale = computeMorale(daysSinceLeave, ship.crew.deploymentLimit);
+	const atColony = isAtColony(ship);
 
-	// Accumulate maintenance age
-	ship.maintenance.age += simDt;
+	// At colony: supply shuttles top off ship once per day
+	if (atColony) {
+		ship.crew.lastShoreLeave = simTime;
+		ship.crew.morale = 100;
 
-	// Fuel drain during active non-transfer actions (0.5% of capacity per day)
-	if (ship.action.type !== null && ship.shipState !== "transferring") {
+		// Supply shuttles once per game day (fuel + supplies only)
+		const dayNow = Math.floor(simTime);
+		const dayPrev = Math.floor(simTime - simDt);
+		if (dayNow > dayPrev) {
+			const fuelPerShuttle = ship.fuelCapacityKg * 0.25;
+			ship.fuelKg = Math.min(ship.fuelCapacityKg, ship.fuelKg + fuelPerShuttle);
+			const supplyPerShuttle = Math.ceil(ship.maintenance.maxSupplies * 0.25);
+			ship.maintenance.supplies = Math.min(
+				ship.maintenance.maxSupplies,
+				ship.maintenance.supplies + supplyPerShuttle,
+			);
+		}
+	} else {
+		const daysSinceLeave = simTime - ship.crew.lastShoreLeave;
+		ship.crew.morale = computeMorale(daysSinceLeave, ship.crew.deploymentLimit);
+	}
+
+	// Maintenance age: only accumulates away from colony
+	if (!atColony) {
+		ship.maintenance.age += simDt;
+	}
+
+	// Fuel drain during active non-transfer actions away from colony (0.5% of capacity per day)
+	if (!atColony && ship.action.type !== null && ship.shipState !== "transferring") {
 		const drain = 0.005 * ship.fuelCapacityKg * simDt;
 		ship.fuelKg = Math.max(0, ship.fuelKg - drain);
 	}
 
-	// Malfunction check every 30 days based on age
-	const checkIndex = Math.floor(ship.maintenance.age / MALFUNCTION_INTERVAL);
-	const prevCheckIndex = Math.floor((ship.maintenance.age - simDt) / MALFUNCTION_INTERVAL);
-	if (checkIndex > prevCheckIndex) {
-		const rng = seededRandom(Math.floor(ship.maintenance.age));
-		const failChance = (ship.maintenance.age / (365 * 5)) * (100 / ship.maintenance.hullIntegrity);
-		const roll = rng();
-		if (roll < failChance) {
-			const damage = ship.maintenance.supplies <= 0 ? 15 : 5 + Math.floor(rng() * 11);
-			ship.maintenance.hullIntegrity = Math.max(0, ship.maintenance.hullIntegrity - damage);
-			ship.maintenance.supplies = Math.max(0, ship.maintenance.supplies - damage);
+	// Malfunction check: only during transfers (hull degrades in transit)
+	if (ship.shipState === "transferring") {
+		const checkIndex = Math.floor(ship.maintenance.age / MALFUNCTION_INTERVAL);
+		const prevCheckIndex = Math.floor((ship.maintenance.age - simDt) / MALFUNCTION_INTERVAL);
+		if (checkIndex > prevCheckIndex) {
+			const rng = seededRandom(Math.floor(ship.maintenance.age));
+			const integrity = Math.max(1, ship.maintenance.hullIntegrity);
+			const failChance = (ship.maintenance.age / (365 * 5)) * (100 / integrity);
+			const roll = rng();
+			if (roll < failChance) {
+				const damage = ship.maintenance.supplies <= 0 ? 15 : 5 + Math.floor(rng() * 11);
+				ship.maintenance.hullIntegrity = Math.max(0, ship.maintenance.hullIntegrity - damage);
+				ship.maintenance.supplies = Math.max(0, ship.maintenance.supplies - damage);
+			}
 		}
 	}
 }
@@ -99,9 +131,10 @@ export function selectNextSurveyTarget(ship: ShipEntry): string | null {
 
 	const candidates = state.bodyMeshes.filter((body) => {
 		if (body === (ship as unknown)) return false;
+		if (isShipEntry(body)) return false;
 		if (!isSurveyable(body)) return false;
 		if (body.survey.surveyLevel !== 0) return false;
-		if ("data" in body && (body as { data: { type: string } }).data.type === "Star") return false;
+		if (body.data.type === "Star") return false;
 		return true;
 	});
 

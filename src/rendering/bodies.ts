@@ -117,6 +117,11 @@ export function findPlanetEntry(name: string): PlanetEntry | undefined {
 		| undefined;
 }
 
+/** Find any body by name (planet, moon, comet — anything except ships). */
+export function findBodyEntry(name: string): BodyEntry | undefined {
+	return state.bodyMeshes.find((e) => e.data.name === name && !isShipEntry(e));
+}
+
 const sharedMoonGeoms: THREE.SphereGeometry[] = LOD_SEGS.map(
 	(s) => new THREE.SphereGeometry(MOON_SIZE, s, s),
 );

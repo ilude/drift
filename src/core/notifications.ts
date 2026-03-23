@@ -31,11 +31,13 @@ export function addNotification(type: NotificationType, message: string, bodyNam
 
 	state.notifications.push(notification);
 
-	if (isTutorialSurvey) {
+	const shouldPauseNow = isTutorialSurvey || state.notificationPauseConfig[type];
+	if (shouldPauseNow) {
 		state.timeSpeed = 0;
-		state.firstSurveyCompleted = true;
-	} else if (state.notificationPauseConfig[type]) {
-		state.timeSpeed = 0;
+		if (isTutorialSurvey) state.firstSurveyCompleted = true;
+		if (typeof window !== "undefined") {
+			window.dispatchEvent(new Event("wake-render"));
+		}
 	}
 }
 

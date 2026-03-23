@@ -11,16 +11,14 @@ import { isTransferComplete } from "../math/transfer";
 import { moonOrbitScale } from "../math/visual";
 import type { CategoryKey, PlanetEntry } from "../types";
 import { isCometEntry, isShipEntry } from "../types";
-import { COMET_TRAIL_STEP_ARC, findPlanetEntry, orbitToWorld } from "./bodies";
+import { COMET_TRAIL_STEP_ARC, findBodyEntry, orbitToWorld } from "./bodies";
 import { ZOOM_BASE } from "./scene";
 import {
 	applyCaptureBlend,
-	beginTransfer,
 	completeTransfer,
 	predictTargetWorld,
 	SHIP_LOCAL_ORBIT,
 	transferPosition,
-	updateDepartureArc,
 	updateTransferPath,
 } from "./ship-transfer";
 
@@ -181,26 +179,19 @@ export function updatePositions(dt: number, camDist: number): void {
 		}
 
 		if (isShipEntry(entry)) {
-			if (entry.shipState === "orbiting" || entry.shipState === "departing") {
-				entry.lastAngle = entry.angle;
+			if (entry.shipState === "orbiting") {
+				// Station-keeping: hold position near host body with slow visual drift
 				entry.angle += entry.speed * simDt;
-
-				// Local orbit around host planet
-				const host = findPlanetEntry(entry.hostPlanetName);
+				const host = findBodyEntry(entry.hostPlanetName);
 				if (host) {
-					const lx = Math.cos(entry.angle) * SHIP_LOCAL_ORBIT;
-					const lz = Math.sin(entry.angle) * SHIP_LOCAL_ORBIT;
-					entry.mesh.position.set(host.mesh.position.x + lx, 0, host.mesh.position.z + lz);
-
-					// Check if we've crossed the optimal departure angle (frame-safe crossing detector)
-					if (entry.shipState === "departing" && entry.pendingTransfer) {
-						const crossed = hasAngleCrossed(
-							entry.lastAngle ?? entry.angle,
-							entry.angle,
-							entry.pendingTransfer.optimalLocalAngle,
-						);
-						if (crossed) beginTransfer(entry);
-					}
+					const offset = SHIP_LOCAL_ORBIT * 0.5;
+					const ox = Math.cos(entry.angle) * offset;
+					const oz = Math.sin(entry.angle) * offset;
+					entry.mesh.position.set(
+						host.mesh.position.x + ox,
+						host.mesh.position.y,
+						host.mesh.position.z + oz,
+					);
 				}
 			} else if (entry.shipState === "transferring") {
 				const elapsed = state.simTime - entry.transferStartTime;
@@ -214,7 +205,7 @@ export function updatePositions(dt: number, camDist: number): void {
 						entry.transferRecalcCounter++;
 						if (entry.transferRecalcCounter >= 15) {
 							entry.transferRecalcCounter = 0;
-							const tgt = findPlanetEntry(entry.transferTarget ?? "");
+							const tgt = findBodyEntry(entry.transferTarget ?? "");
 							if (tgt) {
 								const remainingDays = entry.transferTimeDays - elapsed;
 								const targetWorld = predictTargetWorld(tgt, remainingDays);
@@ -233,7 +224,7 @@ export function updatePositions(dt: number, camDist: number): void {
 					const p = transferPosition(entry, t);
 
 					// Blend toward target's local orbit over the full transfer
-					const tgt = findPlanetEntry(entry.transferTarget ?? "");
+					const tgt = findBodyEntry(entry.transferTarget ?? "");
 					const captureResult = applyCaptureBlend(p, tgt, t);
 
 					if (captureResult === "complete") {
@@ -252,9 +243,6 @@ export function updatePositions(dt: number, camDist: number): void {
 				if (entry.shipState === "transferring") {
 					const elapsed = state.simTime - entry.transferStartTime;
 					updateTransferPath(entry, elapsed);
-					entry.transferPath.visible = true;
-				} else if (entry.shipState === "departing" && entry.pendingTransfer) {
-					updateDepartureArc(entry);
 					entry.transferPath.visible = true;
 				} else {
 					entry.transferPath.visible = false;

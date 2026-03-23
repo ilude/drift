@@ -305,6 +305,8 @@ export interface ShipEntry extends BaseEntry {
 	crew: ShipCrew;
 	maintenance: ShipMaintenance;
 	action: ShipAction;
+	// Station-keeping: track a non-planet body (comet, moon) instead of orbiting host
+	stationTarget: string | null;
 }
 
 export type BodyEntry = PlanetEntry | CometEntry | ShipEntry;

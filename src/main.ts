@@ -27,7 +27,7 @@ import type {
 	ShipEntry,
 	SystemData,
 } from "./types";
-import { isShipEntry, isSurveyable } from "./types";
+import { isCometEntry, isShipEntry, isSurveyable } from "./types";
 import {
 	selectBody,
 	setupClickHandlers,
@@ -96,6 +96,15 @@ createComets();
 createShip();
 if (saved) restoreShipState(saved);
 state.asteroidBelts = createAsteroidBelts();
+
+// Mark Earth as pre-surveyed (home world)
+const earthEntry = state.bodyMeshes.find((e) => e.data.name === "Earth");
+if (earthEntry && isSurveyable(earthEntry)) {
+	earthEntry.survey = {
+		surveyLevel: 1,
+		deposits: generateDeposits(42, "Earth", "Planet", 6371),
+	};
+}
 
 buildBodyList();
 cacheStarEntry();
@@ -267,6 +276,12 @@ function completeSurvey(ship: ShipEntry): void {
 		);
 	}
 	ship.action = noAction();
+	ship.stationTarget = null;
+}
+
+/** Find any body in the simulation by name. */
+function findBodyByName(name: string): BodyEntry | undefined {
+	return state.bodyMeshes.find((e) => e.data.name === name);
 }
 
 function findColony(): PlanetEntry | undefined {
@@ -278,13 +293,27 @@ function dispatchCommand(ship: ShipEntry, result: CommandResult): void {
 		case "survey": {
 			const target = selectNextSurveyTarget(ship);
 			if (target) {
-				const te = findPlanetEntry(target);
-				if (te && target !== ship.hostPlanetName) {
-					ship.action = mkAction("survey-nearest", "survey", 0, 0, target);
-					initiateTransfer(ship, te);
-				} else if (te) {
-					const dur = getSurveyDuration(te.data.type);
+				const targetBody = findBodyByName(target);
+				if (!targetBody) break;
+
+				// Check if already at the target or its parent planet (for moons)
+				const isAtTarget = target === ship.hostPlanetName;
+				const isMoonOfHost =
+					targetBody.isMoon &&
+					targetBody.parentMesh &&
+					state.bodyMeshes.find((e) => e.mesh === targetBody.parentMesh)?.data.name ===
+						ship.hostPlanetName;
+				const alreadyThere = isAtTarget || isMoonOfHost;
+
+				if (alreadyThere) {
+					const dur = getSurveyDuration(targetBody.data.type);
 					ship.action = mkAction("survey-nearest", "survey", state.simTime, dur, target);
+					ship.stationTarget = null;
+				} else {
+					ship.action = mkAction("survey-nearest", "survey", 0, 0, target);
+					ship.stationTarget = null;
+					// Transfer directly to the body (initiateTransfer computes AU from world position)
+					initiateTransfer(ship, targetBody);
 				}
 			} else {
 				addNotification("mission-complete", "System survey complete — all bodies surveyed");
@@ -327,7 +356,7 @@ function dispatchCommand(ship: ShipEntry, result: CommandResult): void {
 				ship.action = mkAction("overhaul", "overhaul");
 				initiateTransfer(ship, yard);
 			} else {
-				const dur = Math.max(10, ship.maintenance.age / 3);
+				const dur = 5;
 				ship.action = mkAction("overhaul", "overhaul", state.simTime, dur);
 			}
 			break;
@@ -382,6 +411,13 @@ function tickShip(ship: ShipEntry, simDt: number): void {
 			completeAction(ship);
 		}
 	}
+
+	// Auto-evaluate command tree when idle and orbiting (kicks off autonomous behavior)
+	// Skip until positions have been computed (simTime > 0.1 ensures at least a few frames)
+	if (ship.shipState === "orbiting" && !ship.action.type && state.simTime > 0.1) {
+		const result = evaluateCommandTree(ship);
+		if (result) dispatchCommand(ship, result);
+	}
 }
 
 /** Called when a ship arrives at a planet after transfer. */
@@ -389,15 +425,21 @@ export function onTransferComplete(ship: ShipEntry): void {
 	// If ship was en route for a specific action, start it at the destination
 	const actionType = ship.action.type;
 	if (actionType === "survey-nearest") {
-		const hostBody = state.bodyMeshes.find((e) => e.data.name === ship.hostPlanetName);
-		const bodyType = hostBody?.data.type ?? "Planet";
+		// Use the survey target body type for duration (may be a moon of the host planet)
+		const surveyTarget = ship.action.target;
+		const targetBody = surveyTarget ? findBodyByName(surveyTarget) : null;
+		const bodyType = targetBody?.data.type ?? "Planet";
 		const dur = getSurveyDuration(bodyType);
 		ship.action.startTime = state.simTime;
 		ship.action.duration = dur;
 		ship.action.progress = 0;
+		// Station-keeping only for comets (moons orbit parent planet normally)
+		if (targetBody && isCometEntry(targetBody)) {
+			ship.stationTarget = surveyTarget ?? null;
+		}
 	} else if (actionType === "refuel") {
 		ship.fuelKg = ship.fuelCapacityKg;
-		ship.action = { type: null, commandId: null, startTime: 0, duration: 0, progress: 0 };
+		ship.action = noAction();
 		const result = evaluateCommandTree(ship);
 		if (result) dispatchCommand(ship, result);
 	} else if (actionType === "shore-leave") {
@@ -405,7 +447,7 @@ export function onTransferComplete(ship: ShipEntry): void {
 		ship.action.duration = 30;
 		ship.action.progress = 0;
 	} else if (actionType === "overhaul") {
-		const duration = Math.max(10, ship.maintenance.age / 3);
+		const duration = 5;
 		ship.action.startTime = state.simTime;
 		ship.action.duration = duration;
 		ship.action.progress = 0;

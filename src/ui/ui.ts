@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { getUnreadCount, markAllRead, markRead } from "../core/notifications";
 import { formatDateTime, simTimeToDate, state, truncateDate } from "../core/state";
 import { generateSystem } from "../data/system-generator";
 import {
@@ -9,7 +10,7 @@ import {
 } from "../math/visual";
 import { camera, setAntialias, ZOOM_BASE } from "../rendering/scene";
 import type { BodyEntry, CategoryKey, CategoryVisibility, SystemData } from "../types";
-import { isShipEntry } from "../types";
+import { isShipEntry, isSurveyable } from "../types";
 import { recenterOnStar, selectBody } from "./selection";
 
 // --- Body list panel ---
@@ -187,6 +188,12 @@ export function updateLabels(camDist: number): void {
 	const screenH = window.innerHeight;
 	const screenW = window.innerWidth;
 
+	const shipEntry = state.bodyMeshes.find((e) => isShipEntry(e));
+	const surveyTarget =
+		shipEntry && isShipEntry(shipEntry) && shipEntry.action.type === "survey-nearest"
+			? (shipEntry.action.target ?? null)
+			: null;
+
 	const needsScaleUpdate = scaleFactor !== lastScaleFactor;
 	const needsLodUpdate =
 		lastLodCamDist < 0 || Math.abs(camDist - lastLodCamDist) / lastLodCamDist > 0.05;
@@ -249,6 +256,17 @@ export function updateLabels(camDist: number): void {
 		if (entry.labelDisplay !== targetDisplay) {
 			entry.labelDiv.style.display = targetDisplay;
 			entry.labelDisplay = targetDisplay;
+		}
+
+		// Survey suffix: ✓ if surveyed, * if currently being surveyed
+		if (!entry.isShip) {
+			let suffix = "";
+			if (isSurveyable(entry) && entry.survey.surveyLevel > 0) suffix = " \u2713";
+			else if (entry.data.name === surveyTarget) suffix = " *";
+			const expectedText = entry.data.name + suffix;
+			if (entry.labelDiv.textContent !== expectedText) {
+				entry.labelDiv.textContent = expectedText;
+			}
 		}
 
 		const radius = entry.screenSize || 0.3;
@@ -318,6 +336,41 @@ export function updateHUD(camDist: number): void {
 	if (zoomText !== lastZoomText) {
 		zoomEl.textContent = zoomText;
 		lastZoomText = zoomText;
+	}
+
+	const badge = document.getElementById("notif-badge");
+	if (badge) {
+		const count = getUnreadCount();
+		if (count > 0) {
+			badge.textContent = String(count);
+			badge.style.display = "";
+		} else {
+			badge.style.display = "none";
+		}
+	}
+
+	const activityEl = document.getElementById("ship-activity");
+	if (activityEl) {
+		const ship = state.bodyMeshes.find((e) => isShipEntry(e));
+		if (ship && isShipEntry(ship)) {
+			if (ship.shipState === "transferring") {
+				activityEl.textContent = `Ship: In transit to ${ship.transferTarget}`;
+			} else if (ship.action.type === "survey-nearest" && ship.action.startTime > 0) {
+				const elapsed = Math.floor(state.simTime - ship.action.startTime);
+				const dur = Math.floor(ship.action.duration);
+				activityEl.textContent = `Ship: Surveying ${ship.action.target ?? ship.hostPlanetName} (${elapsed}d/${dur}d)`;
+			} else if (ship.action.type === "shore-leave" && ship.action.startTime > 0) {
+				activityEl.textContent = "Ship: Shore Leave";
+			} else if (ship.action.type === "overhaul" && ship.action.startTime > 0) {
+				activityEl.textContent = "Ship: Overhaul";
+			} else if (ship.shipState === "departing") {
+				activityEl.textContent = `Ship: Departing ${ship.hostPlanetName}`;
+			} else {
+				activityEl.textContent = `Ship: Orbiting ${ship.hostPlanetName}`;
+			}
+		} else {
+			activityEl.textContent = "";
+		}
 	}
 }
 
@@ -490,6 +543,15 @@ export function setupUI(loadSystem: (systemData: SystemData) => void): void {
 
 	pauseBtn.addEventListener("click", togglePause);
 
+	// Sync pause button when timeSpeed is changed externally (e.g., by notification system)
+	window.addEventListener("wake-render", () => {
+		const shouldBePaused = state.timeSpeed === 0;
+		if (shouldBePaused !== paused) {
+			paused = shouldBePaused;
+			updateSpeedBtn();
+		}
+	});
+
 	window.addEventListener("keydown", (e: KeyboardEvent) => {
 		const onFormElement = ["INPUT", "SELECT", "TEXTAREA"].includes((e.target as HTMLElement).tagName);
 		if (e.code === "Space" || e.key === " ") {
@@ -537,6 +599,93 @@ export function setupUI(loadSystem: (systemData: SystemData) => void): void {
 
 	// View menu
 	setupViewMenu();
+
+	// Notifications
+	setupNotifications();
+}
+
+// --- Notifications ---
+
+const NOTIF_ICONS: Record<string, string> = {
+	"survey-complete": "\u2713",
+	malfunction: "\u26a0",
+	"low-fuel": "F",
+	"low-morale": "M",
+	"maintenance-needed": "W",
+	"mission-complete": "\u2605",
+	"ship-destroyed": "X",
+};
+
+function renderNotifDropdown(dropdown: HTMLElement): void {
+	dropdown.innerHTML = "";
+
+	const markAll = document.createElement("div");
+	markAll.className = "notif-mark-all";
+	markAll.textContent = "Mark all read";
+	markAll.addEventListener("click", () => {
+		markAllRead();
+		dropdown.classList.add("hidden");
+	});
+	dropdown.appendChild(markAll);
+
+	const recent = [...state.notifications].reverse().slice(0, 10);
+	for (const notif of recent) {
+		const entry = document.createElement("div");
+		entry.className = `notif-entry${notif.read ? " notif-entry-read" : ""}`;
+
+		const date = simTimeToDate(notif.simTime);
+		const y = date.getFullYear();
+		const mo = String(date.getMonth() + 1).padStart(2, "0");
+		const d = String(date.getDate()).padStart(2, "0");
+		const timeStr = `${y}-${mo}-${d}`;
+
+		const icon = NOTIF_ICONS[notif.type] ?? "?";
+
+		entry.innerHTML =
+			`<span class="notif-time">${timeStr}</span>` +
+			`<span class="notif-icon">${icon}</span>` +
+			`${notif.message}`;
+
+		entry.addEventListener("click", () => {
+			markRead(notif.id);
+			if (notif.bodyName) {
+				const body = state.bodyMeshes.find((e) => e.data.name === notif.bodyName);
+				if (body) selectBody(body);
+			}
+			dropdown.classList.add("hidden");
+		});
+
+		dropdown.appendChild(entry);
+	}
+}
+
+function setupNotifications(): void {
+	const badge = document.getElementById("notif-badge");
+	const dropdown = document.getElementById("notif-dropdown") as HTMLElement | null;
+	if (!badge || !dropdown) return;
+
+	badge.addEventListener("click", (e) => {
+		e.stopPropagation();
+		const isHidden = dropdown.classList.contains("hidden");
+		dropdown.classList.toggle("hidden");
+		if (isHidden) {
+			renderNotifDropdown(dropdown);
+			const rect = badge.getBoundingClientRect();
+			dropdown.style.top = `${rect.bottom + 2}px`;
+			dropdown.style.right = `${window.innerWidth - rect.right}px`;
+			dropdown.style.left = "";
+		}
+	});
+
+	document.addEventListener("click", (e) => {
+		if (
+			!dropdown.classList.contains("hidden") &&
+			!dropdown.contains(e.target as Node) &&
+			e.target !== badge
+		) {
+			dropdown.classList.add("hidden");
+		}
+	});
 }
 
 // --- View menu ---
