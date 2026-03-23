@@ -19,6 +19,8 @@ const infoPositionEl: HTMLElement | null = document.getElementById('info-positio
 
 const INITIAL_CAM_DIR: THREE.Vector3 = new THREE.Vector3(0, ZOOM_BASE, 80).normalize();
 
+let lastInfoPosText = '';
+
 function animateCameraTo(entry: BodyEntry, zoomDist: number, overrideOffset?: THREE.Vector3): void {
     const camOffset: THREE.Vector3 = overrideOffset || new THREE.Vector3().subVectors(camera.position, controls.target).normalize();
 
@@ -208,7 +210,11 @@ export function updateFollow(): void {
 export function updateInfoPosition(): void {
     if (state.selectedBody) {
         const pos: THREE.Vector3 = state.selectedBody.mesh.position;
-        if (infoPositionEl) infoPositionEl.textContent = `${pos.x.toFixed(1)}, ${pos.z.toFixed(1)}`;
+        const text = `${pos.x.toFixed(1)}, ${pos.z.toFixed(1)}`;
+        if (infoPositionEl && text !== lastInfoPosText) {
+            infoPositionEl.textContent = text;
+            lastInfoPosText = text;
+        }
     }
 }
 

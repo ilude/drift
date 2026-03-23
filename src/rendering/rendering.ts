@@ -57,6 +57,9 @@ const TRAIL_MAX_POINTS: number = 400;
 export const COMET_ORBIT_OPACITY: number = 0.03;
 export const COMET_ORBIT_SELECTED_OPACITY: number = 0.05;
 
+let asteroidFrameSkip = 0;
+let asteroidAccumDt = 0;
+
 const sharedMoonGeoms: THREE.SphereGeometry[] = LOD_SEGS.map(s => new THREE.SphereGeometry(MOON_SIZE, s, s));
 const sharedCometGeoms: THREE.SphereGeometry[] = LOD_SEGS.map(s => new THREE.SphereGeometry(COMET_SIZE, s, s));
 const sharedMoonOrbitMat: THREE.LineBasicMaterial = new THREE.LineBasicMaterial({ color: '#1a2a1a', transparent: true, opacity: 0.3 });
@@ -830,9 +833,17 @@ export function updateAsteroids(dt: number): void {
     const simDt = dt * state.timeSpeed;
     if (simDt === 0) return;
 
+    asteroidAccumDt += simDt;
+    asteroidFrameSkip += 1;
+    if (asteroidFrameSkip < 3) return;
+    asteroidFrameSkip = 0;
+
+    const effectiveDt = asteroidAccumDt;
+    asteroidAccumDt = 0;
+
     state.asteroidBelts.forEach(({ positions, angles, radii, speeds, cosInc, sinInc, cosNode, sinNode, count, points }) => {
         for (let i = 0; i < count; i++) {
-            angles[i] += speeds[i] * simDt;
+            angles[i] += speeds[i] * effectiveDt;
             const r = radii[i];
             const x = Math.cos(angles[i]) * r;
             const z = Math.sin(angles[i]) * r;
@@ -1031,23 +1042,31 @@ export function updatePositions(dt: number, camDist: number): void {
             }
 
             if (t.count >= t.maxPoints) {
-                const pa = t.positions;
-                const tmpP = t.tmpP;
-                for (let j = 0; j < t.maxPoints; j++) {
-                    const src = ((t.index + j) % t.maxPoints) * 3;
-                    const dst = j * 3;
-                    tmpP[dst] = pa[src]; tmpP[dst + 1] = pa[src + 1]; tmpP[dst + 2] = pa[src + 2];
+                // Only do the expensive reorder every 20 wraps; just write at t.index between reorders
+                // wrapAccum is added to TrailState by another agent; access via cast until then
+                const trail = t as TrailState & { wrapAccum?: number };
+                trail.wrapAccum = (trail.wrapAccum ?? 0) + 1;
+                if (trail.wrapAccum >= 20) {
+                    trail.wrapAccum = 0;
+                    const pa = t.positions;
+                    const tmpP = t.tmpP;
+                    for (let j = 0; j < t.maxPoints; j++) {
+                        const src = ((t.index + j) % t.maxPoints) * 3;
+                        const dst = j * 3;
+                        tmpP[dst] = pa[src]; tmpP[dst + 1] = pa[src + 1]; tmpP[dst + 2] = pa[src + 2];
+                    }
+                    t.positions.set(tmpP);
+                    // Full fade recalc after reorder (linear index = draw order)
+                    for (let j = 0; j < t.maxPoints; j++) {
+                        const fade = j / t.maxPoints;
+                        t.colors[j * 3] = t.baseColor.r * fade;
+                        t.colors[j * 3 + 1] = t.baseColor.g * fade;
+                        t.colors[j * 3 + 2] = t.baseColor.b * fade;
+                    }
+                    t.index = 0;
+                    t.count = t.maxPoints;
                 }
-                t.positions.set(tmpP);
-                // Full fade recalc after reorder (linear index = draw order)
-                for (let j = 0; j < t.maxPoints; j++) {
-                    const fade = j / t.maxPoints;
-                    t.colors[j * 3] = t.baseColor.r * fade;
-                    t.colors[j * 3 + 1] = t.baseColor.g * fade;
-                    t.colors[j * 3 + 2] = t.baseColor.b * fade;
-                }
-                t.index = 0;
-                t.count = t.maxPoints;
+                // Between reorders: position already written at t.index above; needsUpdate set below
             }
 
             t.line.geometry.attributes.position.needsUpdate = true;
