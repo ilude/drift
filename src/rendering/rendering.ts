@@ -85,8 +85,15 @@ const COMET_TRAIL_STEP_ARC: number = orbitSpeed(TEMPEL1_PERIOD) * 0.02;
 export const COMET_ORBIT_OPACITY: number = 0.03;
 export const COMET_ORBIT_SELECTED_OPACITY: number = 0.05;
 
-let asteroidFrameSkip = 0;
-let asteroidAccumDt = 0;
+// Inner belts (< Jupiter): alternate even/odd halves each frame
+let innerParity = 0;
+let innerAccumDt0 = 0;
+let innerAccumDt1 = 0;
+// Outer belts (>= Jupiter): update 1 of 6 slices per frame
+const OUTER_SLICES = 6;
+let outerSlice = 0;
+const outerAccumDt: number[] = Array.from({ length: OUTER_SLICES }, () => 0);
+const JUPITER_AU = 5.2;
 
 // Planet lookup map: O(1) access instead of linear .find() scans
 const planetMap = new Map<string, PlanetEntry>();
@@ -1139,26 +1146,52 @@ export function updateAsteroids(dt: number): void {
 	const simDt = dt * state.timeSpeed;
 	if (simDt === 0) return;
 
-	asteroidAccumDt += simDt;
-	asteroidFrameSkip += 1;
-	if (asteroidFrameSkip < 3) return;
-	asteroidFrameSkip = 0;
+	// Accumulate dt for inner belt halves
+	innerAccumDt0 += simDt;
+	innerAccumDt1 += simDt;
+	// Accumulate dt for all outer slices
+	for (let s = 0; s < OUTER_SLICES; s++) outerAccumDt[s] += simDt;
 
-	const effectiveDt = asteroidAccumDt;
-	asteroidAccumDt = 0;
+	// Inner: alternate even/odd each frame
+	const parity = innerParity;
+	innerParity = 1 - innerParity;
+	const innerDt = parity === 0 ? innerAccumDt0 : innerAccumDt1;
+	if (parity === 0) innerAccumDt0 = 0;
+	else innerAccumDt1 = 0;
+
+	// Outer: cycle through 1 of 6 slices per frame
+	const slice = outerSlice;
+	outerSlice = (outerSlice + 1) % OUTER_SLICES;
+	const outerDt = outerAccumDt[slice];
+	outerAccumDt[slice] = 0;
 
 	state.asteroidBelts.forEach(
-		({ positions, angles, radii, speeds, cosInc, sinInc, cosNode, sinNode, count, points }) => {
-			for (let i = 0; i < count; i++) {
-				angles[i] += speeds[i] * effectiveDt;
-				const r = radii[i];
-				const x = Math.cos(angles[i]) * r;
-				const z = Math.sin(angles[i]) * r;
-
-				const p = inclinedPosition(x, z, cosNode[i], sinNode[i], cosInc[i], sinInc[i]);
-				positions[i * 3] = p.x;
-				positions[i * 3 + 1] = p.y;
-				positions[i * 3 + 2] = p.z;
+		({ belt, positions, angles, radii, speeds, cosInc, sinInc, cosNode, sinNode, count, points }) => {
+			const isInner = belt.minAU < JUPITER_AU;
+			if (isInner) {
+				const effectiveDt = innerDt;
+				for (let i = parity; i < count; i += 2) {
+					angles[i] += speeds[i] * effectiveDt;
+					const r = radii[i];
+					const x = Math.cos(angles[i]) * r;
+					const z = Math.sin(angles[i]) * r;
+					const p = inclinedPosition(x, z, cosNode[i], sinNode[i], cosInc[i], sinInc[i]);
+					positions[i * 3] = p.x;
+					positions[i * 3 + 1] = p.y;
+					positions[i * 3 + 2] = p.z;
+				}
+			} else {
+				const effectiveDt = outerDt;
+				for (let i = slice; i < count; i += OUTER_SLICES) {
+					angles[i] += speeds[i] * effectiveDt;
+					const r = radii[i];
+					const x = Math.cos(angles[i]) * r;
+					const z = Math.sin(angles[i]) * r;
+					const p = inclinedPosition(x, z, cosNode[i], sinNode[i], cosInc[i], sinInc[i]);
+					positions[i * 3] = p.x;
+					positions[i * 3 + 1] = p.y;
+					positions[i * 3 + 2] = p.z;
+				}
 			}
 			points.geometry.attributes.position.needsUpdate = true;
 		},
@@ -1326,14 +1359,16 @@ export function updatePositions(dt: number, camDist: number): void {
 			t.line.geometry.attributes.position.needsUpdate = true;
 		}
 
-		t.sampleAccum += simDt;
-		// Comets: use angular-distance-based sampling so all comets have the same
-		// trail arc length (matching Tempel 1). Non-comets use fixed time interval.
-		const sampleInterval = isCometEntry(entry)
-			? COMET_TRAIL_STEP_ARC / entry.speed / Math.max(1, camDist / ZOOM_BASE)
-			: 0.02;
-		if (t.sampleAccum > sampleInterval) {
-			t.sampleAccum = 0;
+		// Comets: accumulate angular distance and sample when threshold reached.
+		// Threshold scales up with zoom-out so trails grow longer, but never
+		// drops below COMET_TRAIL_STEP_ARC so trails never shrink when zooming in.
+		// Non-comets: accumulate sim time with fixed interval.
+		const isComet = isCometEntry(entry);
+		t.sampleAccum += isComet ? Math.abs(entry.speed * simDt) : simDt;
+		const sampleThreshold = isComet ? COMET_TRAIL_STEP_ARC * Math.max(1, camDist / ZOOM_BASE) : 0.02;
+		let trailDirty = false;
+		while (t.sampleAccum > sampleThreshold) {
+			t.sampleAccum -= sampleThreshold;
 
 			if (t.count < t.maxPoints) {
 				// Buffer not full yet — append at count, advance
@@ -1353,15 +1388,17 @@ export function updatePositions(dt: number, camDist: number): void {
 				t.positions[last] = entry.mesh.position.x;
 				t.positions[last + 1] = entry.mesh.position.y;
 				t.positions[last + 2] = entry.mesh.position.z;
-				// Recompute fade gradient
-				for (let j = 0; j < t.maxPoints; j++) {
-					const fade = j / t.maxPoints;
-					t.colors[j * 3] = t.baseColor.r * fade;
-					t.colors[j * 3 + 1] = t.baseColor.g * fade;
-					t.colors[j * 3 + 2] = t.baseColor.b * fade;
-				}
 			}
-
+			trailDirty = true;
+		}
+		if (trailDirty) {
+			// Recompute fade gradient once after all samples
+			for (let j = 0; j < t.count; j++) {
+				const fade = j / t.count;
+				t.colors[j * 3] = t.baseColor.r * fade;
+				t.colors[j * 3 + 1] = t.baseColor.g * fade;
+				t.colors[j * 3 + 2] = t.baseColor.b * fade;
+			}
 			t.line.geometry.attributes.position.needsUpdate = true;
 			t.line.geometry.attributes.color.needsUpdate = true;
 			t.line.geometry.setDrawRange(0, t.count);
