@@ -47,7 +47,6 @@ function configureControls(ctrl: OrbitControls): void {
 configureControls(controls);
 
 // Zoom-to-cursor
-const zoomPlane: THREE.Plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 const zoomRay: THREE.Raycaster = new THREE.Raycaster();
 const zoomMouse: THREE.Vector2 = new THREE.Vector2();
 const zoomIntersect: THREE.Vector3 = new THREE.Vector3();
@@ -67,18 +66,16 @@ function attachZoomHandler(canvas: HTMLCanvasElement): void {
 			zoomMouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
 			zoomRay.setFromCamera(zoomMouse, camera);
 
-			const hit: THREE.Vector3 | null = zoomRay.ray.intersectPlane(zoomPlane, zoomIntersect);
-			if (!hit) return;
+			// Get zoom target at the cursor direction, at the same depth as current target
+			zoomRay.ray.at(dist, zoomIntersect);
 
-			// Pan camera and target toward cursor in xz only (preserves viewing angle)
 			camera.position.x += (zoomIntersect.x - camera.position.x) * factor;
+			camera.position.y += (zoomIntersect.y - camera.position.y) * factor;
 			camera.position.z += (zoomIntersect.z - camera.position.z) * factor;
 
 			controls.target.x += (zoomIntersect.x - controls.target.x) * factor;
+			controls.target.y += (zoomIntersect.y - controls.target.y) * factor;
 			controls.target.z += (zoomIntersect.z - controls.target.z) * factor;
-
-			// Scale camera height proportionally to maintain elevation angle
-			camera.position.y *= 1 - factor;
 		},
 		{ passive: false },
 	);
