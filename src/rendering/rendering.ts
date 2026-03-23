@@ -171,6 +171,7 @@ function createTrail(color: string, maxPoints: number): TrailState {
 		opacity: 0.7,
 	});
 	const line = new THREE.Line(geom, mat);
+	line.frustumCulled = false;
 	line.visible = false;
 	trailGroups.add(line);
 
