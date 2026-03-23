@@ -335,7 +335,7 @@ export interface PerfTimings {
 const perfEl = document.getElementById("perf-display") as HTMLElement | null;
 let perfVisible = false;
 let perfFrames = 0;
-let perfAccum: PerfTimings = {
+const perfAccum: PerfTimings = {
 	positions: 0,
 	asteroids: 0,
 	labels: 0,
@@ -376,14 +376,12 @@ export function updatePerfDisplay(timings: PerfTimings): void {
 			`hud:${(perfAccum.hud / n).toFixed(2)} ` +
 			`gpu:${(perfAccum.render / n).toFixed(2)} ` +
 			`tot:${(perfAccum.total / n).toFixed(2)}ms`;
-		perfAccum = {
-			positions: 0,
-			asteroids: 0,
-			labels: 0,
-			hud: 0,
-			render: 0,
-			total: 0,
-		};
+		perfAccum.positions = 0;
+		perfAccum.asteroids = 0;
+		perfAccum.labels = 0;
+		perfAccum.hud = 0;
+		perfAccum.render = 0;
+		perfAccum.total = 0;
 		perfFrames = 0;
 		perfLastUpdate = now;
 	}

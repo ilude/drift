@@ -228,6 +228,14 @@ setupClickHandlers();
 // ---------------------------------------------------------------------------
 const timer = new THREE.Timer();
 let cachedCamDist = 300;
+const _perfTimings: PerfTimings = {
+	positions: 0,
+	asteroids: 0,
+	labels: 0,
+	hud: 0,
+	render: 0,
+	total: 0,
+};
 
 function animate(): void {
 	requestAnimationFrame(animate);
@@ -282,14 +290,13 @@ function animate(): void {
 	renderer.render(scene, camera);
 	const _t5 = performance.now();
 
-	updatePerfDisplay({
-		positions: _t1 - _t0,
-		asteroids: _t2 - _t1,
-		labels: _t3 - _t2,
-		hud: _t4 - _t3,
-		render: _t5 - _t4,
-		total: _t5 - _t0,
-	} as PerfTimings);
+	_perfTimings.positions = _t1 - _t0;
+	_perfTimings.asteroids = _t2 - _t1;
+	_perfTimings.labels = _t3 - _t2;
+	_perfTimings.hud = _t4 - _t3;
+	_perfTimings.render = _t5 - _t4;
+	_perfTimings.total = _t5 - _t0;
+	updatePerfDisplay(_perfTimings);
 }
 
 animate();
