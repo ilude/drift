@@ -79,6 +79,9 @@ const SEL_RING_OUTER: number = 1.5;
 const SEL_RING_SEGS: number = 24;
 const TRAIL_MAX_POINTS: number = 400;
 const COMET_TRAIL_MAX_POINTS: number = 1200;
+// Fixed angular step per trail sample — all comets share the same arc length (based on Tempel 1)
+const TEMPEL1_PERIOD = 5.5;
+const COMET_TRAIL_STEP_ARC: number = orbitSpeed(TEMPEL1_PERIOD) * 0.02;
 export const COMET_ORBIT_OPACITY: number = 0.03;
 export const COMET_ORBIT_SELECTED_OPACITY: number = 0.05;
 
@@ -445,9 +448,10 @@ export function createComets(): void {
 			lodLevel: 0,
 		} as CometEntry;
 
-		// Pre-fill trail by computing past orbital positions
+		// Pre-fill trail by computing past orbital positions.
+		// All comets use the same angular step so trails have consistent arc length.
 		const t = entry.trail;
-		const stepAngle = entry.speed * 0.02;
+		const stepAngle = COMET_TRAIL_STEP_ARC;
 		for (let i = 0; i < t.maxPoints; i++) {
 			const pastAngle = entry.angle - stepAngle * (t.maxPoints - i);
 			const pastTheta = meanToTrue(pastAngle, e);
@@ -1323,8 +1327,11 @@ export function updatePositions(dt: number, camDist: number): void {
 		}
 
 		t.sampleAccum += simDt;
-		// Comets: sample faster when zoomed out so trail covers more orbit
-		const sampleInterval = isCometEntry(entry) ? 0.02 / Math.max(1, camDist / ZOOM_BASE) : 0.02;
+		// Comets: use angular-distance-based sampling so all comets have the same
+		// trail arc length (matching Tempel 1). Non-comets use fixed time interval.
+		const sampleInterval = isCometEntry(entry)
+			? COMET_TRAIL_STEP_ARC / entry.speed / Math.max(1, camDist / ZOOM_BASE)
+			: 0.02;
 		if (t.sampleAccum > sampleInterval) {
 			t.sampleAccum = 0;
 
