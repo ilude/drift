@@ -287,6 +287,24 @@ export interface FlyToState {
 	duration: number;
 }
 
+// --- Category visibility ---
+
+export interface CategoryVisibility {
+	labels: boolean;
+	orbits: boolean;
+	trails: boolean;
+}
+
+export type CategoryKey =
+	| "Star"
+	| "Planet"
+	| "Dwarf Planet"
+	| "Detached Object"
+	| "Moon"
+	| "Comet"
+	| "Asteroid"
+	| "Ship";
+
 // --- App state ---
 
 export interface AppState {
@@ -303,9 +321,7 @@ export interface AppState {
 	BODIES: BodyData[] | null;
 	COMETS: CometData[] | null;
 	ASTEROID_BELTS: AsteroidBeltData[] | null;
-	showLabels: boolean;
-	showOrbits: boolean;
-	showTrails: boolean;
+	categoryVisibility: Record<CategoryKey, CategoryVisibility>;
 	debugStepFrames: number;
 	debugStepSpeed: number;
 	renderNeeded: boolean;

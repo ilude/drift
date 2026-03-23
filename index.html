@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" style="background:#0a0a0f">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -11,12 +11,12 @@
     <div id="header-bar">
         <span class="system-name" id="system-switcher-btn">Sol System ▾</span>
         <span class="header-sep">|</span>
-        <span id="time-display">2038-01-20</span>
-        <span class="header-sep">|</span>
+        <span class="header-clickable" id="view-menu-btn">View ▾</span>
+        <span style="flex:1"></span>
         <button class="header-btn" id="btn-pause">||</button>
         <span class="header-clickable" id="speed-selector-btn">1 Day ▾</span>
-        <span style="flex:1"></span>
-        <span id="fps-display">FPS: --</span>
+        <span class="header-sep">|</span>
+        <span id="time-display">2038-01-20</span>
         <span id="perf-display" class="hidden"></span>
     </div>
 
@@ -72,18 +72,9 @@
         </div>
     </div>
 
-    <div id="controls-panel" class="panel">
-        <div class="panel-header">Controls</div>
-        <div style="padding: 6px 8px;">
-            <button class="ctrl-btn" id="btn-recenter" style="width:100%;">Recenter</button>
-        </div>
-        <div class="panel-header">Display</div>
-        <div id="display-controls">
-            <label class="ctrl-toggle"><input type="checkbox" id="toggle-orbits" checked> Orbital Rings</label>
-            <label class="ctrl-toggle"><input type="checkbox" id="toggle-labels" checked> Labels</label>
-            <label class="ctrl-toggle"><input type="checkbox" id="toggle-grid"> Distance Grid</label>
-            <label class="ctrl-toggle"><input type="checkbox" id="toggle-trails"> Orbit Trails</label>
-        </div>
+    <div id="view-menu-dropdown" class="panel hidden">
+        <div class="panel-header">View</div>
+        <div class="view-menu-content"></div>
     </div>
 
     <div id="body-list-panel" class="panel">

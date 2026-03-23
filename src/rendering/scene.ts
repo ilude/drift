@@ -1,6 +1,5 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import { scaleDist } from "../math/orbit";
 
 // Scene
 export const scene: THREE.Scene = new THREE.Scene();
@@ -94,28 +93,6 @@ scene.add(trailGroups);
 
 export const cometGroup: THREE.Group = new THREE.Group();
 scene.add(cometGroup);
-
-export const gridGroup: THREE.Group = new THREE.Group();
-gridGroup.visible = false;
-scene.add(gridGroup);
-
-// Distance grid rings
-const auMarkers: number[] = [0.5, 1, 2, 5, 10, 20, 30];
-auMarkers.forEach((au: number) => {
-	const r: number = scaleDist(au);
-	const geom: THREE.RingGeometry = new THREE.RingGeometry(
-		r - 0.02,
-		r + 0.02,
-		128,
-	);
-	const mat: THREE.MeshBasicMaterial = new THREE.MeshBasicMaterial({
-		color: "#111118",
-		side: THREE.DoubleSide,
-	});
-	const ring: THREE.Mesh = new THREE.Mesh(geom, mat);
-	ring.rotation.x = -Math.PI / 2;
-	gridGroup.add(ring);
-});
 
 // Resize handling
 window.addEventListener("resize", () => {

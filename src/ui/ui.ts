@@ -12,8 +12,8 @@ import {
 	lodLevel,
 	MOON_LOD_ZOOM,
 } from "../math/visual";
-import { camera, gridGroup, ZOOM_BASE } from "../rendering/scene";
-import type { BodyEntry, SystemData } from "../types";
+import { camera, ZOOM_BASE } from "../rendering/scene";
+import type { BodyEntry, CategoryKey, CategoryVisibility, SystemData } from "../types";
 import { isShipEntry } from "../types";
 import { recenterOnStar, selectBody } from "./selection";
 
@@ -173,8 +173,7 @@ let lastLodCamDist = -1;
 let labelFrameCounter = 0;
 
 export function updateLabels(camDist: number): void {
-	const showLabels = state.showLabels;
-	const showOrbits = state.showOrbits;
+	const cv = state.categoryVisibility;
 	const zoomFactor = ZOOM_BASE / camDist;
 	const moonsVisible = zoomFactor > MOON_LOD_ZOOM;
 	const scaleFactor = bodyScaleFactor(zoomFactor);
@@ -194,7 +193,7 @@ export function updateLabels(camDist: number): void {
 	state.bodyMeshes.forEach((entry) => {
 		if (entry.isMoon && entry.parentMesh) {
 			entry.mesh.visible = moonsVisible;
-			if (entry.orbitLine) entry.orbitLine.visible = moonsVisible && showOrbits;
+			if (entry.orbitLine) entry.orbitLine.visible = moonsVisible && cv.Moon.orbits;
 			if (!moonsVisible) {
 				const targetDisplay = "none";
 				if (entry.labelDisplay !== targetDisplay) {
@@ -250,6 +249,8 @@ export function updateLabels(camDist: number): void {
 			return;
 		}
 
+		const catKey = (entry.isMoon ? "Moon" : entry.data.type) as CategoryKey;
+		const showLabels = cv[catKey]?.labels ?? true;
 		const targetDisplay = showLabels ? "" : "none";
 		if (entry.labelDisplay !== targetDisplay) {
 			entry.labelDiv.style.display = targetDisplay;
@@ -303,27 +304,14 @@ export function updateLabels(camDist: number): void {
 
 // --- HUD ---
 
-const fpsEl = document.getElementById("fps-display") as HTMLElement;
 const timeEl = document.getElementById("time-display") as HTMLElement;
 const zoomEl = document.getElementById("zoom-display") as HTMLElement;
-let fpsFrames = 0;
-let fpsLastTime = performance.now();
-let fpsValue = 0;
 let lastTimeText = "";
 let lastZoomText = "";
 let lastHudSimTime = -1;
 let lastHudTimeSpeed = -1;
 
 export function updateHUD(camDist: number): void {
-	fpsFrames++;
-	const now = performance.now();
-	if (now - fpsLastTime >= 500) {
-		fpsValue = Math.round(fpsFrames / ((now - fpsLastTime) / 1000));
-		fpsFrames = 0;
-		fpsLastTime = now;
-		fpsEl.textContent = `FPS: ${fpsValue}`;
-	}
-
 	if (
 		state.simTime !== lastHudSimTime ||
 		state.timeSpeed !== lastHudTimeSpeed
@@ -575,37 +563,182 @@ export function setupUI(loadSystem: (systemData: SystemData) => void): void {
 
 	updateSpeedBtn();
 
-	// Recenter
-	document
-		.getElementById("btn-recenter")
-		?.addEventListener("click", recenterOnStar);
-
-	// Display toggles
-	document.getElementById("toggle-orbits")?.addEventListener("change", (e) => {
-		state.showOrbits = (e.target as HTMLInputElement).checked;
-		state.bodyMeshes.forEach((b) => {
-			if (b.orbitLine)
-				b.orbitLine.visible = (e.target as HTMLInputElement).checked;
-		});
+	// Ctrl+R recenter shortcut
+	window.addEventListener("keydown", (e: KeyboardEvent) => {
+		if (e.ctrlKey && e.key === "r") {
+			e.preventDefault();
+			recenterOnStar();
+		}
 	});
 
-	document.getElementById("toggle-labels")?.addEventListener("change", (e) => {
-		state.showLabels = (e.target as HTMLInputElement).checked;
-		state.bodyMeshes.forEach((b) => {
-			b.labelDiv.style.display = (e.target as HTMLInputElement).checked
-				? ""
-				: "none";
+	// View menu
+	setupViewMenu();
+}
+
+// --- View menu ---
+
+interface ViewCategory {
+	key: CategoryKey;
+	label: string;
+	toggles: Array<{ prop: keyof CategoryVisibility; label: string }>;
+}
+
+const VIEW_CATEGORIES: ViewCategory[] = [
+	{ key: "Star", label: "Stars", toggles: [{ prop: "labels", label: "Labels" }] },
+	{
+		key: "Planet",
+		label: "Planets",
+		toggles: [
+			{ prop: "labels", label: "Labels" },
+			{ prop: "orbits", label: "Orbits" },
+			{ prop: "trails", label: "Trails" },
+		],
+	},
+	{
+		key: "Dwarf Planet",
+		label: "Dwarf Planets",
+		toggles: [
+			{ prop: "labels", label: "Labels" },
+			{ prop: "orbits", label: "Orbits" },
+			{ prop: "trails", label: "Trails" },
+		],
+	},
+	{
+		key: "Detached Object",
+		label: "Detached Objects",
+		toggles: [
+			{ prop: "labels", label: "Labels" },
+			{ prop: "orbits", label: "Orbits" },
+			{ prop: "trails", label: "Trails" },
+		],
+	},
+	{
+		key: "Moon",
+		label: "Moons",
+		toggles: [
+			{ prop: "labels", label: "Labels" },
+			{ prop: "orbits", label: "Orbits" },
+		],
+	},
+	{
+		key: "Comet",
+		label: "Comets",
+		toggles: [
+			{ prop: "labels", label: "Labels" },
+			{ prop: "orbits", label: "Orbits" },
+			{ prop: "trails", label: "Trails" },
+		],
+	},
+	{
+		key: "Asteroid",
+		label: "Asteroids",
+		toggles: [{ prop: "labels", label: "Belts" }],
+	},
+	{
+		key: "Ship",
+		label: "Ship",
+		toggles: [
+			{ prop: "labels", label: "Labels" },
+			{ prop: "trails", label: "Trail" },
+		],
+	},
+];
+
+function applyVisibility(catKey: CategoryKey, prop: keyof CategoryVisibility): void {
+	const val = state.categoryVisibility[catKey][prop];
+
+	if (catKey === "Asteroid") {
+		state.asteroidBelts.forEach((ab) => {
+			ab.points.visible = val;
 		});
+		return;
+	}
+
+	state.bodyMeshes.forEach((entry) => {
+		const entryKey = (entry.isMoon ? "Moon" : entry.data.type) as CategoryKey;
+		if (entryKey !== catKey) return;
+
+		if (prop === "labels") {
+			entry.labelDiv.style.display = val ? "" : "none";
+		} else if (prop === "orbits" && entry.orbitLine) {
+			entry.orbitLine.visible = val;
+		} else if (prop === "trails") {
+			entry.trail.line.visible = val;
+		}
 	});
 
-	document.getElementById("toggle-grid")?.addEventListener("change", (e) => {
-		gridGroup.visible = (e.target as HTMLInputElement).checked;
+	state.renderNeeded = true;
+	window.dispatchEvent(new Event("wake-render"));
+}
+
+function setupViewMenu(): void {
+	const btn = document.getElementById("view-menu-btn");
+	const dropdown = document.getElementById("view-menu-dropdown");
+	if (!btn || !dropdown) return;
+
+	// Build menu content
+	const content = dropdown.querySelector(".view-menu-content") as HTMLElement;
+	if (!content) return;
+
+	// Recenter row
+	const recenterRow = document.createElement("button");
+	recenterRow.className = "view-menu-action";
+	recenterRow.innerHTML = `Recenter <span class="view-shortcut">Ctrl+R</span>`;
+	recenterRow.addEventListener("click", () => {
+		recenterOnStar();
+		dropdown.classList.add("hidden");
+	});
+	content.appendChild(recenterRow);
+
+	const sep = document.createElement("div");
+	sep.className = "view-menu-sep";
+	content.appendChild(sep);
+
+	// Category sections
+	VIEW_CATEGORIES.forEach((cat) => {
+		const section = document.createElement("div");
+		section.className = "view-cat";
+
+		const header = document.createElement("div");
+		header.className = "view-cat-header";
+		header.textContent = cat.label;
+		section.appendChild(header);
+
+		const toggleRow = document.createElement("div");
+		toggleRow.className = "view-cat-toggles";
+
+		cat.toggles.forEach((toggle) => {
+			const label = document.createElement("label");
+			label.className = "view-toggle";
+			const cb = document.createElement("input");
+			cb.type = "checkbox";
+			cb.checked = state.categoryVisibility[cat.key][toggle.prop];
+			cb.addEventListener("change", () => {
+				state.categoryVisibility[cat.key][toggle.prop] = cb.checked;
+				applyVisibility(cat.key, toggle.prop);
+			});
+			label.appendChild(cb);
+			label.appendChild(document.createTextNode(` ${toggle.label}`));
+			toggleRow.appendChild(label);
+		});
+
+		section.appendChild(toggleRow);
+		content.appendChild(section);
 	});
 
-	document.getElementById("toggle-trails")?.addEventListener("change", (e) => {
-		state.showTrails = (e.target as HTMLInputElement).checked;
-		state.bodyMeshes.forEach((b) => {
-			b.trail.line.visible = (e.target as HTMLInputElement).checked;
-		});
+	// Toggle dropdown
+	btn.addEventListener("click", () => {
+		dropdown.classList.toggle("hidden");
+	});
+
+	// Close on outside click
+	document.addEventListener("click", (e) => {
+		if (
+			!dropdown.classList.contains("hidden") &&
+			!dropdown.contains(e.target as Node) &&
+			e.target !== btn
+		) {
+			dropdown.classList.add("hidden");
+		}
 	});
 }

@@ -1,4 +1,4 @@
-import type { AppState, SavedStateData } from "../types";
+import type { AppState, CategoryKey, CategoryVisibility, SavedStateData } from "../types";
 import { isShipEntry } from "../types";
 
 export const MAX_CLICK_DIST = 50;
@@ -65,9 +65,20 @@ export const state: AppState = {
 	BODIES: null,
 	COMETS: null,
 	ASTEROID_BELTS: null,
-	showLabels: true,
-	showOrbits: true,
-	showTrails: false,
+	categoryVisibility: Object.fromEntries(
+		(
+			[
+				"Star",
+				"Planet",
+				"Dwarf Planet",
+				"Detached Object",
+				"Moon",
+				"Comet",
+				"Asteroid",
+				"Ship",
+			] as CategoryKey[]
+		).map((k) => [k, { labels: true, orbits: true, trails: false }]),
+	) as Record<CategoryKey, CategoryVisibility>,
 	debugStepFrames: 0,
 	debugStepSpeed: 0,
 	renderNeeded: true,

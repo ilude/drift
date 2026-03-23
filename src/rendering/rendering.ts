@@ -22,6 +22,7 @@ import type {
 	AsteroidInfo,
 	BodyData,
 	BodyEntry,
+	CategoryKey,
 	CometEntry,
 	CometEntryData,
 	MoonData,
@@ -1221,8 +1222,6 @@ export function updatePositions(dt: number, camDist: number): void {
 
 	const zoomFactor = ZOOM_BASE / camDist;
 	const moonScale = moonOrbitScale(zoomFactor);
-	const recordTrails = state.showTrails;
-
 	state.bodyMeshes.forEach((entry) => {
 		if (
 			entry.data.distance === 0 &&
@@ -1381,8 +1380,9 @@ export function updatePositions(dt: number, camDist: number): void {
 			entry.cloudMesh.rotation.y += simDt * 0.002;
 		}
 
-		// Trail recording — skip entirely when trails are hidden
-		if (!recordTrails) return;
+		// Trail recording — skip if trails hidden for this category
+		const catKey = (entry.isMoon ? "Moon" : entry.data.type) as CategoryKey;
+		if (!state.categoryVisibility[catKey].trails) return;
 
 		const t = entry.trail;
 		t.sampleAccum += simDt;
