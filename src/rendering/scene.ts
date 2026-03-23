@@ -50,6 +50,8 @@ configureControls(controls);
 const zoomRay: THREE.Raycaster = new THREE.Raycaster();
 const zoomMouse: THREE.Vector2 = new THREE.Vector2();
 const zoomIntersect: THREE.Vector3 = new THREE.Vector3();
+const zoomPlane: THREE.Plane = new THREE.Plane();
+const zoomLookDir: THREE.Vector3 = new THREE.Vector3();
 
 function attachZoomHandler(canvas: HTMLCanvasElement): void {
 	canvas.addEventListener(
@@ -66,8 +68,10 @@ function attachZoomHandler(canvas: HTMLCanvasElement): void {
 			zoomMouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
 			zoomRay.setFromCamera(zoomMouse, camera);
 
-			// Get zoom target at the cursor direction, at the same depth as current target
-			zoomRay.ray.at(dist, zoomIntersect);
+			// Intersect cursor ray with plane through target, perpendicular to view
+			zoomLookDir.subVectors(controls.target, camera.position).normalize();
+			zoomPlane.setFromNormalAndCoplanarPoint(zoomLookDir, controls.target);
+			if (!zoomRay.ray.intersectPlane(zoomPlane, zoomIntersect)) return;
 
 			camera.position.x += (zoomIntersect.x - camera.position.x) * factor;
 			camera.position.y += (zoomIntersect.y - camera.position.y) * factor;
