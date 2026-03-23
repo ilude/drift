@@ -352,6 +352,7 @@ export function createBody(data: BodyData, parentMesh: THREE.Mesh | null): Plane
 		parentMesh,
 		moons: [],
 		isMoon,
+		survey: { surveyed: false },
 		screenSize: size,
 		baseSize: size,
 		realisticSize: isMoon || !data.radius ? size : realisticSize(data.radius),
@@ -466,6 +467,7 @@ export function createComets(): void {
 			moons: [] as BodyEntry[],
 			isMoon: false,
 			isComet: true as const,
+			survey: { surveyed: false },
 			screenSize: size,
 			geomLevels: sharedCometGeoms,
 			lodLevel: 0,
@@ -581,6 +583,7 @@ export function createAsteroidBelts(): AsteroidBeltEntry[] {
 				au: Math.round(au * 1000) / 1000,
 				period: Math.round(period * 100) / 100,
 				diameter,
+				survey: { surveyed: false },
 			});
 		}
 

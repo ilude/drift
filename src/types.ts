@@ -13,6 +13,16 @@ export interface Vector3Like {
 	z: number;
 }
 
+// --- Survey / resource state ---
+
+export interface SurveyState {
+	surveyed: boolean;
+}
+
+export interface Surveyable {
+	survey: SurveyState;
+}
+
 // --- Body data types (input data from sol-data / system-generator) ---
 
 export interface MoonData {
@@ -135,7 +145,7 @@ interface BaseEntry {
 	lodLevel: number;
 }
 
-export interface PlanetEntry extends BaseEntry {
+export interface PlanetEntry extends BaseEntry, Surveyable {
 	data: BodyData;
 	isShip?: false;
 	isComet?: false;
@@ -145,7 +155,7 @@ export interface PlanetEntry extends BaseEntry {
 	realisticSize: number;
 }
 
-export interface CometEntry extends BaseEntry {
+export interface CometEntry extends BaseEntry, Surveyable {
 	data: CometEntryData;
 	isShip?: false;
 	isComet: true;
@@ -208,6 +218,10 @@ export function isPlanetEntry(entry: BodyEntry): entry is PlanetEntry {
 	return !isShipEntry(entry) && !isCometEntry(entry);
 }
 
+export function isSurveyable(obj: unknown): obj is Surveyable {
+	return obj != null && typeof (obj as Surveyable).survey === "object";
+}
+
 // --- Engine type ---
 
 export interface EngineType {
@@ -248,7 +262,7 @@ export interface AsteroidBeltData {
 	maxInc: number;
 }
 
-export interface AsteroidInfo {
+export interface AsteroidInfo extends Surveyable {
 	designation: string;
 	au: number;
 	period: number;
