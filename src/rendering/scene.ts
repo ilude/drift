@@ -70,12 +70,15 @@ function attachZoomHandler(canvas: HTMLCanvasElement): void {
 			const hit: THREE.Vector3 | null = zoomRay.ray.intersectPlane(zoomPlane, zoomIntersect);
 			if (!hit) return;
 
+			// Pan camera and target toward cursor in xz only (preserves viewing angle)
 			camera.position.x += (zoomIntersect.x - camera.position.x) * factor;
-			camera.position.y += (zoomIntersect.y - camera.position.y) * factor;
 			camera.position.z += (zoomIntersect.z - camera.position.z) * factor;
 
 			controls.target.x += (zoomIntersect.x - controls.target.x) * factor;
 			controls.target.z += (zoomIntersect.z - controls.target.z) * factor;
+
+			// Scale camera height proportionally to maintain elevation angle
+			camera.position.y *= 1 - factor;
 		},
 		{ passive: false },
 	);
