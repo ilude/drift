@@ -470,6 +470,7 @@ function createTransferPath(): THREE.Line {
         opacity: 1.0,
     });
     const line = new THREE.Line(geom, mat);
+    line.frustumCulled = false;
     scene.add(line);
     return line;
 }
