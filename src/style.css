@@ -323,7 +323,7 @@ body {
 #view-menu-dropdown {
 	position: fixed;
 	top: 28px;
-	left: 80px;
+	left: 115px;
 	width: 220px;
 	z-index: 100;
 	max-height: calc(100vh - 70px);
