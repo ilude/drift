@@ -50,8 +50,8 @@ configureControls(controls);
 const zoomRay: THREE.Raycaster = new THREE.Raycaster();
 const zoomMouse: THREE.Vector2 = new THREE.Vector2();
 const zoomIntersect: THREE.Vector3 = new THREE.Vector3();
-const zoomPlane: THREE.Plane = new THREE.Plane();
-const zoomLookDir: THREE.Vector3 = new THREE.Vector3();
+const zoomPlane: THREE.Plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+const zoomOffset: THREE.Vector3 = new THREE.Vector3();
 
 function attachZoomHandler(canvas: HTMLCanvasElement): void {
 	canvas.addEventListener(
@@ -68,18 +68,21 @@ function attachZoomHandler(canvas: HTMLCanvasElement): void {
 			zoomMouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
 			zoomRay.setFromCamera(zoomMouse, camera);
 
-			// Intersect cursor ray with plane through target, perpendicular to view
-			zoomLookDir.subVectors(controls.target, camera.position).normalize();
-			zoomPlane.setFromNormalAndCoplanarPoint(zoomLookDir, controls.target);
+			// Intersect cursor ray with ecliptic plane (y=0)
 			if (!zoomRay.ray.intersectPlane(zoomPlane, zoomIntersect)) return;
 
-			camera.position.x += (zoomIntersect.x - camera.position.x) * factor;
-			camera.position.y += (zoomIntersect.y - camera.position.y) * factor;
-			camera.position.z += (zoomIntersect.z - camera.position.z) * factor;
+			// Pan target toward cursor on ecliptic (xz only)
+			const panX = (zoomIntersect.x - controls.target.x) * factor;
+			const panZ = (zoomIntersect.z - controls.target.z) * factor;
+			controls.target.x += panX;
+			controls.target.z += panZ;
+			camera.position.x += panX;
+			camera.position.z += panZ;
 
-			controls.target.x += (zoomIntersect.x - controls.target.x) * factor;
-			controls.target.y += (zoomIntersect.y - controls.target.y) * factor;
-			controls.target.z += (zoomIntersect.z - controls.target.z) * factor;
+			// Zoom: scale camera-target offset uniformly (preserves viewing angle)
+			zoomOffset.subVectors(camera.position, controls.target);
+			zoomOffset.multiplyScalar(1 - factor);
+			camera.position.copy(controls.target).add(zoomOffset);
 		},
 		{ passive: false },
 	);
