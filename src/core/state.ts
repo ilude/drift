@@ -76,7 +76,14 @@ export const state: AppState = {
 				"Asteroid",
 				"Ship",
 			] as CategoryKey[]
-		).map((k) => [k, { labels: true, orbits: true, trails: false }]),
+		).map((k) => [
+			k,
+			{
+				labels: true,
+				orbits: k !== "Comet",
+				trails: k === "Comet",
+			},
+		]),
 	) as Record<CategoryKey, CategoryVisibility>,
 	debugStepFrames: 0,
 	debugStepSpeed: 0,

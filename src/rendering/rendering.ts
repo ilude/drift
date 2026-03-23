@@ -446,6 +446,37 @@ export function createComets(): void {
 			geomLevels: sharedCometGeoms,
 			lodLevel: 0,
 		} as CometEntry;
+
+		// Pre-fill trail by computing past orbital positions
+		const t = entry.trail;
+		const stepAngle = entry.speed * 0.02;
+		for (let i = 0; i < t.maxPoints; i++) {
+			const pastAngle = entry.angle - stepAngle * (t.maxPoints - i);
+			const pastTheta = meanToTrue(pastAngle, e);
+			const pastR = keplerRadius(a, e, pastTheta);
+			const pastRScaled = scaleDist(pastR);
+			const pastOx = pastRScaled * Math.cos(pastTheta);
+			const pastOz = pastRScaled * Math.sin(pastTheta);
+			const pastW = orbitToWorld(pastOx, pastOz, incRad, nodeRad, periRad);
+			const i3 = i * 3;
+			t.positions[i3] = pastW.x;
+			t.positions[i3 + 1] = pastW.y;
+			t.positions[i3 + 2] = pastW.z;
+			const fade = i / t.maxPoints;
+			t.colors[i3] = t.baseColor.r * fade;
+			t.colors[i3 + 1] = t.baseColor.g * fade;
+			t.colors[i3 + 2] = t.baseColor.b * fade;
+		}
+		t.index = 0;
+		t.count = t.maxPoints;
+		t.line.geometry.attributes.position.needsUpdate = true;
+		t.line.geometry.attributes.color.needsUpdate = true;
+		t.line.geometry.setDrawRange(0, t.count);
+		t.line.visible = true;
+
+		// Hide orbit line since comets default to trails
+		entry.orbitLine.visible = false;
+
 		state.bodyMeshes.push(entry);
 	});
 }
