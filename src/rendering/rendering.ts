@@ -98,6 +98,18 @@ export const COMET_ORBIT_SELECTED_OPACITY: number = 0.05;
 let asteroidFrameSkip = 0;
 let asteroidAccumDt = 0;
 
+// Planet lookup map: O(1) access instead of linear .find() scans
+const planetMap = new Map<string, PlanetEntry>();
+
+function buildPlanetMap(): void {
+	planetMap.clear();
+	state.bodyMeshes.forEach((entry) => {
+		if (!entry.isMoon && !isShipEntry(entry) && !isCometEntry(entry)) {
+			planetMap.set(entry.data.name, entry as PlanetEntry);
+		}
+	});
+}
+
 const sharedMoonGeoms: THREE.SphereGeometry[] = LOD_SEGS.map(
 	(s) => new THREE.SphereGeometry(MOON_SIZE, s, s),
 );
@@ -366,6 +378,7 @@ export function createBodies(): void {
 	state.BODIES?.forEach((b) => {
 		if (!b.type || b.type !== "Moon") createBody(b, null);
 	});
+	buildPlanetMap();
 }
 
 export function createComets(): void {
@@ -876,6 +889,10 @@ function removeTransferPath(entry: ShipEntry): void {
 }
 
 function findPlanetEntry(name: string): PlanetEntry | undefined {
+	// Try map first (O(1)) for performance
+	const cached = planetMap.get(name);
+	if (cached) return cached;
+	// Fallback to search for tests or if map is stale
 	return state.bodyMeshes.find(
 		(e) => e.data.name === name && !e.isMoon && !isShipEntry(e),
 	) as PlanetEntry | undefined;

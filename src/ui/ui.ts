@@ -170,6 +170,7 @@ const edgeVec = new THREE.Vector3();
 
 let lastScaleFactor = -1;
 let lastLodCamDist = -1;
+let labelFrameCounter = 0;
 
 export function updateLabels(camDist: number): void {
 	const showLabels = state.showLabels;
@@ -186,12 +187,20 @@ export function updateLabels(camDist: number): void {
 		lastLodCamDist < 0 ||
 		Math.abs(camDist - lastLodCamDist) / lastLodCamDist > 0.05;
 
+	// Throttle label transforms to every 2 frames (47 FPS, imperceptible for text)
+	labelFrameCounter = (labelFrameCounter + 1) % 2;
+	const shouldUpdateTransforms = labelFrameCounter === 0;
+
 	state.bodyMeshes.forEach((entry) => {
 		if (entry.isMoon && entry.parentMesh) {
 			entry.mesh.visible = moonsVisible;
 			if (entry.orbitLine) entry.orbitLine.visible = moonsVisible && showOrbits;
 			if (!moonsVisible) {
-				entry.labelDiv.style.display = "none";
+				const targetDisplay = "none";
+				if (entry.labelDisplay !== targetDisplay) {
+					entry.labelDiv.style.display = targetDisplay;
+					entry.labelDisplay = targetDisplay;
+				}
 				return;
 			}
 		}
@@ -215,7 +224,11 @@ export function updateLabels(camDist: number): void {
 		tempVec.project(camera);
 
 		if (tempVec.z > 1) {
-			entry.labelDiv.style.display = "none";
+			const targetDisplay = "none";
+			if (entry.labelDisplay !== targetDisplay) {
+				entry.labelDiv.style.display = targetDisplay;
+				entry.labelDisplay = targetDisplay;
+			}
 			return;
 		}
 
@@ -229,11 +242,19 @@ export function updateLabels(camDist: number): void {
 			cy < -margin ||
 			cy > screenH + margin
 		) {
-			entry.labelDiv.style.display = "none";
+			const targetDisplay = "none";
+			if (entry.labelDisplay !== targetDisplay) {
+				entry.labelDiv.style.display = targetDisplay;
+				entry.labelDisplay = targetDisplay;
+			}
 			return;
 		}
 
-		entry.labelDiv.style.display = showLabels ? "" : "none";
+		const targetDisplay = showLabels ? "" : "none";
+		if (entry.labelDisplay !== targetDisplay) {
+			entry.labelDiv.style.display = targetDisplay;
+			entry.labelDisplay = targetDisplay;
+		}
 
 		const radius = entry.screenSize || 0.3;
 		const dist = edgeVec
@@ -258,18 +279,21 @@ export function updateLabels(camDist: number): void {
 			entry.cloudMesh.visible = sr > 15;
 		}
 
-		const gap = Math.max(6, sr * 0.2);
-		const lx = cx + sr + gap;
-		const ly = cy - 6;
-		if (
-			entry.labelX === undefined ||
-			entry.labelY === undefined ||
-			Math.abs(lx - entry.labelX) > 0.5 ||
-			Math.abs(ly - entry.labelY) > 0.5
-		) {
-			entry.labelDiv.style.transform = `translate(${lx}px, ${ly}px)`;
-			entry.labelX = lx;
-			entry.labelY = ly;
+		// Only update label transforms every 2 frames
+		if (shouldUpdateTransforms) {
+			const gap = Math.max(6, sr * 0.2);
+			const lx = cx + sr + gap;
+			const ly = cy - 6;
+			if (
+				entry.labelX === undefined ||
+				entry.labelY === undefined ||
+				Math.abs(lx - entry.labelX) > 0.5 ||
+				Math.abs(ly - entry.labelY) > 0.5
+			) {
+				entry.labelDiv.style.transform = `translate(${lx}px, ${ly}px)`;
+				entry.labelX = lx;
+				entry.labelY = ly;
+			}
 		}
 	});
 
