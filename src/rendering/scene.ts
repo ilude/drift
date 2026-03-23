@@ -27,7 +27,7 @@ camera.lookAt(0, 0, 0);
 const container = document.getElementById("canvas-container");
 if (!container) throw new Error("Canvas container not found");
 export let renderer: THREE.WebGLRenderer = new THREE.WebGLRenderer({
-	antialias: false,
+	antialias: true,
 });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));

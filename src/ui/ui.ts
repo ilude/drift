@@ -643,7 +643,7 @@ function setupViewMenu(): void {
 	aaLabel.className = "view-toggle";
 	const aaCb = document.createElement("input");
 	aaCb.type = "checkbox";
-	aaCb.checked = false;
+	aaCb.checked = true;
 	aaCb.addEventListener("change", () => {
 		setAntialias(aaCb.checked);
 		state.renderNeeded = true;
