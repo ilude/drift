@@ -1,9 +1,4 @@
-import type {
-	BodyData,
-	HohmannResult,
-	LambertResult,
-	Vector2Like,
-} from "../types";
+import type { BodyData, HohmannResult, LambertResult, Vector2Like } from "../types";
 import { DAYS_PER_YEAR, DIST_SCALE, keplerPeriod, orbitSpeed } from "./orbit";
 
 // --- Stumpff functions for universal variable formulation ---
@@ -248,15 +243,10 @@ export function propagatePosition(
 
 		// Time from universal variable
 		const Ftime =
-			(vr0 / sqrtMu) * chi * chi * c2 +
-			(1 - alpha * r0) * chi * chi * chi * c3 +
-			r0 * chi;
+			(vr0 / sqrtMu) * chi * chi * c2 + (1 - alpha * r0) * chi * chi * chi * c3 + r0 * chi;
 
 		// Current radius (also the derivative dFtime/dchi)
-		const r =
-			chi * chi * c2 +
-			(vr0 / sqrtMu) * chi * (1 - psi * c3) +
-			r0 * (1 - psi * c2);
+		const r = chi * chi * c2 + (vr0 / sqrtMu) * chi * (1 - psi * c3) + r0 * (1 - psi * c2);
 
 		if (r < 1e-14) break;
 
@@ -311,12 +301,7 @@ export function auToWorld(ax: number, az: number): Vector2Like {
  * scale by 1/(2√r) while tangential distances scale by √r, so a velocity
  * direction in AU space has a different angle in world space.
  */
-export function auVelToWorldDir(
-	ax: number,
-	az: number,
-	vx: number,
-	vz: number,
-): number {
+export function auVelToWorldDir(ax: number, az: number, vx: number, vz: number): number {
 	const speed = Math.hypot(vx, vz);
 	if (speed < 1e-14) return 0;
 	const eps = 1e-8 / speed;
@@ -342,10 +327,7 @@ export function computeMu(starMass: number): number {
  */
 export function deriveStarMass(bodies: BodyData[]): number {
 	const planet = bodies.find(
-		(b) =>
-			(b.type === "Planet" || b.type === "Dwarf Planet") &&
-			b.period > 0 &&
-			b.distance > 0,
+		(b) => (b.type === "Planet" || b.type === "Dwarf Planet") && b.period > 0 && b.distance > 0,
 	);
 	if (!planet) return 1;
 	return planet.distance ** 3 / planet.period ** 2;
@@ -353,11 +335,7 @@ export function deriveStarMass(bodies: BodyData[]): number {
 
 // --- Existing game transfer helpers ---
 
-export function hohmannTransfer(
-	r1: number,
-	r2: number,
-	starMass: number = 1,
-): HohmannResult {
+export function hohmannTransfer(r1: number, r2: number, starMass: number = 1): HohmannResult {
 	const a = (r1 + r2) / 2;
 	const e = Math.abs(r2 - r1) / (r1 + r2);
 	const periodYears = keplerPeriod(a, starMass);
@@ -381,9 +359,6 @@ export function gameTransferSpeed(transferDays: number): number {
 	return Math.PI / transferDays;
 }
 
-export function isTransferComplete(
-	elapsedDays: number,
-	transferTimeDays: number,
-): boolean {
+export function isTransferComplete(elapsedDays: number, transferTimeDays: number): boolean {
 	return elapsedDays >= transferTimeDays;
 }

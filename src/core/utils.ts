@@ -20,10 +20,7 @@ export function rngGaussian(rng: () => number): number {
 	return Math.sqrt(-2 * Math.log(u1 || 1e-10)) * Math.cos(2 * Math.PI * u2);
 }
 
-export function rngWeighted<T extends { weight: number }>(
-	rng: () => number,
-	entries: T[],
-): T {
+export function rngWeighted<T extends { weight: number }>(rng: () => number, entries: T[]): T {
 	const total = entries.reduce((s, e) => s + e.weight, 0);
 	let r = rng() * total;
 	for (const entry of entries) {

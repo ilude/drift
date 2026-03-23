@@ -1,0 +1,62 @@
+{
+	"formatter": {
+		"enabled": true,
+		"indentStyle": "tab",
+		"indentWidth": 1,
+		"lineWidth": 100
+	},
+	"linter": {
+		"enabled": true,
+		"rules": {
+			"recommended": true,
+			"correctness": {
+				"noUndeclaredVariables": "error",
+				"noUnusedVariables": "warn"
+			},
+			"style": {
+				"useTemplate": "off"
+			}
+		}
+	},
+	"javascript": {
+		"formatter": {
+			"quoteStyle": "double",
+			"semicolons": "always",
+			"trailingCommas": "all"
+		},
+		"parser": {
+			"unsafeParameterDecoratorsEnabled": true
+		},
+		"globals": [
+			"window",
+			"document",
+			"performance",
+			"localStorage",
+			"requestAnimationFrame",
+			"console",
+			"HTMLCanvasElement",
+			"Event",
+			"CustomEvent",
+			"Bun",
+			"Response",
+			"URL"
+		]
+	},
+	"overrides": [
+		{
+			"includes": ["serve.js"],
+			"javascript": {
+				"globals": ["Bun", "Response", "URL", "console"]
+			}
+		},
+		{
+			"includes": ["dist/**"],
+			"linter": {
+				"enabled": false
+			},
+			"formatter": {
+				"enabled": false
+			}
+		}
+	]
+}

@@ -13,11 +13,7 @@ vi.mock("../rendering/scene", () => ({
 }));
 
 import { state } from "../core/state";
-import {
-	createShip,
-	initiateTransfer,
-	orbitToWorld,
-} from "../rendering/rendering";
+import { createShip, initiateTransfer, orbitToWorld } from "../rendering/rendering";
 
 describe("orbitToWorld", () => {
 	const PI = Math.PI;

@@ -13,7 +13,7 @@
         <span class="header-sep">|</span>
         <span class="header-clickable" id="view-menu-btn">View ▾</span>
         <span style="flex:1"></span>
-        <button class="header-btn" id="btn-pause">||</button>
+        <button type="button" class="header-btn" id="btn-pause">||</button>
         <span class="header-clickable" id="speed-selector-btn">1 Day ▾</span>
         <span class="header-sep">|</span>
         <span id="time-display">2038-01-20</span>
@@ -32,8 +32,8 @@
         <div id="discover-controls">
             <input type="text" id="seed-input" placeholder="Enter seed...">
             <div style="display:flex;gap:4px;">
-                <button class="ctrl-btn" id="btn-discover">Discover</button>
-                <button class="ctrl-btn" id="btn-random">Random</button>
+                <button type="button" class="ctrl-btn" id="btn-discover">Discover</button>
+                <button type="button" class="ctrl-btn" id="btn-random">Random</button>
             </div>
         </div>
     </div>
@@ -41,7 +41,7 @@
     <div id="info-panel" class="panel hidden">
         <div class="panel-header">
             <span id="info-title">Select Body</span>
-            <button id="info-close">[X]</button>
+            <button type="button" id="info-close">[X]</button>
         </div>
         <div id="info-content">
             <div class="info-row"><span class="info-label">Type:</span><span id="info-type">-</span></div>
@@ -63,7 +63,7 @@
                 <span class="info-label">Transfer:</span>
                 <span class="transfer-controls">
                     <select id="transfer-target"></select>
-                    <button id="btn-transfer" class="ctrl-btn">Go</button>
+                    <button type="button" id="btn-transfer" class="ctrl-btn">Go</button>
                 </span>
             </div>
             <div id="info-transfer-status" class="info-row hidden">

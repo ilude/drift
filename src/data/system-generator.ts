@@ -1,14 +1,7 @@
 // ---------------------------------------------------------------------------
 // Procedural Star System Generator
 // ---------------------------------------------------------------------------
-import {
-	rngFloat,
-	rngGaussian,
-	rngInt,
-	rngPick,
-	rngWeighted,
-	seededRandom,
-} from "../core/utils";
+import { rngFloat, rngGaussian, rngInt, rngPick, rngWeighted, seededRandom } from "../core/utils";
 import { categorizePlanet, keplerPeriod } from "../math/orbit";
 import type {
 	AsteroidBeltData,
@@ -169,24 +162,8 @@ const SYSTEM_CLASSES: SystemClass[] = [
 ];
 
 const PLANET_COLORS: Record<PlanetCategory, string[]> = {
-	rocky: [
-		"#aaaaaa",
-		"#cc5533",
-		"#ddaa66",
-		"#4488cc",
-		"#bb9977",
-		"#ccaa88",
-		"#998877",
-		"#887766",
-	],
-	subNeptune: [
-		"#88bbcc",
-		"#aaccbb",
-		"#99aacc",
-		"#bbccdd",
-		"#77aaaa",
-		"#88aa99",
-	],
+	rocky: ["#aaaaaa", "#cc5533", "#ddaa66", "#4488cc", "#bb9977", "#ccaa88", "#998877", "#887766"],
+	subNeptune: ["#88bbcc", "#aaccbb", "#99aacc", "#bbccdd", "#77aaaa", "#88aa99"],
 	gasGiant: ["#ddaa77", "#ccbb77", "#cc9966", "#ddcc88", "#bbaa66", "#ddbb88"],
 	iceGiant: ["#88bbcc", "#4466cc", "#6688aa", "#5577bb", "#77aacc"],
 };
@@ -219,18 +196,7 @@ const CATALOG_PREFIXES: CatalogPrefix[] = [
 	{ prefix: "HIP", weight: 0.3, min: 10000, max: 99999 },
 ];
 
-const ROMAN: string[] = [
-	"I",
-	"II",
-	"III",
-	"IV",
-	"V",
-	"VI",
-	"VII",
-	"VIII",
-	"IX",
-	"X",
-];
+const ROMAN: string[] = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"];
 
 const EARTH_RADIUS_KM: number = 6371;
 const SOLAR_RADIUS_KM: number = 695700;
@@ -301,16 +267,10 @@ function generateBinaryConfig(
 	}
 	const t = Math.max(
 		0,
-		Math.min(
-			1,
-			(secondaryMass - secSpec.massMin) /
-				(secSpec.massMax - secSpec.massMin || 1),
-		),
+		Math.min(1, (secondaryMass - secSpec.massMin) / (secSpec.massMax - secSpec.massMin || 1)),
 	);
 	const secRadius = secSpec.radMin + t * (secSpec.radMax - secSpec.radMin);
-	const secPeriod = Math.sqrt(
-		clampedSep ** 3 / (primaryStar.mass + secondaryMass),
-	);
+	const secPeriod = Math.sqrt(clampedSep ** 3 / (primaryStar.mass + secondaryMass));
 
 	const secondaryBody: BodyData = {
 		name: `${systemName} B`,
@@ -352,14 +312,7 @@ function generatePlanets(
 			generatePeasInAPod(rng, planets, starMass, binary);
 			break;
 		case "solar-like":
-			generateSolarLike(
-				rng,
-				planets,
-				starMass,
-				starLuminosity,
-				snowLine,
-				binary,
-			);
+			generateSolarLike(rng, planets, starMass, starLuminosity, snowLine, binary);
 			break;
 		case "hot-jupiter":
 			generateHotJupiter(rng, planets, starMass, binary);
@@ -382,19 +335,11 @@ function generatePlanets(
 	}
 
 	// Add outer dwarf planets and detached objects to ALL system types
-	const outermost = planets.reduce(
-		(max, p) => (p.distance > max ? p.distance : max),
-		0,
-	);
+	const outermost = planets.reduce((max, p) => (p.distance > max ? p.distance : max), 0);
 	let dwarfDist = outermost * rngFloat(rng, 1.8, 3.0);
 	const dwarfCount = rngInt(rng, 2, 5);
 	for (let i = 0; i < dwarfCount; i++) {
-		const p = makePlanetEntry(
-			rng,
-			dwarfDist,
-			rngFloat(rng, 0.05, 0.35),
-			starMass,
-		);
+		const p = makePlanetEntry(rng, dwarfDist, rngFloat(rng, 0.05, 0.35), starMass);
 		p._isDwarf = true;
 		planets.push(p);
 		dwarfDist *= rngFloat(rng, 1.3, 2.0);
@@ -403,12 +348,7 @@ function generatePlanets(
 	// Chance of a detached object (Sedna-like) far out
 	if (rng() < 0.4) {
 		const detachedDist = dwarfDist * rngFloat(rng, 3, 10);
-		const p = makePlanetEntry(
-			rng,
-			detachedDist,
-			rngFloat(rng, 0.03, 0.15),
-			starMass,
-		);
+		const p = makePlanetEntry(rng, detachedDist, rngFloat(rng, 0.03, 0.15), starMass);
 		p._isDetached = true;
 		planets.push(p);
 	}
@@ -444,15 +384,11 @@ function makePlanetEntry(
 	};
 }
 
-function applyBinaryConstraints(
-	planets: RawPlanetEntry[],
-	binary: BinaryConfig,
-): RawPlanetEntry[] {
+function applyBinaryConstraints(planets: RawPlanetEntry[], binary: BinaryConfig): RawPlanetEntry[] {
 	if (binary.type === "single") return planets;
 	return planets.filter(
 		(p) =>
-			p.distance >= (binary.minPlanetDist ?? 0) &&
-			p.distance <= (binary.maxPlanetDist ?? Infinity),
+			p.distance >= (binary.minPlanetDist ?? 0) && p.distance <= (binary.maxPlanetDist ?? Infinity),
 	);
 }
 
@@ -663,14 +599,7 @@ function generateAsteroidBelts(
 	systemName: string,
 ): AsteroidBeltData[] {
 	const belts: AsteroidBeltData[] = [];
-	const beltColors: string[] = [
-		"#555544",
-		"#333344",
-		"#334455",
-		"#443355",
-		"#444433",
-		"#335544",
-	];
+	const beltColors: string[] = ["#555544", "#333344", "#334455", "#443355", "#444433", "#335544"];
 
 	// Find largest gas giant for resonance-based belt placement
 	let largestGiant: RawPlanetEntry | null = null;
@@ -810,13 +739,7 @@ export function generateSystem(seed: number): SystemData {
 	const systemClass = rngWeighted(rng, SYSTEM_CLASSES).name;
 
 	// Planets
-	const rawPlanets = generatePlanets(
-		rng,
-		systemClass,
-		primary.mass,
-		primary.luminosity,
-		binary,
-	);
+	const rawPlanets = generatePlanets(rng, systemClass, primary.mass, primary.luminosity, binary);
 
 	// Assign names, types, moons
 	const bodies: BodyData[] = [primary.body];
@@ -848,14 +771,8 @@ export function generateSystem(seed: number): SystemData {
 	});
 
 	// Asteroid belts
-	const outerEdge =
-		rawPlanets.length > 0 ? rawPlanets[rawPlanets.length - 1].distance : 5;
-	const asteroidBelts = generateAsteroidBelts(
-		rng,
-		rawPlanets,
-		primary.mass,
-		systemName,
-	);
+	const outerEdge = rawPlanets.length > 0 ? rawPlanets[rawPlanets.length - 1].distance : 5;
+	const asteroidBelts = generateAsteroidBelts(rng, rawPlanets, primary.mass, systemName);
 
 	// Comets
 	const comets = generateComets(rng, outerEdge, primary.mass, systemName);

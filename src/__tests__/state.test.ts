@@ -174,9 +174,7 @@ describe("ship state persistence", () => {
 		restoreShipState(saved);
 
 		expect((state.bodyMeshes[0] as unknown as ShipEntry).fuelKg).toBe(75000);
-		expect((state.bodyMeshes[0] as unknown as ShipEntry).engineId).toBe(
-			"nuclear",
-		);
+		expect((state.bodyMeshes[0] as unknown as ShipEntry).engineId).toBe("nuclear");
 	});
 
 	it("restoreShipState applies saved ship data", () => {
@@ -199,9 +197,7 @@ describe("ship state persistence", () => {
 		restoreShipState(saved);
 
 		expect((state.bodyMeshes[0] as unknown as ShipEntry).fuelKg).toBe(75000);
-		expect((state.bodyMeshes[0] as unknown as ShipEntry).engineId).toBe(
-			"nuclear",
-		);
+		expect((state.bodyMeshes[0] as unknown as ShipEntry).engineId).toBe("nuclear");
 	});
 
 	it("restoreShipState handles missing ship data gracefully", () => {

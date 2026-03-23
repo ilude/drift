@@ -15,13 +15,7 @@ import {
 	initiateTransfer,
 } from "../rendering/rendering";
 import { camera, controls, renderer, ZOOM_BASE } from "../rendering/scene";
-import type {
-	AsteroidBeltData,
-	AsteroidInfo,
-	BodyEntry,
-	FlyToState,
-	PlanetEntry,
-} from "../types";
+import type { AsteroidBeltData, AsteroidInfo, BodyEntry, FlyToState, PlanetEntry } from "../types";
 import { isCometEntry, isShipEntry } from "../types";
 
 const ZOOM_DIST_RECENTER: number = ZOOM_BASE / 0.25;
@@ -32,27 +26,15 @@ const ZOOM_DIST_MOON: number = 20;
 const flyEndTarget: THREE.Vector3 = new THREE.Vector3();
 const flyEndCam: THREE.Vector3 = new THREE.Vector3();
 const clickVec: THREE.Vector3 = new THREE.Vector3();
-const infoPositionEl: HTMLElement | null =
-	document.getElementById("info-position");
+const infoPositionEl: HTMLElement | null = document.getElementById("info-position");
 
-const INITIAL_CAM_DIR: THREE.Vector3 = new THREE.Vector3(
-	0,
-	ZOOM_BASE,
-	80,
-).normalize();
+const INITIAL_CAM_DIR: THREE.Vector3 = new THREE.Vector3(0, ZOOM_BASE, 80).normalize();
 
 let lastInfoPosText = "";
 
-function animateCameraTo(
-	entry: BodyEntry,
-	zoomDist: number,
-	overrideOffset?: THREE.Vector3,
-): void {
+function animateCameraTo(entry: BodyEntry, zoomDist: number, overrideOffset?: THREE.Vector3): void {
 	const camOffset: THREE.Vector3 =
-		overrideOffset ||
-		new THREE.Vector3()
-			.subVectors(camera.position, controls.target)
-			.normalize();
+		overrideOffset || new THREE.Vector3().subVectors(camera.position, controls.target).normalize();
 
 	state.flyTo = {
 		entry,
@@ -77,9 +59,7 @@ export function updateFlyTo(): void {
 
 	const pos: THREE.Vector3 = state.flyTo.entry.mesh.position;
 	flyEndTarget.set(pos.x, 0, pos.z);
-	flyEndCam
-		.copy(flyEndTarget)
-		.addScaledVector(state.flyTo.camOffset, state.flyTo.zoomDist);
+	flyEndCam.copy(flyEndTarget).addScaledVector(state.flyTo.camOffset, state.flyTo.zoomDist);
 
 	camera.position.lerpVectors(state.flyTo.startCam, flyEndCam, ease);
 	controls.target.lerpVectors(state.flyTo.startTarget, flyEndTarget, ease);
@@ -90,13 +70,10 @@ export function updateFlyTo(): void {
 }
 
 export function recenterOnStar(): void {
-	const star: BodyEntry | undefined = state.bodyMeshes.find(
-		(e) => e.data.type === "Star",
-	);
+	const star: BodyEntry | undefined = state.bodyMeshes.find((e) => e.data.type === "Star");
 	if (!star) return;
 	if (state.selectedBody) {
-		(state.selectedBody.selRing.material as THREE.MeshBasicMaterial).opacity =
-			0;
+		(state.selectedBody.selRing.material as THREE.MeshBasicMaterial).opacity = 0;
 		state.selectedBody = null;
 	}
 	document.getElementById("info-panel")?.classList.add("hidden");
@@ -105,19 +82,15 @@ export function recenterOnStar(): void {
 
 export function selectBody(entry: BodyEntry): void {
 	if (state.selectedBody) {
-		(state.selectedBody.selRing.material as THREE.MeshBasicMaterial).opacity =
-			0;
+		(state.selectedBody.selRing.material as THREE.MeshBasicMaterial).opacity = 0;
 		if (isCometEntry(state.selectedBody) && state.selectedBody.orbitLine) {
-			(
-				state.selectedBody.orbitLine.material as THREE.LineBasicMaterial
-			).opacity = COMET_ORBIT_OPACITY;
+			(state.selectedBody.orbitLine.material as THREE.LineBasicMaterial).opacity = COMET_ORBIT_OPACITY;
 		}
 	}
 
 	state.selectedBody = entry;
 	if (isCometEntry(entry) && entry.orbitLine) {
-		(entry.orbitLine.material as THREE.LineBasicMaterial).opacity =
-			COMET_ORBIT_SELECTED_OPACITY;
+		(entry.orbitLine.material as THREE.LineBasicMaterial).opacity = COMET_ORBIT_SELECTED_OPACITY;
 	}
 	const zoomDist: number =
 		entry.data.type === "Star"
@@ -172,8 +145,7 @@ export function selectBody(entry: BodyEntry): void {
 		}
 		const periodEl = document.getElementById("info-period");
 		if (periodEl) {
-			periodEl.textContent =
-				entry.data.period > 0 ? `${entry.data.period} years` : "-";
+			periodEl.textContent = entry.data.period > 0 ? `${entry.data.period} years` : "-";
 		}
 		const radiusEl = document.getElementById("info-radius");
 		if (radiusEl) {
@@ -181,20 +153,16 @@ export function selectBody(entry: BodyEntry): void {
 		}
 		const moonsEl = document.getElementById("info-moons");
 		if (moonsEl) {
-			moonsEl.textContent = entry.data.moons
-				? entry.data.moons.length.toString()
-				: "0";
+			moonsEl.textContent = entry.data.moons ? entry.data.moons.length.toString() : "0";
 		}
 	} else {
 		const distanceEl = document.getElementById("info-distance");
 		if (distanceEl) {
-			distanceEl.textContent =
-				entry.data.distance > 0 ? `${entry.data.distance} AU` : "Center";
+			distanceEl.textContent = entry.data.distance > 0 ? `${entry.data.distance} AU` : "Center";
 		}
 		const periodEl = document.getElementById("info-period");
 		if (periodEl) {
-			periodEl.textContent =
-				entry.data.period > 0 ? `${entry.data.period} years` : "-";
+			periodEl.textContent = entry.data.period > 0 ? `${entry.data.period} years` : "-";
 		}
 		const radiusEl = document.getElementById("info-radius");
 		if (radiusEl) {
@@ -202,17 +170,14 @@ export function selectBody(entry: BodyEntry): void {
 		}
 		const moonsEl = document.getElementById("info-moons");
 		if (moonsEl) {
-			moonsEl.textContent = entry.data.moons
-				? entry.data.moons.length.toString()
-				: "0";
+			moonsEl.textContent = entry.data.moons ? entry.data.moons.length.toString() : "0";
 		}
 	}
 
 	document.querySelectorAll(".body-list-item").forEach((el) => {
 		el.classList.remove("selected");
 	});
-	const items: NodeListOf<Element> =
-		document.querySelectorAll(".body-list-item");
+	const items: NodeListOf<Element> = document.querySelectorAll(".body-list-item");
 	items.forEach((el) => {
 		if (el.querySelector(".body-list-name")?.textContent === entry.data.name) {
 			el.classList.add("selected");
@@ -220,13 +185,10 @@ export function selectBody(entry: BodyEntry): void {
 	});
 
 	// Ship-specific UI
-	const transferRow: HTMLElement | null =
-		document.getElementById("info-transfer");
-	const engineRow: HTMLElement | null =
-		document.getElementById("info-ship-engine");
+	const transferRow: HTMLElement | null = document.getElementById("info-transfer");
+	const engineRow: HTMLElement | null = document.getElementById("info-ship-engine");
 	const fuelRow: HTMLElement | null = document.getElementById("info-ship-fuel");
-	const deltaVRow: HTMLElement | null =
-		document.getElementById("info-ship-deltav");
+	const deltaVRow: HTMLElement | null = document.getElementById("info-ship-deltav");
 	if (isShipEntry(entry)) {
 		transferRow?.classList.remove("hidden");
 		engineRow?.classList.remove("hidden");
@@ -242,9 +204,7 @@ export function selectBody(entry: BodyEntry): void {
 
 		// Fuel info
 		const fuelPct: number =
-			entry.fuelCapacityKg > 0
-				? Math.round((entry.fuelKg / entry.fuelCapacityKg) * 100)
-				: 0;
+			entry.fuelCapacityKg > 0 ? Math.round((entry.fuelKg / entry.fuelCapacityKg) * 100) : 0;
 		const fuelValueEl = document.getElementById("ship-fuel-value");
 		if (fuelValueEl) {
 			fuelValueEl.textContent = `${(entry.fuelKg / 1000).toFixed(2)}t / ${(entry.fuelCapacityKg / 1000).toFixed(2)}t (${fuelPct}%)`;
@@ -252,11 +212,7 @@ export function selectBody(entry: BodyEntry): void {
 
 		// Delta-v budget
 		const veKmS: number = engine ? exhaustVelocity(engine.ispS) / 1000 : 0;
-		const dvBudget: number = rocketDeltaV(
-			veKmS,
-			entry.dryMassKg + entry.fuelKg,
-			entry.dryMassKg,
-		);
+		const dvBudget: number = rocketDeltaV(veKmS, entry.dryMassKg + entry.fuelKg, entry.dryMassKg);
 		const deltaVValueEl = document.getElementById("ship-deltav-value");
 		if (deltaVValueEl) {
 			deltaVValueEl.textContent = `${dvBudget.toFixed(2)} km/s`;
@@ -269,33 +225,19 @@ export function selectBody(entry: BodyEntry): void {
 		if (select) {
 			select.innerHTML = "";
 			const hostEntry = state.bodyMeshes.find(
-				(e) =>
-					e.data.name === entry.hostPlanetName && !e.isMoon && !isShipEntry(e),
+				(e) => e.data.name === entry.hostPlanetName && !e.isMoon && !isShipEntry(e),
 			);
-			const r1: number = hostEntry
-				? hostEntry.data.distance
-				: entry.data.distance;
+			const r1: number = hostEntry ? hostEntry.data.distance : entry.data.distance;
 			const accelMS2: number = engine ? engine.accelG * G_ACCEL : 0;
 			state.bodyMeshes
-				.filter(
-					(e) => e.data.type === "Planet" || e.data.type === "Dwarf Planet",
-				)
+				.filter((e) => e.data.type === "Planet" || e.data.type === "Dwarf Planet")
 				.forEach((e) => {
 					const opt: HTMLOptionElement = document.createElement("option");
 					opt.value = e.data.name;
 					if (e.data.distance !== r1 && accelMS2 > 0) {
-						const dv: number = brachistochroneDeltaV(
-							r1,
-							e.data.distance,
-							accelMS2,
-						);
-						const days: number = brachistochroneTime(
-							r1,
-							e.data.distance,
-							accelMS2,
-						);
-						const timeStr: string =
-							days < 1 ? `${Math.round(days * 24)}h` : `${days.toFixed(1)}d`;
+						const dv: number = brachistochroneDeltaV(r1, e.data.distance, accelMS2);
+						const days: number = brachistochroneTime(r1, e.data.distance, accelMS2);
+						const timeStr: string = days < 1 ? `${Math.round(days * 24)}h` : `${days.toFixed(1)}d`;
 						opt.textContent = `${e.data.name} (${Math.round(dv)} km/s, ${timeStr})`;
 					} else {
 						opt.textContent = `${e.data.name} (here)`;
@@ -317,8 +259,7 @@ export function selectAsteroid(hit: {
 	index: number;
 }): void {
 	if (state.selectedBody) {
-		(state.selectedBody.selRing.material as THREE.MeshBasicMaterial).opacity =
-			0;
+		(state.selectedBody.selRing.material as THREE.MeshBasicMaterial).opacity = 0;
 		state.selectedBody = null;
 	}
 	document.querySelectorAll(".body-list-item").forEach((el) => {
@@ -410,11 +351,7 @@ export function setupClickHandlers(): void {
 		state.asteroidBelts.forEach((beltEntry) => {
 			const { positions, asteroids, count } = beltEntry;
 			for (let i = 0; i < count; i++) {
-				clickVec.set(
-					positions[i * 3],
-					positions[i * 3 + 1],
-					positions[i * 3 + 2],
-				);
+				clickVec.set(positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2]);
 				clickVec.project(camera);
 				if (clickVec.z > 1) continue;
 
@@ -446,13 +383,9 @@ export function setupClickHandlers(): void {
 		transferBtn.addEventListener("click", () => {
 			if (!state.selectedBody || !isShipEntry(state.selectedBody)) return;
 			const targetName: string =
-				(document.getElementById("transfer-target") as HTMLSelectElement | null)
-					?.value ?? "";
-			const targetEntry = state.bodyMeshes.find(
-				(e) => e.data.name === targetName,
-			);
-			if (targetEntry)
-				initiateTransfer(state.selectedBody, targetEntry as PlanetEntry);
+				(document.getElementById("transfer-target") as HTMLSelectElement | null)?.value ?? "";
+			const targetEntry = state.bodyMeshes.find((e) => e.data.name === targetName);
+			if (targetEntry) initiateTransfer(state.selectedBody, targetEntry as PlanetEntry);
 		});
 	}
 
@@ -464,13 +397,10 @@ export function setupClickHandlers(): void {
 				infoPanel.classList.add("hidden");
 			}
 			if (state.selectedBody) {
-				(
-					state.selectedBody.selRing.material as THREE.MeshBasicMaterial
-				).opacity = 0;
+				(state.selectedBody.selRing.material as THREE.MeshBasicMaterial).opacity = 0;
 				if (isCometEntry(state.selectedBody) && state.selectedBody.orbitLine) {
-					(
-						state.selectedBody.orbitLine.material as THREE.LineBasicMaterial
-					).opacity = COMET_ORBIT_OPACITY;
+					(state.selectedBody.orbitLine.material as THREE.LineBasicMaterial).opacity =
+						COMET_ORBIT_OPACITY;
 				}
 				state.selectedBody = null;
 			}

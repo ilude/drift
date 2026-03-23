@@ -32,10 +32,7 @@ export const MOON_ZOOM_MAX: number = 8;
 
 export function moonOrbitScale(zoomFactor: number): number {
 	if (zoomFactor <= MOON_LOD_ZOOM) return 1;
-	const t = Math.min(
-		(zoomFactor - MOON_LOD_ZOOM) / (MOON_ZOOM_MAX - MOON_LOD_ZOOM),
-		1,
-	);
+	const t = Math.min((zoomFactor - MOON_LOD_ZOOM) / (MOON_ZOOM_MAX - MOON_LOD_ZOOM), 1);
 	return 1 + (MOON_REALISTIC_SCALE - 1) * t;
 }
 
@@ -51,8 +48,7 @@ export function realisticSize(radiusKm: number): number {
 export function bodyScaleFactor(zoomFactor: number): number {
 	if (zoomFactor <= BODY_SCALE_ZOOM_MIN) return 0;
 	return Math.min(
-		(zoomFactor - BODY_SCALE_ZOOM_MIN) /
-			(BODY_SCALE_ZOOM_MAX - BODY_SCALE_ZOOM_MIN),
+		(zoomFactor - BODY_SCALE_ZOOM_MIN) / (BODY_SCALE_ZOOM_MAX - BODY_SCALE_ZOOM_MIN),
 		1,
 	);
 }

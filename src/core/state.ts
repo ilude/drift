@@ -42,8 +42,7 @@ export function formatDateTime(date: Date): string {
 export function speedLabel(timeSpeed: number): string {
 	if (timeSpeed === 0) return "Paused";
 	if (timeSpeed < 1) return `${Math.round(timeSpeed * 24)} hrs / sec`;
-	if (timeSpeed < 30)
-		return `${timeSpeed} day${timeSpeed === 1 ? "" : "s"} / sec`;
+	if (timeSpeed < 30) return `${timeSpeed} day${timeSpeed === 1 ? "" : "s"} / sec`;
 	return `${Math.round(timeSpeed / 30)} month${timeSpeed < 60 ? "" : "s"} / sec`;
 }
 
@@ -131,8 +130,6 @@ export function restoreShipState(savedData: SavedStateData | null): void {
 	if (!savedData || !savedData.ship) return;
 	const shipEntry = state.bodyMeshes.find((e) => isShipEntry(e));
 	if (!shipEntry || !isShipEntry(shipEntry)) return;
-	if (savedData.ship.fuelKg !== undefined)
-		shipEntry.fuelKg = savedData.ship.fuelKg;
-	if (savedData.ship.engineId !== undefined)
-		shipEntry.engineId = savedData.ship.engineId;
+	if (savedData.ship.fuelKg !== undefined) shipEntry.fuelKg = savedData.ship.fuelKg;
+	if (savedData.ship.engineId !== undefined) shipEntry.engineId = savedData.ship.engineId;
 }

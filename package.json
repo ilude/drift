@@ -1,33 +1,31 @@
 {
-  "name": "drift",
-  "version": "1.0.0",
-  "description": "",
-  "main": "src/main.js",
-  "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "lint": "eslint .",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage",
-    "typecheck": "tsc --noEmit"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs",
-  "devDependencies": {
-    "@eslint/js": "^10.0.1",
-    "@types/three": "^0.183.1",
-    "@vitest/coverage-v8": "^4.1.0",
-    "eslint": "^10.1.0",
-    "jsdom": "^29.0.1",
-    "typescript": "^5.9.3",
-    "typescript-eslint": "^8.57.1",
-    "vite": "^8.0.1",
-    "vitest": "^4.1.0"
-  },
-  "dependencies": {
-    "three": "^0.183.2"
-  }
+	"name": "drift",
+	"version": "1.0.0",
+	"description": "",
+	"main": "src/main.js",
+	"scripts": {
+		"dev": "vite",
+		"build": "vite build",
+		"lint": "biome check .",
+		"test": "vitest run",
+		"test:watch": "vitest",
+		"test:coverage": "vitest run --coverage",
+		"typecheck": "tsc --noEmit"
+	},
+	"keywords": [],
+	"author": "",
+	"license": "ISC",
+	"type": "commonjs",
+	"devDependencies": {
+		"@biomejs/biome": "^2.4.8",
+		"@types/three": "^0.183.1",
+		"@vitest/coverage-v8": "^4.1.0",
+		"jsdom": "^29.0.1",
+		"typescript": "^5.9.3",
+		"vite": "^8.0.1",
+		"vitest": "^4.1.0"
+	},
+	"dependencies": {
+		"three": "^0.183.2"
+	}
 }

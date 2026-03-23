@@ -1,20 +1,8 @@
 import { describe, expect, it } from "vitest";
-import {
-	rngFloat,
-	rngGaussian,
-	rngInt,
-	rngPick,
-	rngWeighted,
-	seededRandom,
-} from "../core/utils";
+import { rngFloat, rngGaussian, rngInt, rngPick, rngWeighted, seededRandom } from "../core/utils";
 import { getSolSystem } from "../data/sol-data";
 import { generateSystem, planetLetter } from "../data/system-generator";
-import {
-	categorizePlanet,
-	hillRadius,
-	keplerPeriod,
-	radiusToMassEarths,
-} from "../math/orbit";
+import { categorizePlanet, hillRadius, keplerPeriod, radiusToMassEarths } from "../math/orbit";
 
 // --- RNG helpers ---
 
@@ -197,16 +185,12 @@ describe("getSolSystem", () => {
 	});
 
 	it("has 8 planets", () => {
-		const planets = sol.bodies.filter(
-			(b: { type: string }) => b.type === "Planet",
-		);
+		const planets = sol.bodies.filter((b: { type: string }) => b.type === "Planet");
 		expect(planets).toHaveLength(8);
 	});
 
 	it("has Jupiter with 4 Galilean moons", () => {
-		const jupiter = sol.bodies.find(
-			(b: { name: string }) => b.name === "Jupiter",
-		);
+		const jupiter = sol.bodies.find((b: { name: string }) => b.name === "Jupiter");
 		expect(jupiter).toBeDefined();
 		if (!jupiter) return;
 		expect(jupiter.moons).toHaveLength(4);
@@ -229,9 +213,7 @@ describe("getSolSystem", () => {
 	});
 
 	it("planet distances are monotonically increasing", () => {
-		const planets = sol.bodies.filter(
-			(b: { type: string }) => b.type === "Planet",
-		);
+		const planets = sol.bodies.filter((b: { type: string }) => b.type === "Planet");
 		for (let i = 1; i < planets.length; i++) {
 			expect(planets[i].distance).toBeGreaterThan(planets[i - 1].distance);
 		}
@@ -255,8 +237,7 @@ describe("generateSystem", () => {
 		const sys1 = generateSystem(1);
 		const sys2 = generateSystem(2);
 		// Names or body counts should differ (extremely unlikely to match)
-		const same =
-			sys1.name === sys2.name && sys1.bodies.length === sys2.bodies.length;
+		const same = sys1.name === sys2.name && sys1.bodies.length === sys2.bodies.length;
 		expect(same).toBe(false);
 	});
 
@@ -277,23 +258,17 @@ describe("generateSystem", () => {
 
 	it("all planets have positive distance, period, and radius", () => {
 		const sys = generateSystem(500);
-		const planets = sys.bodies.filter(
-			(b: { type: string }) => b.type === "Planet",
-		);
-		planets.forEach(
-			(p: { distance: number; period: number; radius: number }) => {
-				expect(p.distance).toBeGreaterThan(0);
-				expect(p.period).toBeGreaterThan(0);
-				expect(p.radius).toBeGreaterThan(0);
-			},
-		);
+		const planets = sys.bodies.filter((b: { type: string }) => b.type === "Planet");
+		planets.forEach((p: { distance: number; period: number; radius: number }) => {
+			expect(p.distance).toBeGreaterThan(0);
+			expect(p.period).toBeGreaterThan(0);
+			expect(p.radius).toBeGreaterThan(0);
+		});
 	});
 
 	it("planet distances are sorted", () => {
 		const sys = generateSystem(300);
-		const planets = sys.bodies.filter(
-			(b: { type: string }) => b.type === "Planet",
-		);
+		const planets = sys.bodies.filter((b: { type: string }) => b.type === "Planet");
 		for (let i = 1; i < planets.length; i++) {
 			expect(planets[i].distance).toBeGreaterThan(planets[i - 1].distance);
 		}
@@ -311,12 +286,10 @@ describe("generateSystem", () => {
 
 	it("asteroid belts have valid ranges", () => {
 		const sys = generateSystem(400);
-		sys.asteroidBelts.forEach(
-			(belt: { minAU: number; maxAU: number; count: number }) => {
-				expect(belt.minAU).toBeLessThan(belt.maxAU);
-				expect(belt.count).toBeGreaterThan(0);
-			},
-		);
+		sys.asteroidBelts.forEach((belt: { minAU: number; maxAU: number; count: number }) => {
+			expect(belt.minAU).toBeLessThan(belt.maxAU);
+			expect(belt.count).toBeGreaterThan(0);
+		});
 	});
 
 	it("returns bodies, comets, and asteroidBelts arrays", () => {

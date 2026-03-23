@@ -34,10 +34,7 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 container.appendChild(renderer.domElement);
 
 // Controls
-export const controls: OrbitControls = new OrbitControls(
-	camera,
-	renderer.domElement,
-);
+export const controls: OrbitControls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.08;
 controls.minDistance = 5;
@@ -59,17 +56,13 @@ renderer.domElement.addEventListener(
 		const factor: number = zoomIn ? 0.15 : -0.12;
 		const dist: number = camera.position.distanceTo(controls.target);
 		const newDist: number = dist * (1 - factor);
-		if (newDist < controls.minDistance || newDist > controls.maxDistance)
-			return;
+		if (newDist < controls.minDistance || newDist > controls.maxDistance) return;
 
 		zoomMouse.x = (e.clientX / window.innerWidth) * 2 - 1;
 		zoomMouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
 		zoomRay.setFromCamera(zoomMouse, camera);
 
-		const hit: THREE.Vector3 | null = zoomRay.ray.intersectPlane(
-			zoomPlane,
-			zoomIntersect,
-		);
+		const hit: THREE.Vector3 | null = zoomRay.ray.intersectPlane(zoomPlane, zoomIntersect);
 		if (!hit) return;
 
 		camera.position.x += (zoomIntersect.x - camera.position.x) * factor;

@@ -1,12 +1,6 @@
 import "./style.css";
 import * as THREE from "three";
-import {
-	loadSavedState,
-	MASTER_SEED,
-	restoreShipState,
-	saveState,
-	state,
-} from "./core/state";
+import { loadSavedState, MASTER_SEED, restoreShipState, saveState, state } from "./core/state";
 import { seededRandom } from "./core/utils";
 import { getSolSystem } from "./data/sol-data";
 import { generateSystem } from "./data/system-generator";
@@ -19,21 +13,8 @@ import {
 	updateAsteroids,
 	updatePositions,
 } from "./rendering/rendering";
-import {
-	camera,
-	cometGroup,
-	controls,
-	renderer,
-	scene,
-	trailGroups,
-} from "./rendering/scene";
-import type {
-	BodyEntry,
-	PlanetEntry,
-	SavedStateData,
-	ShipEntry,
-	SystemData,
-} from "./types";
+import { camera, cometGroup, controls, renderer, scene, trailGroups } from "./rendering/scene";
+import type { BodyEntry, PlanetEntry, SavedStateData, ShipEntry, SystemData } from "./types";
 import { isShipEntry } from "./types";
 import {
 	selectBody,
@@ -43,13 +24,7 @@ import {
 	updateInfoPosition,
 } from "./ui/selection";
 import type { PerfTimings } from "./ui/ui";
-import {
-	buildBodyList,
-	setupUI,
-	updateHUD,
-	updateLabels,
-	updatePerfDisplay,
-} from "./ui/ui";
+import { buildBodyList, setupUI, updateHUD, updateLabels, updatePerfDisplay } from "./ui/ui";
 
 // ---------------------------------------------------------------------------
 // Initialize
@@ -57,9 +32,7 @@ import {
 let starEntry: PlanetEntry | null = null;
 
 function cacheStarEntry(): void {
-	starEntry =
-		(state.bodyMeshes.find((e) => e.data.type === "Star") as PlanetEntry) ||
-		null;
+	starEntry = (state.bodyMeshes.find((e) => e.data.type === "Star") as PlanetEntry) || null;
 }
 
 state.masterRng = seededRandom(MASTER_SEED);
@@ -146,9 +119,7 @@ function teardownSystem(): void {
 			if (child !== entry.selRing) {
 				(child as THREE.Mesh).geometry.dispose();
 				if (((child as THREE.Mesh).material as THREE.MeshStandardMaterial).map)
-					(
-						(child as THREE.Mesh).material as THREE.MeshStandardMaterial
-					).map?.dispose();
+					((child as THREE.Mesh).material as THREE.MeshStandardMaterial).map?.dispose();
 				((child as THREE.Mesh).material as THREE.Material).dispose();
 			}
 		});
@@ -211,8 +182,7 @@ function loadSystem(systemData: SystemData): void {
 
 	buildBodyList();
 	cacheStarEntry();
-	(document.querySelector(".system-name") as HTMLElement).textContent =
-		`${systemData.name} \u25be`;
+	(document.querySelector(".system-name") as HTMLElement).textContent = `${systemData.name} \u25be`;
 	document.title = `Drift - ${systemData.name}`;
 	state.simTime = 0;
 }
@@ -286,13 +256,10 @@ function animate(now: number): void {
 		if (state.debugStepFrames === 0) {
 			state.timeSpeed = 0;
 			window.dispatchEvent(new Event("debug-step-done"));
-			const ship = state.bodyMeshes.find((e) => e.isShip) as
-				| ShipEntry
-				| undefined;
+			const ship = state.bodyMeshes.find((e) => e.isShip) as ShipEntry | undefined;
 			if (ship) {
 				const elapsed: number = state.simTime - ship.transferStartTime;
-				const t: number =
-					ship.transferTimeDays > 0 ? elapsed / ship.transferTimeDays : 0;
+				const t: number = ship.transferTimeDays > 0 ? elapsed / ship.transferTimeDays : 0;
 				console.log("DEBUG STEP PAUSED:", {
 					simTime: state.simTime.toFixed(3),
 					shipState: ship.shipState,
@@ -321,8 +288,7 @@ function animate(now: number): void {
 	const _t4 = performance.now();
 
 	if (starEntry && (starEntry.mesh.material as THREE.ShaderMaterial).uniforms) {
-		(starEntry.mesh.material as THREE.ShaderMaterial).uniforms.uTime.value =
-			timer.getElapsed();
+		(starEntry.mesh.material as THREE.ShaderMaterial).uniforms.uTime.value = timer.getElapsed();
 	}
 
 	renderer.render(scene, camera);

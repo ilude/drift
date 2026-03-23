@@ -1,12 +1,7 @@
 // Ship physics: fuel, thrust, and delta-v calculations
 // Uses km/kg/s internally; accepts AU at boundaries
 
-import type {
-	EngineType,
-	HohmannDeltaVResult,
-	ShipPhysicsState,
-	TransferResult,
-} from "../types";
+import type { EngineType, HohmannDeltaVResult, ShipPhysicsState, TransferResult } from "../types";
 
 // --- Constants ---
 
@@ -42,11 +37,7 @@ export function exhaustVelocity(ispS: number): number {
  * @param dryMassKg - final mass (no fuel)
  * @returns delta-v in km/s
  */
-export function rocketDeltaV(
-	veKmS: number,
-	wetMassKg: number,
-	dryMassKg: number,
-): number {
+export function rocketDeltaV(veKmS: number, wetMassKg: number, dryMassKg: number): number {
 	if (wetMassKg <= dryMassKg || dryMassKg <= 0) return 0;
 	return veKmS * Math.log(wetMassKg / dryMassKg);
 }
@@ -59,11 +50,7 @@ export function rocketDeltaV(
  * @param dvKmS - desired delta-v in km/s
  * @returns fuel mass in kg
  */
-export function fuelRequired(
-	veKmS: number,
-	dryMassKg: number,
-	dvKmS: number,
-): number {
+export function fuelRequired(veKmS: number, dryMassKg: number, dvKmS: number): number {
 	if (veKmS <= 0 || dryMassKg <= 0 || dvKmS <= 0) return 0;
 	return dryMassKg * (Math.exp(dvKmS / veKmS) - 1);
 }
@@ -112,11 +99,7 @@ export function hohmannDeltaV(
  * @param starMassSolar - star mass in solar masses
  * @returns transfer time in days
  */
-export function hohmannTransferDays(
-	r1AU: number,
-	r2AU: number,
-	starMassSolar: number,
-): number {
+export function hohmannTransferDays(r1AU: number, r2AU: number, starMassSolar: number): number {
 	const mu = muKmS(starMassSolar);
 	const r1 = r1AU * AU_TO_KM;
 	const r2 = r2AU * AU_TO_KM;
@@ -136,11 +119,7 @@ export function hohmannTransferDays(
  * @param accelMS2 - sustained acceleration in m/s²
  * @returns transfer time in days
  */
-export function brachistochroneTime(
-	r1AU: number,
-	r2AU: number,
-	accelMS2: number,
-): number {
+export function brachistochroneTime(r1AU: number, r2AU: number, accelMS2: number): number {
 	const d = Math.abs(r2AU - r1AU) * AU_TO_KM * 1000; // meters
 	const T = 2 * Math.sqrt(d / accelMS2); // seconds
 	return T / 86400; // days
@@ -153,11 +132,7 @@ export function brachistochroneTime(
  * @param accelMS2 - sustained acceleration in m/s²
  * @returns delta-v in km/s
  */
-export function brachistochroneDeltaV(
-	r1AU: number,
-	r2AU: number,
-	accelMS2: number,
-): number {
+export function brachistochroneDeltaV(r1AU: number, r2AU: number, accelMS2: number): number {
 	const d = Math.abs(r2AU - r1AU) * AU_TO_KM * 1000; // meters
 	const dv = 2 * Math.sqrt(d * accelMS2); // m/s
 	return dv / 1000; // km/s

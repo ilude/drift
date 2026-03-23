@@ -118,9 +118,7 @@ describe("ship info panel", () => {
 			"transfer-target",
 		].forEach((id) => {
 			if (!document.getElementById(id)) {
-				const el = document.createElement(
-					id === "transfer-target" ? "select" : "div",
-				);
+				const el = document.createElement(id === "transfer-target" ? "select" : "div");
 				el.id = id;
 				if (
 					id === "info-panel" ||
@@ -194,24 +192,12 @@ describe("ship info panel", () => {
 
 		selectBody(shipEntry as unknown as BodyEntry);
 
-		expect(
-			document.getElementById("info-ship-engine")?.classList.contains("hidden"),
-		).toBe(false);
-		expect(
-			document.getElementById("info-ship-fuel")?.classList.contains("hidden"),
-		).toBe(false);
-		expect(
-			document.getElementById("info-ship-deltav")?.classList.contains("hidden"),
-		).toBe(false);
-		expect(document.getElementById("ship-engine-value")?.textContent).toBe(
-			"Conventional TN",
-		);
-		expect(document.getElementById("ship-fuel-value")?.textContent).toContain(
-			"50.00t",
-		);
-		expect(document.getElementById("ship-deltav-value")?.textContent).toContain(
-			"km/s",
-		);
+		expect(document.getElementById("info-ship-engine")?.classList.contains("hidden")).toBe(false);
+		expect(document.getElementById("info-ship-fuel")?.classList.contains("hidden")).toBe(false);
+		expect(document.getElementById("info-ship-deltav")?.classList.contains("hidden")).toBe(false);
+		expect(document.getElementById("ship-engine-value")?.textContent).toBe("Conventional TN");
+		expect(document.getElementById("ship-fuel-value")?.textContent).toContain("50.00t");
+		expect(document.getElementById("ship-deltav-value")?.textContent).toContain("km/s");
 	});
 });
 

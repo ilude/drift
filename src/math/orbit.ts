@@ -36,13 +36,7 @@ export function meanToTrue(M: number, e: number): number {
 
 	// Eccentric anomaly E → true anomaly θ
 	const halfE: number = E / 2;
-	return (
-		2 *
-		Math.atan2(
-			Math.sqrt(1 + e) * Math.sin(halfE),
-			Math.sqrt(1 - e) * Math.cos(halfE),
-		)
-	);
+	return 2 * Math.atan2(Math.sqrt(1 + e) * Math.sin(halfE), Math.sqrt(1 - e) * Math.cos(halfE));
 }
 
 const _incOut: Vector3Like = { x: 0, y: 0, z: 0 };

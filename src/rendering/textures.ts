@@ -51,9 +51,7 @@ function buildPerm(rng: () => number): Uint8Array {
 	return perm;
 }
 
-function createNoise3D(
-	rng: () => number,
-): (x: number, y: number, z: number) => number {
+function createNoise3D(rng: () => number): (x: number, y: number, z: number) => number {
 	const perm = buildPerm(rng);
 	return function noise3D(x: number, y: number, z: number): number {
 		const s = (x + y + z) * F3;
@@ -128,14 +126,7 @@ function createNoise3D(
 			jj = j & 255,
 			kk = k & 255;
 
-		function contrib(
-			gx: number,
-			gy: number,
-			gz: number,
-			dx: number,
-			dy: number,
-			dz: number,
-		): number {
+		function contrib(gx: number, gy: number, gz: number, dx: number, dy: number, dz: number): number {
 			const t = 0.6 - dx * dx - dy * dy - dz * dz;
 			if (t < 0) return 0;
 			const g = GRAD3[perm[ii + gx + perm[jj + gy + perm[kk + gz]]] % 12];
@@ -183,11 +174,7 @@ function parseColor(hex: string): RGB {
 }
 
 function lerpColor(a: RGB, b: RGB, t: number): RGB {
-	return [
-		a[0] + (b[0] - a[0]) * t,
-		a[1] + (b[1] - a[1]) * t,
-		a[2] + (b[2] - a[2]) * t,
-	];
+	return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
 }
 
 function clamp01(v: number): number {
@@ -199,11 +186,7 @@ function clamp01(v: number): number {
 function uvToSphere(u: number, v: number): [number, number, number] {
 	const theta = u * Math.PI * 2;
 	const phi = v * Math.PI;
-	return [
-		Math.sin(phi) * Math.cos(theta),
-		Math.sin(phi) * Math.sin(theta),
-		Math.cos(phi),
-	];
+	return [Math.sin(phi) * Math.cos(theta), Math.sin(phi) * Math.sin(theta), Math.cos(phi)];
 }
 
 // --- Texture generators ---
@@ -255,10 +238,7 @@ function generateRockyTexture(
 			}
 
 			n = clamp01(n);
-			const rgb =
-				n < 0.5
-					? lerpColor(dark, base, n * 2)
-					: lerpColor(base, light, (n - 0.5) * 2);
+			const rgb = n < 0.5 ? lerpColor(dark, base, n * 2) : lerpColor(base, light, (n - 0.5) * 2);
 
 			const idx = (y * w + x) * 4;
 			img.data[idx] = rgb[0] * 255;
@@ -290,14 +270,10 @@ function generateGasGiantTexture(
 	const hsl = { h: 0, s: 0, l: 0 };
 	new THREE.Color(color).getHSL(hsl);
 	const color2 = parseColor(
-		new THREE.Color()
-			.setHSL((hsl.h + 0.05) % 1, hsl.s, Math.min(1, hsl.l * 1.2))
-			.getHexString(),
+		new THREE.Color().setHSL((hsl.h + 0.05) % 1, hsl.s, Math.min(1, hsl.l * 1.2)).getHexString(),
 	);
 	const color3 = parseColor(
-		new THREE.Color()
-			.setHSL((hsl.h - 0.03 + 1) % 1, hsl.s, hsl.l * 0.8)
-			.getHexString(),
+		new THREE.Color().setHSL((hsl.h - 0.03 + 1) % 1, hsl.s, hsl.l * 0.8).getHexString(),
 	);
 
 	const bandCount = 8 + Math.floor(rng() * 7);
@@ -335,11 +311,7 @@ function generateGasGiantTexture(
 				if (sd < 1) {
 					const swirl = noise(sx * 12 + 20, sy * 12, sz * 12) * 0.2;
 					const blend = (1 - sd) * 0.6;
-					rgb = lerpColor(
-						rgb,
-						[rgb[0] + swirl, rgb[1] - 0.05, rgb[2] - 0.05],
-						blend,
-					);
+					rgb = lerpColor(rgb, [rgb[0] + swirl, rgb[1] - 0.05, rgb[2] - 0.05], blend);
 				}
 			}
 
@@ -373,9 +345,7 @@ function generateIceGiantTexture(
 	const hsl = { h: 0, s: 0, l: 0 };
 	new THREE.Color(color).getHSL(hsl);
 	const pole = parseColor(
-		new THREE.Color()
-			.setHSL(hsl.h, hsl.s * 0.7, Math.min(1, hsl.l * 1.15))
-			.getHexString(),
+		new THREE.Color().setHSL(hsl.h, hsl.s * 0.7, Math.min(1, hsl.l * 1.15)).getHexString(),
 	);
 
 	for (let y = 0; y < h; y++) {
@@ -422,9 +392,7 @@ function generateSubNeptuneTexture(
 	const hsl = { h: 0, s: 0, l: 0 };
 	new THREE.Color(color).getHSL(hsl);
 	const haze = parseColor(
-		new THREE.Color()
-			.setHSL(hsl.h, hsl.s * 0.5, Math.min(1, hsl.l * 1.1))
-			.getHexString(),
+		new THREE.Color().setHSL(hsl.h, hsl.s * 0.5, Math.min(1, hsl.l * 1.1)).getHexString(),
 	);
 
 	for (let y = 0; y < h; y++) {
@@ -727,8 +695,7 @@ export function generateCloudTextureForBody(
 	const radiusEarths = data.radius / EARTH_RADIUS_KM;
 
 	// Rocky bodies need minimum size for atmosphere
-	if (category === "rocky" && radiusEarths < ROCKY_CLOUD_MIN_RADIUS)
-		return null;
+	if (category === "rocky" && radiusEarths < ROCKY_CLOUD_MIN_RADIUS) return null;
 
 	const seed = hashString(`${data.name}_clouds`);
 	const rng = seededRandom(seed);

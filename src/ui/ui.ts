@@ -1,10 +1,5 @@
 import * as THREE from "three";
-import {
-	formatDateTime,
-	simTimeToDate,
-	state,
-	truncateDate,
-} from "../core/state";
+import { formatDateTime, simTimeToDate, state, truncateDate } from "../core/state";
 import { generateSystem } from "../data/system-generator";
 import {
 	bodyScaleFactor,
@@ -25,14 +20,7 @@ export function buildBodyList(): void {
 	bodyListEl.innerHTML = "";
 
 	const groups: Record<string, BodyEntry[]> = {};
-	const groupOrder = [
-		"Star",
-		"Planet",
-		"Dwarf Planet",
-		"Detached Object",
-		"Comet",
-		"Ship",
-	];
+	const groupOrder = ["Star", "Planet", "Dwarf Planet", "Detached Object", "Comet", "Ship"];
 	state.bodyMeshes.forEach((entry) => {
 		if (entry.isMoon) return;
 		const type = entry.data.type;
@@ -83,8 +71,7 @@ export function buildBodyList(): void {
 				if ((e.target as HTMLElement).classList.contains("moon-toggle")) {
 					const moonList = item.nextElementSibling;
 					if (moonList?.classList.contains("moon-sublist")) {
-						const collapsed =
-							(moonList as HTMLElement).style.display === "none";
+						const collapsed = (moonList as HTMLElement).style.display === "none";
 						(moonList as HTMLElement).style.display = collapsed ? "" : "none";
 						(e.target as HTMLElement).textContent = collapsed ? "[-]" : "[+]";
 					}
@@ -183,8 +170,7 @@ export function updateLabels(camDist: number): void {
 
 	const needsScaleUpdate = scaleFactor !== lastScaleFactor;
 	const needsLodUpdate =
-		lastLodCamDist < 0 ||
-		Math.abs(camDist - lastLodCamDist) / lastLodCamDist > 0.05;
+		lastLodCamDist < 0 || Math.abs(camDist - lastLodCamDist) / lastLodCamDist > 0.05;
 
 	// Throttle label transforms to every 2 frames (47 FPS, imperceptible for text)
 	labelFrameCounter = (labelFrameCounter + 1) % 2;
@@ -204,15 +190,9 @@ export function updateLabels(camDist: number): void {
 			}
 		}
 
-		if (
-			!entry.isMoon &&
-			!entry.isComet &&
-			!entry.isShip &&
-			"baseSize" in entry
-		) {
+		if (!entry.isMoon && !entry.isComet && !entry.isShip && "baseSize" in entry) {
 			if (needsScaleUpdate) {
-				const scaledSize =
-					entry.baseSize + scaleFactor * (entry.realisticSize - entry.baseSize);
+				const scaledSize = entry.baseSize + scaleFactor * (entry.realisticSize - entry.baseSize);
 				const s = scaledSize / entry.baseSize;
 				entry.mesh.scale.set(s, s, s);
 				entry.screenSize = scaledSize;
@@ -235,12 +215,7 @@ export function updateLabels(camDist: number): void {
 		const cy = (-tempVec.y * 0.5 + 0.5) * screenH;
 
 		const margin = 100;
-		if (
-			cx < -margin ||
-			cx > screenW + margin ||
-			cy < -margin ||
-			cy > screenH + margin
-		) {
+		if (cx < -margin || cx > screenW + margin || cy < -margin || cy > screenH + margin) {
 			const targetDisplay = "none";
 			if (entry.labelDisplay !== targetDisplay) {
 				entry.labelDiv.style.display = targetDisplay;
@@ -258,10 +233,7 @@ export function updateLabels(camDist: number): void {
 		}
 
 		const radius = entry.screenSize || 0.3;
-		const dist = edgeVec
-			.copy(entry.mesh.position)
-			.sub(camera.position)
-			.length();
+		const dist = edgeVec.copy(entry.mesh.position).sub(camera.position).length();
 		const sr = calcScreenRadius(radius, dist, fov, screenH);
 
 		// LOD: swap sphere geometry based on screen size
@@ -312,10 +284,7 @@ let lastHudSimTime = -1;
 let lastHudTimeSpeed = -1;
 
 export function updateHUD(camDist: number): void {
-	if (
-		state.simTime !== lastHudSimTime ||
-		state.timeSpeed !== lastHudTimeSpeed
-	) {
+	if (state.simTime !== lastHudSimTime || state.timeSpeed !== lastHudTimeSpeed) {
 		lastHudSimTime = state.simTime;
 		lastHudTimeSpeed = state.timeSpeed;
 		const d = truncateDate(simTimeToDate(state.simTime), state.timeSpeed);
@@ -405,42 +374,30 @@ export function setupUI(loadSystem: (systemData: SystemData) => void): void {
 	_loadSystem = loadSystem;
 
 	// System switcher
-	document
-		.getElementById("system-switcher-btn")
-		?.addEventListener("click", () => {
-			const dropdown = document.getElementById(
-				"system-switcher-dropdown",
-			) as HTMLElement;
-			dropdown.classList.toggle("hidden");
-			if (!dropdown.classList.contains("hidden")) rebuildSystemList();
-		});
+	document.getElementById("system-switcher-btn")?.addEventListener("click", () => {
+		const dropdown = document.getElementById("system-switcher-dropdown") as HTMLElement;
+		dropdown.classList.toggle("hidden");
+		if (!dropdown.classList.contains("hidden")) rebuildSystemList();
+	});
 
 	document.getElementById("btn-discover")?.addEventListener("click", () => {
-		const seedStr = (
-			document.getElementById("seed-input") as HTMLInputElement
-		).value.trim();
+		const seedStr = (document.getElementById("seed-input") as HTMLInputElement).value.trim();
 		if (!seedStr) return;
 		discoverSystem(hashString(seedStr));
 		(document.getElementById("seed-input") as HTMLInputElement).value = "";
-		document
-			.getElementById("system-switcher-dropdown")
-			?.classList.add("hidden");
+		document.getElementById("system-switcher-dropdown")?.classList.add("hidden");
 	});
 
 	document.getElementById("btn-random")?.addEventListener("click", () => {
 		const seed = Math.floor((state.masterRng?.() ?? 0) * 2147483646) + 1;
 		state.randomClickCount++;
 		discoverSystem(seed);
-		document
-			.getElementById("system-switcher-dropdown")
-			?.classList.add("hidden");
+		document.getElementById("system-switcher-dropdown")?.classList.add("hidden");
 	});
 
-	document
-		.getElementById("seed-input")
-		?.addEventListener("keydown", (e: KeyboardEvent) => {
-			if (e.key === "Enter") document.getElementById("btn-discover")?.click();
-		});
+	document.getElementById("seed-input")?.addEventListener("keydown", (e: KeyboardEvent) => {
+		if (e.key === "Enter") document.getElementById("btn-discover")?.click();
+	});
 
 	// Time controls — speed selector dropdown
 	const TIME_SCALES: Array<{ label: string; speed: number }> = [
@@ -458,9 +415,7 @@ export function setupUI(loadSystem: (systemData: SystemData) => void): void {
 	];
 	const DEFAULT_SCALE_INDEX = 8; // 1 Day
 
-	const speedDropdown = document.getElementById(
-		"speed-selector-dropdown",
-	) as HTMLElement;
+	const speedDropdown = document.getElementById("speed-selector-dropdown") as HTMLElement;
 	const speedBtn = document.getElementById("speed-selector-btn") as HTMLElement;
 	const speedListEl = document.getElementById("speed-list") as HTMLElement;
 	const pauseBtn = document.getElementById("btn-pause") as HTMLElement;
@@ -468,9 +423,7 @@ export function setupUI(loadSystem: (systemData: SystemData) => void): void {
 	let paused = false;
 
 	function updateSpeedBtn(): void {
-		speedBtn.textContent = paused
-			? "Paused ▾"
-			: `${TIME_SCALES[activeScaleIndex].label} ▾`;
+		speedBtn.textContent = paused ? "Paused ▾" : `${TIME_SCALES[activeScaleIndex].label} ▾`;
 		pauseBtn.textContent = paused ? "|>" : "||";
 		pauseBtn.classList.toggle("active", paused);
 	}
@@ -519,19 +472,12 @@ export function setupUI(loadSystem: (systemData: SystemData) => void): void {
 	pauseBtn.addEventListener("click", togglePause);
 
 	window.addEventListener("keydown", (e: KeyboardEvent) => {
-		const onFormElement = ["INPUT", "SELECT", "TEXTAREA"].includes(
-			(e.target as HTMLElement).tagName,
-		);
+		const onFormElement = ["INPUT", "SELECT", "TEXTAREA"].includes((e.target as HTMLElement).tagName);
 		if (e.code === "Space" || e.key === " ") {
 			if (onFormElement) return;
 			e.preventDefault();
 			togglePause();
-		} else if (
-			e.key === "n" ||
-			e.key === "N" ||
-			e.key === "b" ||
-			e.key === "B"
-		) {
+		} else if (e.key === "n" || e.key === "N" || e.key === "b" || e.key === "B") {
 			if (onFormElement) return;
 			e.preventDefault();
 			const backward = e.key === "b" || e.key === "B";
@@ -544,8 +490,7 @@ export function setupUI(loadSystem: (systemData: SystemData) => void): void {
 			window.dispatchEvent(new Event("wake-render"));
 			const ship = state.bodyMeshes.find(isShipEntry);
 			const elapsed = ship ? state.simTime - ship.transferStartTime : 0;
-			const t =
-				ship && ship.transferTimeDays > 0 ? elapsed / ship.transferTimeDays : 0;
+			const t = ship && ship.transferTimeDays > 0 ? elapsed / ship.transferTimeDays : 0;
 			console.log(`DEBUG STEP [${backward ? "B" : "N"}]:`, {
 				speed,
 				simTime: state.simTime.toFixed(3),

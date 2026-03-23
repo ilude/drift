@@ -247,13 +247,8 @@ describe("checkTransfer", () => {
 		const result = checkTransfer(1.0, 1.524, 1.0, ship);
 		const engine = ENGINE_TYPES.find((e) => e.id === "conventional");
 		expect(engine).toBeDefined();
-		const veKmS =
-			exhaustVelocity((engine as NonNullable<typeof engine>).ispS) / 1000;
-		const expectedFuel = fuelRequired(
-			veKmS,
-			ship.dryMassKg,
-			result.deltaVRequired ?? 0,
-		);
+		const veKmS = exhaustVelocity((engine as NonNullable<typeof engine>).ispS) / 1000;
+		const expectedFuel = fuelRequired(veKmS, ship.dryMassKg, result.deltaVRequired ?? 0);
 		expect(result.fuelUsedKg).toBeCloseTo(expectedFuel, 6);
 	});
 
