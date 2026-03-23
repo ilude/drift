@@ -26,7 +26,7 @@ camera.lookAt(0, 0, 0);
 // Renderer
 const container = document.getElementById("canvas-container");
 if (!container) throw new Error("Canvas container not found");
-export const renderer: THREE.WebGLRenderer = new THREE.WebGLRenderer({
+export let renderer: THREE.WebGLRenderer = new THREE.WebGLRenderer({
 	antialias: false,
 });
 renderer.setSize(window.innerWidth, window.innerHeight);
@@ -34,13 +34,17 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 container.appendChild(renderer.domElement);
 
 // Controls
-export const controls: OrbitControls = new OrbitControls(camera, renderer.domElement);
-controls.enableDamping = true;
-controls.dampingFactor = 0.08;
-controls.minDistance = 5;
-controls.maxDistance = 5000;
-controls.maxPolarAngle = Math.PI * 0.85;
-controls.enableZoom = false;
+export let controls: OrbitControls = new OrbitControls(camera, renderer.domElement);
+
+function configureControls(ctrl: OrbitControls): void {
+	ctrl.enableDamping = true;
+	ctrl.dampingFactor = 0.08;
+	ctrl.minDistance = 5;
+	ctrl.maxDistance = 5000;
+	ctrl.maxPolarAngle = Math.PI * 0.85;
+	ctrl.enableZoom = false;
+}
+configureControls(controls);
 
 // Zoom-to-cursor
 const zoomPlane: THREE.Plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
@@ -48,32 +52,57 @@ const zoomRay: THREE.Raycaster = new THREE.Raycaster();
 const zoomMouse: THREE.Vector2 = new THREE.Vector2();
 const zoomIntersect: THREE.Vector3 = new THREE.Vector3();
 
-renderer.domElement.addEventListener(
-	"wheel",
-	(e: WheelEvent) => {
-		e.preventDefault();
-		const zoomIn: boolean = e.deltaY < 0;
-		const factor: number = zoomIn ? 0.15 : -0.12;
-		const dist: number = camera.position.distanceTo(controls.target);
-		const newDist: number = dist * (1 - factor);
-		if (newDist < controls.minDistance || newDist > controls.maxDistance) return;
+function attachZoomHandler(canvas: HTMLCanvasElement): void {
+	canvas.addEventListener(
+		"wheel",
+		(e: WheelEvent) => {
+			e.preventDefault();
+			const zoomIn: boolean = e.deltaY < 0;
+			const factor: number = zoomIn ? 0.15 : -0.12;
+			const dist: number = camera.position.distanceTo(controls.target);
+			const newDist: number = dist * (1 - factor);
+			if (newDist < controls.minDistance || newDist > controls.maxDistance) return;
 
-		zoomMouse.x = (e.clientX / window.innerWidth) * 2 - 1;
-		zoomMouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
-		zoomRay.setFromCamera(zoomMouse, camera);
+			zoomMouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+			zoomMouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+			zoomRay.setFromCamera(zoomMouse, camera);
 
-		const hit: THREE.Vector3 | null = zoomRay.ray.intersectPlane(zoomPlane, zoomIntersect);
-		if (!hit) return;
+			const hit: THREE.Vector3 | null = zoomRay.ray.intersectPlane(zoomPlane, zoomIntersect);
+			if (!hit) return;
 
-		camera.position.x += (zoomIntersect.x - camera.position.x) * factor;
-		camera.position.y += (zoomIntersect.y - camera.position.y) * factor;
-		camera.position.z += (zoomIntersect.z - camera.position.z) * factor;
+			camera.position.x += (zoomIntersect.x - camera.position.x) * factor;
+			camera.position.y += (zoomIntersect.y - camera.position.y) * factor;
+			camera.position.z += (zoomIntersect.z - camera.position.z) * factor;
 
-		controls.target.x += (zoomIntersect.x - controls.target.x) * factor;
-		controls.target.z += (zoomIntersect.z - controls.target.z) * factor;
-	},
-	{ passive: false },
-);
+			controls.target.x += (zoomIntersect.x - controls.target.x) * factor;
+			controls.target.z += (zoomIntersect.z - controls.target.z) * factor;
+		},
+		{ passive: false },
+	);
+}
+attachZoomHandler(renderer.domElement);
+
+// Antialias toggle — requires renderer recreation
+export function setAntialias(enabled: boolean): void {
+	const oldTarget = controls.target.clone();
+	controls.dispose();
+	container?.removeChild(renderer.domElement);
+	renderer.dispose();
+
+	renderer = new THREE.WebGLRenderer({ antialias: enabled });
+	renderer.setSize(window.innerWidth, window.innerHeight);
+	renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+	container?.appendChild(renderer.domElement);
+
+	controls = new OrbitControls(camera, renderer.domElement);
+	configureControls(controls);
+	controls.target.copy(oldTarget);
+
+	attachZoomHandler(renderer.domElement);
+
+	// Re-attach click handler from selection module
+	window.dispatchEvent(new CustomEvent("renderer-replaced"));
+}
 
 // Shared Three.js groups
 export const labelContainer: HTMLDivElement = document.createElement("div");

@@ -318,64 +318,71 @@ export function updateInfoPosition(): void {
 	}
 }
 
-export function setupClickHandlers(): void {
-	renderer.domElement.addEventListener("click", (event: MouseEvent) => {
-		const mx: number = event.clientX;
-		const my: number = event.clientY;
+function onCanvasClick(event: MouseEvent): void {
+	const mx: number = event.clientX;
+	const my: number = event.clientY;
 
-		let closest: BodyEntry | null = null;
-		let closestDist: number = Infinity;
-		let closestAsteroid: {
-			belt: AsteroidBeltData;
-			asteroid: AsteroidInfo;
-			index: number;
-		} | null = null;
+	let closest: BodyEntry | null = null;
+	let closestDist: number = Infinity;
+	let closestAsteroid: {
+		belt: AsteroidBeltData;
+		asteroid: AsteroidInfo;
+		index: number;
+	} | null = null;
 
-		state.bodyMeshes.forEach((entry) => {
-			clickVec.copy(entry.mesh.position);
+	state.bodyMeshes.forEach((entry) => {
+		clickVec.copy(entry.mesh.position);
+		clickVec.project(camera);
+		if (clickVec.z > 1) return;
+
+		const sx: number = (clickVec.x * 0.5 + 0.5) * window.innerWidth;
+		const sy: number = (-clickVec.y * 0.5 + 0.5) * window.innerHeight;
+		const dist: number = Math.hypot(mx - sx, my - sy);
+
+		if (dist < closestDist) {
+			closestDist = dist;
+			closest = entry;
+			closestAsteroid = null;
+		}
+	});
+
+	const asteroidClickDist: number = 20;
+	state.asteroidBelts.forEach((beltEntry) => {
+		const { positions, asteroids, count } = beltEntry;
+		for (let i = 0; i < count; i++) {
+			clickVec.set(positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2]);
 			clickVec.project(camera);
-			if (clickVec.z > 1) return;
+			if (clickVec.z > 1) continue;
 
 			const sx: number = (clickVec.x * 0.5 + 0.5) * window.innerWidth;
 			const sy: number = (-clickVec.y * 0.5 + 0.5) * window.innerHeight;
 			const dist: number = Math.hypot(mx - sx, my - sy);
 
-			if (dist < closestDist) {
+			if (dist < closestDist && dist < asteroidClickDist) {
 				closestDist = dist;
-				closest = entry;
-				closestAsteroid = null;
+				closest = null;
+				closestAsteroid = {
+					belt: beltEntry.belt,
+					asteroid: asteroids[i],
+					index: i,
+				};
 			}
-		});
-
-		const asteroidClickDist: number = 20;
-		state.asteroidBelts.forEach((beltEntry) => {
-			const { positions, asteroids, count } = beltEntry;
-			for (let i = 0; i < count; i++) {
-				clickVec.set(positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2]);
-				clickVec.project(camera);
-				if (clickVec.z > 1) continue;
-
-				const sx: number = (clickVec.x * 0.5 + 0.5) * window.innerWidth;
-				const sy: number = (-clickVec.y * 0.5 + 0.5) * window.innerHeight;
-				const dist: number = Math.hypot(mx - sx, my - sy);
-
-				if (dist < closestDist && dist < asteroidClickDist) {
-					closestDist = dist;
-					closest = null;
-					closestAsteroid = {
-						belt: beltEntry.belt,
-						asteroid: asteroids[i],
-						index: i,
-					};
-				}
-			}
-		});
-
-		if (closestAsteroid && closestDist < asteroidClickDist) {
-			selectAsteroid(closestAsteroid);
-		} else if (closest && closestDist < MAX_CLICK_DIST) {
-			selectBody(closest);
 		}
+	});
+
+	if (closestAsteroid && closestDist < asteroidClickDist) {
+		selectAsteroid(closestAsteroid);
+	} else if (closest && closestDist < MAX_CLICK_DIST) {
+		selectBody(closest);
+	}
+}
+
+export function setupClickHandlers(): void {
+	renderer.domElement.addEventListener("click", onCanvasClick);
+
+	// Re-attach click handler when renderer is recreated (antialias toggle)
+	window.addEventListener("renderer-replaced", () => {
+		renderer.domElement.addEventListener("click", onCanvasClick);
 	});
 
 	const transferBtn = document.getElementById("btn-transfer");

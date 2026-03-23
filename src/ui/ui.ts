@@ -7,7 +7,7 @@ import {
 	lodLevel,
 	MOON_LOD_ZOOM,
 } from "../math/visual";
-import { camera, ZOOM_BASE } from "../rendering/scene";
+import { camera, setAntialias, ZOOM_BASE } from "../rendering/scene";
 import type { BodyEntry, CategoryKey, CategoryVisibility, SystemData } from "../types";
 import { isShipEntry } from "../types";
 import { recenterOnStar, selectBody } from "./selection";
@@ -634,6 +634,25 @@ function setupViewMenu(): void {
 		dropdown.classList.add("hidden");
 	});
 	content.appendChild(recenterRow);
+
+	// Antialias toggle
+	const aaRow = document.createElement("div");
+	aaRow.className = "view-cat-toggles";
+	aaRow.style.padding = "5px 8px";
+	const aaLabel = document.createElement("label");
+	aaLabel.className = "view-toggle";
+	const aaCb = document.createElement("input");
+	aaCb.type = "checkbox";
+	aaCb.checked = false;
+	aaCb.addEventListener("change", () => {
+		setAntialias(aaCb.checked);
+		state.renderNeeded = true;
+		window.dispatchEvent(new Event("wake-render"));
+	});
+	aaLabel.appendChild(aaCb);
+	aaLabel.appendChild(document.createTextNode(" Antialiasing"));
+	aaRow.appendChild(aaLabel);
+	content.appendChild(aaRow);
 
 	const sep = document.createElement("div");
 	sep.className = "view-menu-sep";
