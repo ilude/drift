@@ -184,7 +184,9 @@ export function updatePositions(dt: number, camDist: number): void {
 				entry.angle += entry.speed * simDt;
 				const host = findBodyEntry(entry.hostPlanetName);
 				if (host) {
-					const offset = SHIP_LOCAL_ORBIT * 0.5;
+					// Offset scales with host's visual size so ship doesn't clip inside large bodies
+					const hostSize = host.mesh.userData.baseSize ?? 0.02;
+					const offset = Math.max(SHIP_LOCAL_ORBIT * 0.5, hostSize * 1.5);
 					const ox = Math.cos(entry.angle) * offset;
 					const oz = Math.sin(entry.angle) * offset;
 					entry.mesh.position.set(

@@ -315,10 +315,14 @@ function dispatchCommand(ship: ShipEntry, result: CommandResult): void {
 					ship.action = mkAction("survey-nearest", "survey", state.simTime, dur, target);
 					ship.stationTarget = null;
 				} else {
-					ship.action = mkAction("survey-nearest", "survey", 0, 0, target);
-					ship.stationTarget = null;
-					// Transfer directly to the body (initiateTransfer computes AU from world position)
-					initiateTransfer(ship, targetBody);
+					// Transfer directly to the body
+					if (initiateTransfer(ship, targetBody)) {
+						ship.action = mkAction("survey-nearest", "survey", 0, 0, target);
+						ship.stationTarget = null;
+					} else {
+						// Can't reach target — skip it and try next
+						ship.action = noAction();
+					}
 				}
 			} else {
 				addNotification("mission-complete", "System survey complete — all bodies surveyed");
@@ -337,8 +341,13 @@ function dispatchCommand(ship: ShipEntry, result: CommandResult): void {
 		case "refuel": {
 			const earth = findColony();
 			if (earth && earth.data.name !== ship.hostPlanetName) {
-				ship.action = mkAction("refuel", "refuel");
-				initiateTransfer(ship, earth);
+				if (initiateTransfer(ship, earth)) {
+					ship.action = mkAction("refuel", "refuel");
+				} else {
+					// Can't reach colony — stranded, clear action to avoid stuck state
+					addNotification("low-fuel", `Ship stranded at ${ship.hostPlanetName} — insufficient fuel`);
+					ship.action = noAction();
+				}
 			} else {
 				ship.fuelKg = ship.fuelCapacityKg;
 				ship.action = noAction();
@@ -348,8 +357,11 @@ function dispatchCommand(ship: ShipEntry, result: CommandResult): void {
 		case "shore-leave": {
 			const colony = findColony();
 			if (colony && colony.data.name !== ship.hostPlanetName) {
-				ship.action = mkAction("shore-leave", "shore-leave");
-				initiateTransfer(ship, colony);
+				if (initiateTransfer(ship, colony)) {
+					ship.action = mkAction("shore-leave", "shore-leave");
+				} else {
+					ship.action = noAction();
+				}
 			} else {
 				ship.action = mkAction("shore-leave", "shore-leave", state.simTime, 30);
 			}
@@ -358,8 +370,11 @@ function dispatchCommand(ship: ShipEntry, result: CommandResult): void {
 		case "overhaul": {
 			const yard = findColony();
 			if (yard && yard.data.name !== ship.hostPlanetName) {
-				ship.action = mkAction("overhaul", "overhaul");
-				initiateTransfer(ship, yard);
+				if (initiateTransfer(ship, yard)) {
+					ship.action = mkAction("overhaul", "overhaul");
+				} else {
+					ship.action = noAction();
+				}
 			} else {
 				const dur = 5;
 				ship.action = mkAction("overhaul", "overhaul", state.simTime, dur);

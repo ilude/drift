@@ -586,16 +586,16 @@ function distanceKmBetween(a: BodyEntry, b: BodyEntry): number {
 	return Math.abs(auB - auA) * AU_TO_KM;
 }
 
-export function initiateTransfer(entry: ShipEntry, targetEntry: BodyEntry): void {
-	if (!entry.isShip || entry.shipState === "transferring") return;
+export function initiateTransfer(entry: ShipEntry, targetEntry: BodyEntry): boolean {
+	if (!entry.isShip || entry.shipState === "transferring") return false;
 
 	// Find current host body for distance calculation
 	const host = findBodyEntry(entry.hostPlanetName);
-	if (!host) return;
+	if (!host) return false;
 
 	// Compute real distance in km between ship's host and target
 	const distKm = distanceKmBetween(host, targetEntry);
-	if (distKm < 1) return;
+	if (distKm < 1) return false;
 
 	const result = checkTransferKm(distKm, {
 		fuelKg: entry.fuelKg,
@@ -607,7 +607,7 @@ export function initiateTransfer(entry: ShipEntry, targetEntry: BodyEntry): void
 		showTransferStatus(
 			`Need ${result.deltaVRequired?.toFixed(1)} km/s, have ${result.deltaVAvailable?.toFixed(1)} km/s`,
 		);
-		return;
+		return false;
 	}
 
 	// Deduct fuel
@@ -655,4 +655,5 @@ export function initiateTransfer(entry: ShipEntry, targetEntry: BodyEntry): void
 		entry.tailPositions[i * 3 + 2] = entry.mesh.position.z;
 	}
 	entry.tailCount = 0;
+	return true;
 }
