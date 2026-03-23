@@ -1,9 +1,13 @@
 import "./style.css";
 import * as THREE from "three";
+import { evaluateCommandTree, selectNextSurveyTarget, tickShipSimulation } from "./core/commands";
+import { addCoalescedNotification, addNotification } from "./core/notifications";
 import { loadSavedState, MASTER_SEED, restoreShipState, saveState, state } from "./core/state";
 import { seededRandom } from "./core/utils";
+import { generateDeposits } from "./data/resources";
 import { getSolSystem } from "./data/sol-data";
 import { generateSystem } from "./data/system-generator";
+import { findPlanetEntry } from "./rendering/bodies";
 import {
 	createAsteroidBelts,
 	createBodies,
@@ -14,8 +18,16 @@ import {
 	updatePositions,
 } from "./rendering/rendering";
 import { camera, cometGroup, controls, renderer, scene, trailGroups } from "./rendering/scene";
-import type { BodyEntry, PlanetEntry, SavedStateData, ShipEntry, SystemData } from "./types";
-import { isShipEntry } from "./types";
+import { initiateTransfer, setOnTransferComplete } from "./rendering/ship-transfer";
+import type {
+	BodyEntry,
+	CommandResult,
+	PlanetEntry,
+	SavedStateData,
+	ShipEntry,
+	SystemData,
+} from "./types";
+import { isShipEntry, isSurveyable } from "./types";
 import {
 	selectBody,
 	setupClickHandlers,
@@ -91,6 +103,9 @@ cacheStarEntry();
 // Select ship by default
 const shipEntry: BodyEntry | undefined = state.bodyMeshes.find((e) => e.isShip);
 if (shipEntry) selectBody(shipEntry);
+
+// Register transfer completion hook for command dispatch
+setOnTransferComplete(onTransferComplete);
 
 // Auto-save on page unload
 window.addEventListener("beforeunload", saveState);
@@ -194,6 +209,214 @@ setupUI(loadSystem);
 setupClickHandlers();
 
 // ---------------------------------------------------------------------------
+// Ship command dispatch
+// ---------------------------------------------------------------------------
+const SURVEY_DURATIONS: Record<string, number> = {
+	Planet: 10,
+	"Dwarf Planet": 10,
+	"Detached Object": 10,
+	Moon: 4,
+	Comet: 3,
+};
+const DEFAULT_SURVEY_DURATION = 2; // asteroids, unknown
+
+function getSurveyDuration(bodyType: string): number {
+	return SURVEY_DURATIONS[bodyType] ?? DEFAULT_SURVEY_DURATION;
+}
+
+function getSystemSeed(): number {
+	const sys = state.discoveredSystems.get(state.currentSystemKey);
+	return sys?.seed ?? 42;
+}
+
+function noAction(): ShipEntry["action"] {
+	return { type: null, commandId: null, startTime: 0, duration: 0, progress: 0 };
+}
+
+function mkAction(
+	type: ShipEntry["action"]["type"],
+	commandId: string,
+	startTime = 0,
+	duration = 0,
+	target?: string,
+): ShipEntry["action"] {
+	return { type, commandId, target, startTime, duration, progress: 0 };
+}
+
+function completeSurvey(ship: ShipEntry): void {
+	const bodyName = ship.action.target ?? ship.hostPlanetName;
+	const body = state.bodyMeshes.find((e) => e.data.name === bodyName);
+	if (body && isSurveyable(body)) {
+		const deposits = generateDeposits(
+			getSystemSeed(),
+			body.data.name,
+			body.data.type,
+			body.data.radius,
+		);
+		body.survey = { surveyLevel: 1, deposits };
+
+		const names = deposits
+			.map((d) => d.resourceId)
+			.slice(0, 3)
+			.join(", ");
+		const summary = deposits.length > 0 ? `${deposits.length} deposits (${names})` : "no deposits";
+		addCoalescedNotification(
+			"survey-complete",
+			`Surveyed ${body.data.name} — ${summary}`,
+			body.data.name,
+		);
+	}
+	ship.action = noAction();
+}
+
+function findColony(): PlanetEntry | undefined {
+	return findPlanetEntry("Earth") ?? findPlanetEntry(state.bodyMeshes[0]?.data.name ?? "");
+}
+
+function dispatchCommand(ship: ShipEntry, result: CommandResult): void {
+	switch (result.action) {
+		case "survey": {
+			const target = selectNextSurveyTarget(ship);
+			if (target) {
+				const te = findPlanetEntry(target);
+				if (te && target !== ship.hostPlanetName) {
+					ship.action = mkAction("survey-nearest", "survey", 0, 0, target);
+					initiateTransfer(ship, te);
+				} else if (te) {
+					const dur = getSurveyDuration(te.data.type);
+					ship.action = mkAction("survey-nearest", "survey", state.simTime, dur, target);
+				}
+			} else {
+				addNotification("mission-complete", "System survey complete — all bodies surveyed");
+				ship.action = noAction();
+			}
+			break;
+		}
+		case "transfer": {
+			if (result.target) {
+				const te = findPlanetEntry(result.target);
+				if (te) initiateTransfer(ship, te);
+			}
+			ship.immediateCommand = null;
+			break;
+		}
+		case "refuel": {
+			const earth = findColony();
+			if (earth && earth.data.name !== ship.hostPlanetName) {
+				ship.action = mkAction("refuel", "refuel");
+				initiateTransfer(ship, earth);
+			} else {
+				ship.fuelKg = ship.fuelCapacityKg;
+				ship.action = noAction();
+			}
+			break;
+		}
+		case "shore-leave": {
+			const colony = findColony();
+			if (colony && colony.data.name !== ship.hostPlanetName) {
+				ship.action = mkAction("shore-leave", "shore-leave");
+				initiateTransfer(ship, colony);
+			} else {
+				ship.action = mkAction("shore-leave", "shore-leave", state.simTime, 30);
+			}
+			break;
+		}
+		case "overhaul": {
+			const yard = findColony();
+			if (yard && yard.data.name !== ship.hostPlanetName) {
+				ship.action = mkAction("overhaul", "overhaul");
+				initiateTransfer(ship, yard);
+			} else {
+				const dur = Math.max(10, ship.maintenance.age / 3);
+				ship.action = mkAction("overhaul", "overhaul", state.simTime, dur);
+			}
+			break;
+		}
+		case "idle":
+			ship.action = noAction();
+			break;
+	}
+}
+
+function completeAction(ship: ShipEntry): void {
+	const actionType = ship.action.type;
+	if (actionType === "survey-nearest") {
+		completeSurvey(ship);
+	} else if (actionType === "shore-leave") {
+		ship.crew.lastShoreLeave = state.simTime;
+		ship.crew.morale = 100;
+		ship.action = noAction();
+	} else if (actionType === "overhaul") {
+		ship.maintenance.age = 0;
+		ship.maintenance.hullIntegrity = 100;
+		ship.maintenance.supplies = ship.maintenance.maxSupplies;
+		ship.action = noAction();
+	} else if (actionType === "refuel") {
+		ship.fuelKg = ship.fuelCapacityKg;
+		ship.action = noAction();
+	}
+
+	// Re-evaluate command tree for next action
+	const result = evaluateCommandTree(ship);
+	if (result) dispatchCommand(ship, result);
+}
+
+/** Called each frame for every ship. Handles simulation + action timers. */
+function tickShip(ship: ShipEntry, simDt: number): void {
+	tickShipSimulation(ship, simDt, state.simTime);
+
+	// Check action timer (only while orbiting with active timed action)
+	const hasActiveAction =
+		ship.shipState === "orbiting" &&
+		ship.action.type &&
+		ship.action.startTime > 0 &&
+		ship.action.duration > 0;
+	if (hasActiveAction) {
+		const elapsed = state.simTime - ship.action.startTime;
+		// Apply morale + hull multiplier to effective speed
+		const efficiency = (ship.crew.morale / 100) * (ship.maintenance.hullIntegrity / 100);
+		const effectiveRate = Math.max(0.01, efficiency);
+		ship.action.progress = Math.min(1, (elapsed * effectiveRate) / ship.action.duration);
+
+		if (ship.action.progress >= 1) {
+			completeAction(ship);
+		}
+	}
+}
+
+/** Called when a ship arrives at a planet after transfer. */
+export function onTransferComplete(ship: ShipEntry): void {
+	// If ship was en route for a specific action, start it at the destination
+	const actionType = ship.action.type;
+	if (actionType === "survey-nearest") {
+		const hostBody = state.bodyMeshes.find((e) => e.data.name === ship.hostPlanetName);
+		const bodyType = hostBody?.data.type ?? "Planet";
+		const dur = getSurveyDuration(bodyType);
+		ship.action.startTime = state.simTime;
+		ship.action.duration = dur;
+		ship.action.progress = 0;
+	} else if (actionType === "refuel") {
+		ship.fuelKg = ship.fuelCapacityKg;
+		ship.action = { type: null, commandId: null, startTime: 0, duration: 0, progress: 0 };
+		const result = evaluateCommandTree(ship);
+		if (result) dispatchCommand(ship, result);
+	} else if (actionType === "shore-leave") {
+		ship.action.startTime = state.simTime;
+		ship.action.duration = 30;
+		ship.action.progress = 0;
+	} else if (actionType === "overhaul") {
+		const duration = Math.max(10, ship.maintenance.age / 3);
+		ship.action.startTime = state.simTime;
+		ship.action.duration = duration;
+		ship.action.progress = 0;
+	} else {
+		// No pending action — evaluate command tree
+		const result = evaluateCommandTree(ship);
+		if (result) dispatchCommand(ship, result);
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Animation loop
 // ---------------------------------------------------------------------------
 const timer = new THREE.Timer();
@@ -272,6 +495,13 @@ function animate(now: number): void {
 	}
 
 	const _t0 = performance.now();
+	// Tick ship simulation BEFORE position updates (morale, maintenance, action timers)
+	if (simActive) {
+		const simDt = dt * state.timeSpeed;
+		for (const entry of state.bodyMeshes) {
+			if (isShipEntry(entry)) tickShip(entry, simDt);
+		}
+	}
 	if (simActive) updatePositions(dt, cachedCamDist);
 	const _t1 = performance.now();
 	if (simActive) updateAsteroids(dt);

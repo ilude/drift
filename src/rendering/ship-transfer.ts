@@ -390,6 +390,50 @@ export function createShip(): ShipEntry | undefined {
 		tailIndex: 0,
 		tailCount: 0,
 		tailLine: null,
+		// Command & autonomy
+		commandTree: {
+			entries: [
+				{
+					id: "fuel-check",
+					command: "refuel" as const,
+					condition: { type: "fuel-below" as const, threshold: 20 },
+					enabled: true,
+					origin: "ship" as const,
+				},
+				{
+					id: "hull-check",
+					command: "overhaul" as const,
+					condition: { type: "hull-below" as const, threshold: 30 },
+					enabled: true,
+					origin: "ship" as const,
+				},
+				{
+					id: "morale-check",
+					command: "shore-leave" as const,
+					condition: { type: "morale-below" as const, threshold: 40 },
+					enabled: true,
+					origin: "ship" as const,
+				},
+				{
+					id: "survey",
+					command: "survey-nearest" as const,
+					condition: { type: "always" as const },
+					enabled: true,
+					origin: "ship" as const,
+				},
+				{
+					id: "idle",
+					command: "idle" as const,
+					condition: { type: "always" as const },
+					enabled: true,
+					origin: "ship" as const,
+				},
+			],
+		},
+		immediateCommand: null,
+		crew: { count: 50, morale: 100, lastShoreLeave: 0, deploymentLimit: 180 },
+		maintenance: { age: 0, supplies: 100, maxSupplies: 100, hullIntegrity: 100 },
+		action: { type: null, commandId: null, startTime: 0, duration: 0, progress: 0 },
 	} as ShipEntry;
 
 	// Velocity tail — always visible, short trail showing direction
@@ -402,6 +446,13 @@ export function createShip(): ShipEntry | undefined {
 	state.bodyMeshes.push(entry);
 	buildPlanetMap();
 	return entry;
+}
+
+/** Callback invoked after transfer completes. Set by main.ts for command dispatch. */
+let onTransferCompleteHook: ((ship: ShipEntry) => void) | null = null;
+
+export function setOnTransferComplete(hook: (ship: ShipEntry) => void): void {
+	onTransferCompleteHook = hook;
 }
 
 export function completeTransfer(entry: ShipEntry): void {
@@ -445,6 +496,8 @@ export function completeTransfer(entry: ShipEntry): void {
 	} else {
 		entry.angle = 0;
 	}
+
+	if (onTransferCompleteHook) onTransferCompleteHook(entry);
 }
 
 export function beginTransfer(entry: ShipEntry): void {

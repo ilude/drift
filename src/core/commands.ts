@@ -1,0 +1,121 @@
+import type { CommandCondition, CommandResult, ShipEntry } from "../types";
+import { isSurveyable } from "../types";
+import { state } from "./state";
+import { seededRandom } from "./utils";
+
+export function checkCondition(condition: CommandCondition, ship: ShipEntry): boolean {
+	switch (condition.type) {
+		case "always":
+			return true;
+		case "fuel-below":
+			return (ship.fuelKg / ship.fuelCapacityKg) * 100 < condition.threshold;
+		case "morale-below":
+			return ship.crew.morale < condition.threshold;
+		case "hull-below":
+			return ship.maintenance.hullIntegrity < condition.threshold;
+		case "supplies-below":
+			return (ship.maintenance.supplies / ship.maintenance.maxSupplies) * 100 < condition.threshold;
+	}
+}
+
+function commandToResult(
+	command: ShipEntry["commandTree"]["entries"][number]["command"],
+	target?: string,
+): CommandResult {
+	switch (command) {
+		case "survey-nearest":
+			return { action: "survey" };
+		case "transfer-to":
+			return { action: "transfer", target };
+		case "refuel":
+			return { action: "refuel" };
+		case "shore-leave":
+			return { action: "shore-leave" };
+		case "overhaul":
+			return { action: "overhaul" };
+		case "return-to-base":
+			return { action: "refuel" };
+		case "idle":
+			return { action: "idle" };
+	}
+}
+
+export function evaluateCommandTree(ship: ShipEntry): CommandResult | null {
+	if (ship.immediateCommand?.enabled) {
+		return commandToResult(ship.immediateCommand.command, ship.immediateCommand.target);
+	}
+
+	for (const entry of ship.commandTree.entries) {
+		if (!entry.enabled) continue;
+		if (checkCondition(entry.condition, ship)) {
+			return commandToResult(entry.command, entry.target);
+		}
+	}
+
+	return null;
+}
+
+export function computeMorale(daysSinceLeave: number, deploymentLimit: number): number {
+	if (daysSinceLeave <= deploymentLimit) return 100;
+	const raw = 100 * (deploymentLimit / daysSinceLeave) ** 1.5;
+	// Floor values below 1 to 0 — morale bottoms out at extreme deployment lengths
+	return raw < 1 ? 0 : raw;
+}
+
+// Malfunction check interval in days
+const MALFUNCTION_INTERVAL = 30;
+
+export function tickShipSimulation(ship: ShipEntry, simDt: number, simTime: number): void {
+	// Update morale based on time since last shore leave
+	const daysSinceLeave = simTime - ship.crew.lastShoreLeave;
+	ship.crew.morale = computeMorale(daysSinceLeave, ship.crew.deploymentLimit);
+
+	// Accumulate maintenance age
+	ship.maintenance.age += simDt;
+
+	// Fuel drain during active non-transfer actions (0.5% of capacity per day)
+	if (ship.action.type !== null && ship.shipState !== "transferring") {
+		const drain = 0.005 * ship.fuelCapacityKg * simDt;
+		ship.fuelKg = Math.max(0, ship.fuelKg - drain);
+	}
+
+	// Malfunction check every 30 days based on age
+	const checkIndex = Math.floor(ship.maintenance.age / MALFUNCTION_INTERVAL);
+	const prevCheckIndex = Math.floor((ship.maintenance.age - simDt) / MALFUNCTION_INTERVAL);
+	if (checkIndex > prevCheckIndex) {
+		const rng = seededRandom(Math.floor(ship.maintenance.age));
+		const failChance = (ship.maintenance.age / (365 * 5)) * (100 / ship.maintenance.hullIntegrity);
+		const roll = rng();
+		if (roll < failChance) {
+			const damage = ship.maintenance.supplies <= 0 ? 15 : 5 + Math.floor(rng() * 11);
+			ship.maintenance.hullIntegrity = Math.max(0, ship.maintenance.hullIntegrity - damage);
+			ship.maintenance.supplies = Math.max(0, ship.maintenance.supplies - damage);
+		}
+	}
+}
+
+export function selectNextSurveyTarget(ship: ShipEntry): string | null {
+	const shipPos = ship.mesh.position;
+
+	const candidates = state.bodyMeshes.filter((body) => {
+		if (body === (ship as unknown)) return false;
+		if (!isSurveyable(body)) return false;
+		if (body.survey.surveyLevel !== 0) return false;
+		if ("data" in body && (body as { data: { type: string } }).data.type === "Star") return false;
+		return true;
+	});
+
+	if (candidates.length === 0) return null;
+
+	candidates.sort((a, b) => {
+		const da = a.mesh.position.distanceToSquared(shipPos);
+		const db = b.mesh.position.distanceToSquared(shipPos);
+		return da - db;
+	});
+
+	const nearest = candidates[0];
+	if ("data" in nearest) {
+		return (nearest as { data: { name: string } }).data.name;
+	}
+	return null;
+}

@@ -48,7 +48,7 @@ export function speedLabel(timeSpeed: number): string {
 
 export const MASTER_SEED: number = 42;
 const SAVE_KEY = "solar-sim-state";
-const SAVE_VERSION = 2;
+const SAVE_VERSION = 3;
 
 export const state: AppState = {
 	bodyMeshes: [],
@@ -88,6 +88,17 @@ export const state: AppState = {
 	debugStepFrames: 0,
 	debugStepSpeed: 0,
 	renderNeeded: true,
+	notifications: [],
+	notificationPauseConfig: {
+		"survey-complete": false,
+		"low-fuel": false,
+		"low-morale": false,
+		"maintenance-needed": false,
+		"mission-complete": true,
+		malfunction: true,
+		"ship-destroyed": true,
+	},
+	firstSurveyCompleted: false,
 };
 
 export function saveState(): void {
@@ -103,6 +114,9 @@ export function saveState(): void {
 			? {
 					fuelKg: shipEntry.fuelKg,
 					engineId: shipEntry.engineId,
+					crew: shipEntry.crew,
+					maintenance: shipEntry.maintenance,
+					commandTree: shipEntry.commandTree,
 				}
 			: null;
 
@@ -139,4 +153,7 @@ export function restoreShipState(savedData: SavedStateData | null): void {
 	if (!shipEntry || !isShipEntry(shipEntry)) return;
 	if (savedData.ship.fuelKg !== undefined) shipEntry.fuelKg = savedData.ship.fuelKg;
 	if (savedData.ship.engineId !== undefined) shipEntry.engineId = savedData.ship.engineId;
+	if (savedData.ship.crew) shipEntry.crew = savedData.ship.crew;
+	if (savedData.ship.maintenance) shipEntry.maintenance = savedData.ship.maintenance;
+	if (savedData.ship.commandTree) shipEntry.commandTree = savedData.ship.commandTree;
 }
