@@ -1,15 +1,14 @@
 import * as THREE from "three";
 import { state } from "../core/state";
-import { DIST_SCALE, scaleDist } from "../math/orbit";
+import { DIST_SCALE } from "../math/orbit";
 import { AU_TO_KM, checkTransferKm, ENGINE_TYPES } from "../math/ship-physics";
 import type { BodyEntry, MoonData, ShipEntry, Vector3Like } from "../types";
-import { isCometEntry, isShipEntry } from "../types";
+import { isCometEntry } from "../types";
 import {
 	buildPlanetMap,
 	createLabel,
 	createTrail,
 	findBodyEntry,
-
 	SEL_RING_INNER,
 	SEL_RING_OUTER,
 	SEL_RING_SEGS,
@@ -26,32 +25,6 @@ const shipTailMat: THREE.LineBasicMaterial = new THREE.LineBasicMaterial({
 	transparent: true,
 	opacity: 0.6,
 });
-
-/**
- * Blend a position toward the target's station-keeping point.
- * Uses t^4 so the blend is negligible early (<1% until t~0.3) and ramps up smoothly.
- * Ship arrives at zero relative velocity — no orbit insertion needed.
- * Mutates p in place. Returns 'complete' if within station-keeping distance, else 'blending'.
- */
-export function applyCaptureBlend(
-	p: Vector3Like,
-	tgtEntry: BodyEntry | undefined,
-	t: number,
-): string {
-	if (!tgtEntry) return "blending";
-	const dx = p.x - tgtEntry.mesh.position.x;
-	const dz = p.z - tgtEntry.mesh.position.z;
-	const dist = Math.hypot(dx, dz);
-	if (dist <= SHIP_LOCAL_ORBIT) return "complete";
-	// Blend toward station-keeping offset from target center
-	const angle = Math.atan2(dz, dx);
-	const stationX = tgtEntry.mesh.position.x + Math.cos(angle) * SHIP_LOCAL_ORBIT;
-	const stationZ = tgtEntry.mesh.position.z + Math.sin(angle) * SHIP_LOCAL_ORBIT;
-	const blend = t * t * t * t;
-	p.x = p.x + (stationX - p.x) * blend;
-	p.z = p.z + (stationZ - p.z) * blend;
-	return "blending";
-}
 
 const _hermiteOut: Vector3Like = { x: 0, y: 0, z: 0 };
 
@@ -138,6 +111,8 @@ function createTransferPath(): THREE.Line {
 
 export function updateTransferPath(entry: ShipEntry, elapsedDays: number): void {
 	if (!entry.transferPath) return;
+	entry.departFrameCount = (entry.departFrameCount || 0) + 1;
+	if (entry.departFrameCount % 4 !== 0) return;
 	const positions = entry.transferPath.geometry.attributes.position.array as Float32Array;
 	const colors = entry.transferPath.geometry.attributes.color.array as Float32Array;
 	const isSelected = state.selectedBody === entry;
@@ -147,15 +122,10 @@ export function updateTransferPath(entry: ShipEntry, elapsedDays: number): void 
 	const tEnd = Math.min(tCurrent + SHIP_PATH_LOOKAHEAD, 1.0);
 	const tRange = tEnd - tCurrent;
 
-	const transferTarget = entry.transferTarget;
-	if (!transferTarget) return;
-	const tgt = findBodyEntry(transferTarget);
-
 	for (let i = 0; i <= SHIP_TRANSFER_PTS; i++) {
 		const frac = i / SHIP_TRANSFER_PTS;
 		const t = tCurrent + frac * tRange;
 		const p = transferPosition(entry, t);
-		applyCaptureBlend(p, tgt, t);
 		const idx3 = i * 3;
 		positions[idx3] = p.x;
 		positions[idx3 + 1] = 0;
@@ -174,7 +144,6 @@ export function updateTransferPath(entry: ShipEntry, elapsedDays: number): void 
 export function computeHermiteKnots(
 	departX: number,
 	departZ: number,
-	departAngle: number,
 	targetEntry: BodyEntry,
 	gameDays: number,
 ): {
@@ -191,22 +160,17 @@ export function computeHermiteKnots(
 	const dx = targetWorld.x - departX;
 	const dz = targetWorld.z - departZ;
 	const dist = Math.hypot(dx, dz);
-	// Departure tangent: biased toward direct line to target with slight curve from current heading
-	const tangentDir = departAngle + Math.PI / 2;
-	const directAngle = Math.atan2(dz, dx);
-	// Blend departure tangent: 30% current heading, 70% direct line
-	const t0Angle = directAngle * 0.7 + tangentDir * 0.3;
-	// Arrival tangent: along approach direction (zero relative velocity = straight-line arrival)
-	const approachAngle = Math.atan2(dz, dx);
+	// Both tangents point along the direct line to target — simple S-curve
+	const angle = Math.atan2(dz, dx);
 	return {
 		p0x: departX,
 		p0z: departZ,
-		t0x: Math.cos(t0Angle) * dist * 0.5,
-		t0z: Math.sin(t0Angle) * dist * 0.5,
+		t0x: Math.cos(angle) * dist * 0.5,
+		t0z: Math.sin(angle) * dist * 0.5,
 		p1x: targetWorld.x,
 		p1z: targetWorld.z,
-		t1x: Math.cos(approachAngle) * dist * 0.3,
-		t1z: Math.sin(approachAngle) * dist * 0.3,
+		t1x: Math.cos(angle) * dist * 0.3,
+		t1z: Math.sin(angle) * dist * 0.3,
 	};
 }
 
@@ -220,9 +184,9 @@ export function updateDepartureArc(entry: ShipEntry): void {
 	const baseAlpha = isSelected ? 0.5 : 0.2;
 	const pt = entry.pendingTransfer;
 
-	// Recompute departure angle every 8 frames (~4x/sec at 30fps)
+	// Recompute departure angle every 30 frames (~1x/sec at 30fps)
 	entry.departFrameCount = (entry.departFrameCount || 0) + 1;
-	if (entry.departFrameCount % 8 === 0) {
+	if (entry.departFrameCount % 30 === 0) {
 		const targetEntry = findBodyEntry(pt.targetName);
 		if (targetEntry) {
 			const targetWorld = predictTargetWorld(targetEntry, pt.gameDays);
@@ -237,6 +201,11 @@ export function updateDepartureArc(entry: ShipEntry): void {
 	const TWO_PI = Math.PI * 2;
 	const curAngle = ((entry.angle % TWO_PI) + TWO_PI) % TWO_PI;
 	const tgtAngle = ((pt.optimalLocalAngle % TWO_PI) + TWO_PI) % TWO_PI;
+
+	// Skip full geometry rebuild if ship angle hasn't moved significantly
+	const prevAngle = entry.lastAngle ?? curAngle - 1;
+	if (Math.abs(curAngle - prevAngle) < 0.01) return;
+	entry.lastAngle = curAngle;
 
 	let sweep = tgtAngle - curAngle;
 	if (sweep < 0) sweep += TWO_PI;
@@ -266,13 +235,7 @@ export function updateDepartureArc(entry: ShipEntry): void {
 	if (targetEntry) {
 		const departX = host.mesh.position.x + Math.cos(pt.optimalLocalAngle) * SHIP_LOCAL_ORBIT;
 		const departZ = host.mesh.position.z + Math.sin(pt.optimalLocalAngle) * SHIP_LOCAL_ORBIT;
-		const knots = computeHermiteKnots(
-			departX,
-			departZ,
-			pt.optimalLocalAngle,
-			targetEntry,
-			pt.gameDays,
-		);
+		const knots = computeHermiteKnots(departX, departZ, targetEntry, pt.gameDays);
 
 		for (let i = 1; i <= SHIP_TRANSFER_PTS; i++) {
 			const frac = i / SHIP_TRANSFER_PTS;
@@ -401,7 +364,6 @@ export function createShip(): ShipEntry | undefined {
 		t1x: 0,
 		t1z: 0, // Hermite arrival point + tangent
 		pendingTransfer: null,
-		transferRecalcCounter: 0,
 		// Visual: transfer path line and velocity tail
 		transferPath: null,
 		tailPositions: new Float32Array(SHIP_TAIL_LENGTH * 3),
@@ -474,7 +436,7 @@ export function setOnTransferComplete(hook: (ship: ShipEntry) => void): void {
 	onTransferCompleteHook = hook;
 }
 
-export function completeTransfer(entry: ShipEntry): void {
+export function completeTransfer(entry: ShipEntry, entryAngle = 0): void {
 	removeTransferPath(entry);
 	const transferTarget = entry.transferTarget ?? "";
 
@@ -482,25 +444,22 @@ export function completeTransfer(entry: ShipEntry): void {
 	const target = findBodyEntry(transferTarget);
 
 	entry.shipState = "orbiting";
-	entry.hostPlanetName = transferTarget;
+	// If target is a moon, use parent planet name for station-keeping
+	if (target?.isMoon && target.parentMesh) {
+		const parent = state.bodyMeshes.find((e) => e.mesh === target.parentMesh);
+		entry.hostPlanetName = parent ? parent.data.name : transferTarget;
+	} else {
+		entry.hostPlanetName = transferTarget;
+	}
 	entry.transferTarget = null;
 	entry.transferFuelTotal = 0;
 	entry.pendingTransfer = null;
 	entry.speed = SHIP_LOCAL_SPEED;
 
 	if (target) {
-		// Use data.distance for planets; for moons/comets approximate from host
 		entry.data.distance = target.data.distance || entry.data.distance;
 		entry.orbitA = entry.data.distance;
-
-		if (entry.blendTarget) {
-			entry.angle = entry.blendTarget.entryAngle;
-		} else {
-			const dx = entry.mesh.position.x - target.mesh.position.x;
-			const dz = entry.mesh.position.z - target.mesh.position.z;
-			entry.angle = Math.atan2(dz, dx);
-		}
-		entry.blendTarget = null;
+		entry.angle = entryAngle;
 
 		// Comets: station-keep (position tracking handled by render loop)
 		// Planets/moons: snap to local orbit
@@ -525,22 +484,13 @@ export function completeTransfer(entry: ShipEntry): void {
 	if (onTransferCompleteHook) onTransferCompleteHook(entry);
 }
 
-export function beginTransfer(entry: ShipEntry): void {
-	const p = entry.pendingTransfer;
-	if (!p) return;
-
-	// Find target — could be any body type (planet, moon, comet)
-	const tgt = findBodyEntry(p.targetName);
-	if (!tgt) return;
-
-	// Compute Hermite spline control points in world space
-	const knots = computeHermiteKnots(
-		entry.mesh.position.x,
-		entry.mesh.position.z,
-		entry.angle,
-		tgt,
-		p.gameDays,
-	);
+/** Shared logic: write spline knots, set transfer state, create path, prefill tail. */
+function commitTransfer(
+	entry: ShipEntry,
+	knots: ReturnType<typeof computeHermiteKnots>,
+	gameDays: number,
+	targetName: string,
+): void {
 	entry.p0x = knots.p0x;
 	entry.p0z = knots.p0z;
 	entry.t0x = knots.t0x;
@@ -551,12 +501,11 @@ export function beginTransfer(entry: ShipEntry): void {
 	entry.t1z = knots.t1z;
 
 	entry.transferStartTime = state.simTime;
-	entry.transferTimeDays = p.gameDays;
-	entry.transferTarget = p.targetName;
+	entry.transferTimeDays = gameDays;
+	entry.transferTarget = targetName;
 	entry.shipState = "transferring";
 	entry.pendingTransfer = null;
-	entry.blendTarget = null;
-	entry.transferRecalcCounter = 0;
+	entry.stationTarget = null;
 
 	removeTransferPath(entry);
 	entry.transferPath = createTransferPath();
@@ -568,6 +517,17 @@ export function beginTransfer(entry: ShipEntry): void {
 		entry.tailPositions[i * 3 + 2] = entry.mesh.position.z;
 	}
 	entry.tailCount = 0;
+}
+
+export function beginTransfer(entry: ShipEntry): void {
+	const p = entry.pendingTransfer;
+	if (!p) return;
+
+	const tgt = findBodyEntry(p.targetName);
+	if (!tgt) return;
+
+	const knots = computeHermiteKnots(entry.mesh.position.x, entry.mesh.position.z, tgt, p.gameDays);
+	commitTransfer(entry, knots, p.gameDays, p.targetName);
 }
 
 let statusTimer: ReturnType<typeof setTimeout> | null = null;
@@ -597,12 +557,20 @@ function bodyAUFromPosition(body: BodyEntry): number {
 
 /**
  * Compute straight-line distance in km between two bodies.
- * Uses real AU distances (not compressed world distances) for accuracy.
+ * Uses actual angular positions to compute chord distance in AU space,
+ * so bodies on opposite sides of the star have the correct large distance.
  */
-function distanceKmBetween(a: BodyEntry, b: BodyEntry): number {
+export function distanceKmBetween(a: BodyEntry, b: BodyEntry): number {
 	const auA = a.data.distance > 0 && !a.isMoon ? a.data.distance : bodyAUFromPosition(a);
 	const auB = b.data.distance > 0 && !b.isMoon ? b.data.distance : bodyAUFromPosition(b);
-	return Math.abs(auB - auA) * AU_TO_KM;
+	// Derive angular positions from world coordinates (XZ plane)
+	const angleA = Math.atan2(a.mesh.position.z, a.mesh.position.x);
+	const angleB = Math.atan2(b.mesh.position.z, b.mesh.position.x);
+	const axAU = Math.cos(angleA) * auA;
+	const azAU = Math.sin(angleA) * auA;
+	const bxAU = Math.cos(angleB) * auB;
+	const bzAU = Math.sin(angleB) * auB;
+	return Math.hypot(bxAU - axAU, bzAU - azAU) * AU_TO_KM;
 }
 
 export function initiateTransfer(entry: ShipEntry, targetEntry: BodyEntry): boolean {
@@ -633,45 +601,17 @@ export function initiateTransfer(entry: ShipEntry, targetEntry: BodyEntry): bool
 	const gameDays = result.transferDays ?? 0;
 	entry.transferFuelTotal = result.fuelUsedKg ?? 0;
 
-	// Compute Hermite spline from current position to predicted target position
 	const knots = computeHermiteKnots(
 		entry.mesh.position.x,
 		entry.mesh.position.z,
-		entry.angle,
 		targetEntry,
 		gameDays,
 	);
-	entry.p0x = knots.p0x;
-	entry.p0z = knots.p0z;
-	entry.t0x = knots.t0x;
-	entry.t0z = knots.t0z;
-	entry.p1x = knots.p1x;
-	entry.p1z = knots.p1z;
-	entry.t1x = knots.t1x;
-	entry.t1z = knots.t1z;
-
-	entry.transferStartTime = state.simTime;
-	entry.transferTimeDays = gameDays;
-	entry.transferTarget = targetEntry.data.name;
-	entry.shipState = "transferring";
-	entry.pendingTransfer = null;
-	entry.blendTarget = null;
-	entry.stationTarget = null;
-	entry.transferRecalcCounter = 0;
 
 	const r1 = host.data.distance || bodyAUFromPosition(host);
 	const r2 = targetEntry.data.distance || bodyAUFromPosition(targetEntry);
 	entry.orbitA = (r1 + r2) / 2;
 
-	removeTransferPath(entry);
-	entry.transferPath = createTransferPath();
-
-	// Pre-fill tail buffer with current position
-	for (let i = 0; i < SHIP_TAIL_LENGTH; i++) {
-		entry.tailPositions[i * 3] = entry.mesh.position.x;
-		entry.tailPositions[i * 3 + 1] = 0;
-		entry.tailPositions[i * 3 + 2] = entry.mesh.position.z;
-	}
-	entry.tailCount = 0;
+	commitTransfer(entry, knots, gameDays, targetEntry.data.name);
 	return true;
 }

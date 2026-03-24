@@ -14,9 +14,7 @@ import { isCometEntry, isShipEntry } from "../types";
 import { COMET_TRAIL_STEP_ARC, findBodyEntry, orbitToWorld } from "./bodies";
 import { ZOOM_BASE } from "./scene";
 import {
-	applyCaptureBlend,
 	completeTransfer,
-	predictTargetWorld,
 	SHIP_LOCAL_ORBIT,
 	transferPosition,
 	updateTransferPath,
@@ -197,51 +195,22 @@ export function updatePositions(dt: number, camDist: number): void {
 				}
 			} else if (entry.shipState === "transferring") {
 				const elapsed = state.simTime - entry.transferStartTime;
-				if (isTransferComplete(elapsed, entry.transferTimeDays)) {
-					completeTransfer(entry);
-				} else {
-					const t = elapsed / entry.transferTimeDays;
+				const t = Math.min(elapsed / entry.transferTimeDays, 1);
 
-					// Update target prediction every 15 frames (while blend is small)
-					if (t < 0.7) {
-						entry.transferRecalcCounter++;
-						if (entry.transferRecalcCounter >= 15) {
-							entry.transferRecalcCounter = 0;
-							const tgt = findBodyEntry(entry.transferTarget ?? "");
-							if (tgt) {
-								const remainingDays = entry.transferTimeDays - elapsed;
-								const targetWorld = predictTargetWorld(tgt, remainingDays);
-								entry.p1x = targetWorld.x;
-								entry.p1z = targetWorld.z;
-								const dx = targetWorld.x - entry.p0x;
-								const dz = targetWorld.z - entry.p0z;
-								const dist = Math.hypot(dx, dz);
-								// Arrival tangent: along approach direction (straight-line deceleration)
-								const approachAngle = Math.atan2(dz, dx);
-								entry.t1x = Math.cos(approachAngle) * dist * 0.3;
-								entry.t1z = Math.sin(approachAngle) * dist * 0.3;
-							}
-						}
-					}
+				// Evaluate frozen Hermite spline — no mid-flight recalculation
+				const p = transferPosition(entry, t);
+				entry.mesh.position.set(p.x, 0, p.z);
 
-					// Evaluate Hermite spline position
-					const p = transferPosition(entry, t);
+				// Complete when time is up or ship is within station-keeping distance
+				const tgt = findBodyEntry(entry.transferTarget ?? "");
+				const distToTarget = tgt
+					? Math.hypot(p.x - tgt.mesh.position.x, p.z - tgt.mesh.position.z)
+					: Number.POSITIVE_INFINITY;
 
-					// Blend toward target's station-keeping point
-					const tgt = findBodyEntry(entry.transferTarget ?? "");
-					const captureResult = applyCaptureBlend(p, tgt, t);
-
-					if (captureResult === "complete") {
-						if (tgt) {
-							const dx = p.x - tgt.mesh.position.x;
-							const dz = p.z - tgt.mesh.position.z;
-							entry.blendTarget = { entryAngle: Math.atan2(dz, dx) };
-						}
-						completeTransfer(entry);
-						return;
-					}
-
-					entry.mesh.position.set(p.x, 0, p.z);
+				if (isTransferComplete(elapsed, entry.transferTimeDays) || distToTarget <= SHIP_LOCAL_ORBIT) {
+					const entryAngle = tgt ? Math.atan2(p.z - tgt.mesh.position.z, p.x - tgt.mesh.position.x) : 0;
+					completeTransfer(entry, entryAngle);
+					return;
 				}
 			}
 
