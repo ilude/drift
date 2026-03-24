@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { findAsteroidEntity, rebuildEntityMaps } from "../core/entities";
 import { state } from "../core/state";
 import { DIST_SCALE, orbitSpeed } from "../math/orbit";
 import { AU_TO_KM, checkTransferKm, ENGINE_TYPES } from "../math/ship-physics";
@@ -12,7 +13,6 @@ import type {
 } from "../types";
 import { isCometEntry } from "../types";
 import {
-	buildPlanetMap,
 	createLabel,
 	createTrail,
 	findBodyEntry,
@@ -432,7 +432,7 @@ export function createShip(): ShipEntry | undefined {
 	scene.add(entry.tailLine);
 
 	state.bodyMeshes.push(entry);
-	buildPlanetMap();
+	rebuildEntityMaps();
 	return entry;
 }
 
@@ -601,15 +601,12 @@ export function distanceKmBetween(a: BodyEntry, b: BodyEntry): number {
 /**
  * Find an asteroid by designation across all belts.
  * Returns the asteroid info and its parent belt entry, or null.
+ * @deprecated Use findAsteroidEntity() from core/entities.ts for new code.
  */
 export function findAsteroid(
 	designation: string,
 ): { asteroid: AsteroidInfo; beltEntry: AsteroidBeltEntry } | null {
-	for (const beltEntry of state.asteroidBelts) {
-		const asteroid = beltEntry.asteroids.find((a) => a.designation === designation);
-		if (asteroid) return { asteroid, beltEntry };
-	}
-	return null;
+	return findAsteroidEntity(designation) ?? null;
 }
 
 /**

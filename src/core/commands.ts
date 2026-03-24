@@ -1,5 +1,6 @@
 import type { BodyEntry, CommandCondition, CommandResult, ShipEntry } from "../types";
 import { isShipEntry, isSurveyable } from "../types";
+import { findBody } from "./entities";
 import { state } from "./state";
 import { seededRandom } from "./utils";
 
@@ -221,7 +222,7 @@ export function selectNextSurveyTarget(ship: ShipEntry): string | null {
 }
 
 export function getUnsurvevedMoonsOfHost(ship: ShipEntry): BodyEntry[] {
-	const host = state.bodyMeshes.find((e) => e.data.name === ship.hostPlanetName);
+	const host = findBody(ship.hostPlanetName);
 	if (!host) return [];
 	return host.moons.filter((moon) => isSurveyable(moon) && moon.survey.surveyLevel === 0);
 }

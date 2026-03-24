@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { findBody, findShip } from "../core/entities";
 import { getUnreadCount, markAllRead, markRead } from "../core/notifications";
 import { formatDateTime, simTimeToDate, state, truncateDate } from "../core/state";
 import { generateSystem } from "../data/system-generator";
@@ -10,7 +11,7 @@ import {
 } from "../math/visual";
 import { camera, setAntialias, ZOOM_BASE } from "../rendering/scene";
 import type { BodyEntry, CategoryKey, CategoryVisibility, SystemData } from "../types";
-import { isShipEntry, isSurveyable } from "../types";
+import { isSurveyable } from "../types";
 import { recenterOnStar, selectBody } from "./selection";
 
 // --- Body list panel ---
@@ -188,9 +189,9 @@ export function updateLabels(camDist: number): void {
 	const screenH = window.innerHeight;
 	const screenW = window.innerWidth;
 
-	const shipEntry = state.bodyMeshes.find((e) => isShipEntry(e));
+	const shipEntry = findShip();
 	const surveyTarget =
-		shipEntry && isShipEntry(shipEntry) && shipEntry.action.type === "survey-nearest"
+		shipEntry && shipEntry.action.type === "survey-nearest"
 			? (shipEntry.action.target ?? null)
 			: null;
 
@@ -351,8 +352,8 @@ export function updateHUD(camDist: number): void {
 
 	const activityEl = document.getElementById("ship-activity");
 	if (activityEl) {
-		const ship = state.bodyMeshes.find((e) => isShipEntry(e));
-		if (ship && isShipEntry(ship)) {
+		const ship = findShip();
+		if (ship) {
 			if (ship.shipState === "transferring") {
 				activityEl.textContent = `Ship: In transit to ${ship.transferTarget}`;
 			} else if (ship.action.type === "survey-nearest" && ship.action.startTime > 0) {
@@ -567,7 +568,7 @@ export function setupUI(loadSystem: (systemData: SystemData) => void): void {
 			updateSpeedBtn();
 			state.renderNeeded = true;
 			window.dispatchEvent(new Event("wake-render"));
-			const ship = state.bodyMeshes.find(isShipEntry);
+			const ship = findShip();
 			const elapsed = ship ? state.simTime - ship.transferStartTime : 0;
 			const t = ship && ship.transferTimeDays > 0 ? elapsed / ship.transferTimeDays : 0;
 			console.log(`DEBUG STEP [${backward ? "B" : "N"}]:`, {
@@ -647,7 +648,7 @@ function renderNotifDropdown(dropdown: HTMLElement): void {
 		entry.addEventListener("click", () => {
 			markRead(notif.id);
 			if (notif.bodyName) {
-				const body = state.bodyMeshes.find((e) => e.data.name === notif.bodyName);
+				const body = findBody(notif.bodyName);
 				if (body) selectBody(body);
 			}
 			dropdown.classList.add("hidden");

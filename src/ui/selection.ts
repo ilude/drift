@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { findBody, findStar } from "../core/entities";
 import { MAX_CLICK_DIST, state } from "../core/state";
 import { getResourceDef } from "../data/resources";
 import {
@@ -14,7 +15,7 @@ import {
 	initiateTransfer,
 } from "../rendering/rendering";
 import { camera, controls, renderer, ZOOM_BASE } from "../rendering/scene";
-import type { AsteroidBeltData, AsteroidInfo, BodyEntry, FlyToState, PlanetEntry } from "../types";
+import type { AsteroidBeltData, AsteroidInfo, BodyEntry, FlyToState } from "../types";
 import { isCometEntry, isShipEntry, isSurveyable } from "../types";
 import { renderCommandTree } from "./commands";
 
@@ -73,7 +74,7 @@ export function updateFlyTo(): void {
 }
 
 export function recenterOnStar(): void {
-	const star: BodyEntry | undefined = state.bodyMeshes.find((e) => e.data.type === "Star");
+	const star = findStar();
 	if (!star) return;
 	if (state.selectedBody) {
 		(state.selectedBody.selRing.material as THREE.MeshBasicMaterial).opacity = 0;
@@ -525,8 +526,8 @@ export function setupClickHandlers(): void {
 			if (!state.selectedBody || !isShipEntry(state.selectedBody)) return;
 			const targetName: string =
 				(document.getElementById("transfer-target") as HTMLSelectElement | null)?.value ?? "";
-			const targetEntry = state.bodyMeshes.find((e) => e.data.name === targetName);
-			if (targetEntry) initiateTransfer(state.selectedBody, targetEntry as PlanetEntry);
+			const targetEntry = findBody(targetName);
+			if (targetEntry) initiateTransfer(state.selectedBody, targetEntry);
 		});
 	}
 

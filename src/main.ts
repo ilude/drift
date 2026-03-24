@@ -6,6 +6,15 @@ import {
 	selectNextSurveyTarget,
 	tickShipSimulation,
 } from "./core/commands";
+import {
+	findAsteroidEntity,
+	findBody,
+	findPlanet,
+	findShip,
+	findStar,
+	rebuildEntityMaps,
+	resolveEntity,
+} from "./core/entities";
 import { addCoalescedNotification, addNotification } from "./core/notifications";
 import { loadSavedState, MASTER_SEED, restoreShipState, saveState, state } from "./core/state";
 import { seededRandom } from "./core/utils";
@@ -14,7 +23,7 @@ import { getSolSystem } from "./data/sol-data";
 import { generateSystem } from "./data/system-generator";
 import { DIST_SCALE } from "./math/orbit";
 import { AU_TO_KM, checkTransferKm } from "./math/ship-physics";
-import { findPlanetEntry, SURVEYED_ASTEROID_COLOR } from "./rendering/bodies";
+import { SURVEYED_ASTEROID_COLOR } from "./rendering/bodies";
 import {
 	createAsteroidBelts,
 	createBodies,
@@ -25,12 +34,7 @@ import {
 	updatePositions,
 } from "./rendering/rendering";
 import { camera, cometGroup, controls, renderer, scene, trailGroups } from "./rendering/scene";
-import {
-	asteroidProxy,
-	findAsteroid,
-	initiateTransfer,
-	setOnTransferComplete,
-} from "./rendering/ship-transfer";
+import { asteroidProxy, initiateTransfer, setOnTransferComplete } from "./rendering/ship-transfer";
 import type {
 	BodyEntry,
 	CommandResult,
@@ -56,7 +60,7 @@ import { buildBodyList, setupUI, updateHUD, updateLabels, updatePerfDisplay } fr
 let starEntry: PlanetEntry | null = null;
 
 function cacheStarEntry(): void {
-	starEntry = (state.bodyMeshes.find((e) => e.data.type === "Star") as PlanetEntry) || null;
+	starEntry = findStar() ?? null;
 }
 
 state.masterRng = seededRandom(MASTER_SEED);
@@ -110,9 +114,10 @@ updatePositions(1e-10, 300);
 createShip();
 if (saved) restoreShipState(saved);
 state.asteroidBelts = createAsteroidBelts();
+rebuildEntityMaps();
 
 // Mark Earth as pre-surveyed (home world)
-const earthEntry = state.bodyMeshes.find((e) => e.data.name === "Earth");
+const earthEntry = findBody("Earth");
 if (earthEntry && isSurveyable(earthEntry)) {
 	earthEntry.survey = {
 		surveyLevel: 1,
@@ -124,7 +129,7 @@ buildBodyList();
 cacheStarEntry();
 
 // Select ship by default
-const shipEntry: BodyEntry | undefined = state.bodyMeshes.find((e) => e.isShip);
+const shipEntry = findShip();
 if (shipEntry) selectBody(shipEntry);
 
 // Register transfer completion hook for command dispatch
@@ -217,6 +222,7 @@ function loadSystem(systemData: SystemData): void {
 	createComets();
 	createShip();
 	state.asteroidBelts = createAsteroidBelts();
+	rebuildEntityMaps();
 
 	buildBodyList();
 	cacheStarEntry();
@@ -275,7 +281,7 @@ function completeSurvey(ship: ShipEntry): void {
 	const bodyName = ship.action.target ?? ship.hostPlanetName;
 
 	// Try body first, then asteroid
-	const body = state.bodyMeshes.find((e) => e.data.name === bodyName);
+	const body = findBody(bodyName);
 	if (body && isSurveyable(body)) {
 		const deposits = generateDeposits(
 			getSystemSeed(),
@@ -296,7 +302,7 @@ function completeSurvey(ship: ShipEntry): void {
 			body.data.name,
 		);
 	} else {
-		const hit = findAsteroid(bodyName);
+		const hit = findAsteroidEntity(bodyName);
 		if (hit) {
 			const deposits = generateDeposits(
 				getSystemSeed(),
@@ -329,22 +335,8 @@ function completeSurvey(ship: ShipEntry): void {
 	ship.stationTarget = null;
 }
 
-/** Find any body in the simulation by name. */
-function findBodyByName(name: string): BodyEntry | undefined {
-	return state.bodyMeshes.find((e) => e.data.name === name);
-}
-
-/** Resolve a body by name, falling back to asteroid belt entries. Returns null if not found. */
-function resolveBody(name: string): { body: BodyEntry; mass: number } | null {
-	const body = findBodyByName(name);
-	if (body) return { body, mass: body.data.mass };
-	const hit = findAsteroid(name);
-	if (hit) return { body: asteroidProxy(hit.asteroid, hit.beltEntry), mass: hit.asteroid.mass };
-	return null;
-}
-
 function findColony(): PlanetEntry | undefined {
-	return findPlanetEntry("Earth") ?? findPlanetEntry(state.bodyMeshes[0]?.data.name ?? "");
+	return findPlanet("Earth") ?? findPlanet(state.bodyMeshes[0]?.data.name ?? "");
 }
 
 /** Compute AU of a body from its world position or data.distance. */
@@ -361,14 +353,13 @@ function bodyDistanceKm(a: BodyEntry, b: BodyEntry): number {
 
 /** Check if ship has enough fuel for a hop to target AND return to nearest colony. */
 function canAffordRoundTrip(ship: ShipEntry, target: BodyEntry): boolean {
-	const hostResolved = resolveBody(ship.hostPlanetName);
+	const hostResolved = resolveEntity(ship.hostPlanetName);
 	if (!hostResolved) return false;
-	const host = hostResolved.body;
 	const colony = findColony();
 	if (!colony) return false;
 
 	// Fuel cost: host → target
-	const distToTarget = bodyDistanceKm(host, target);
+	const distToTarget = Math.abs(bodyAU(target) - hostResolved.distance) * AU_TO_KM;
 	const leg1 = checkTransferKm(distToTarget, {
 		fuelKg: ship.fuelKg,
 		dryMassKg: ship.dryMassKg,
@@ -394,7 +385,7 @@ function dispatchCommand(ship: ShipEntry, result: CommandResult): void {
 	switch (result.action) {
 		case "survey": {
 			// Survey unsurveyed moons of the current host before moving to the next planet
-			const hostEntry = findBodyByName(ship.hostPlanetName);
+			const hostEntry = findBody(ship.hostPlanetName);
 			const hostSurveyed = hostEntry && isSurveyable(hostEntry) && hostEntry.survey.surveyLevel > 0;
 			if (hostSurveyed) {
 				const unsurvevedMoons = getUnsurvevedMoonsOfHost(ship);
@@ -409,9 +400,15 @@ function dispatchCommand(ship: ShipEntry, result: CommandResult): void {
 			const target = selectNextSurveyTarget(ship);
 			if (target) {
 				// Resolve target — could be a body or an asteroid
-				const resolved = resolveBody(target);
+				const resolved = resolveEntity(target);
 				if (!resolved) break;
-				const targetBody = resolved.body;
+				// Get a BodyEntry for transfer: use bodyEntry if available, else build asteroid proxy
+				const targetBody =
+					resolved.bodyEntry ??
+					(resolved.asteroidHit
+						? asteroidProxy(resolved.asteroidHit.asteroid, resolved.asteroidHit.beltEntry)
+						: null);
+				if (!targetBody) break;
 				const targetMass = resolved.mass;
 
 				// Check if already at the target or its parent planet (for moons)
@@ -459,7 +456,7 @@ function dispatchCommand(ship: ShipEntry, result: CommandResult): void {
 		}
 		case "transfer": {
 			if (result.target) {
-				const te = findPlanetEntry(result.target);
+				const te = findPlanet(result.target);
 				if (te) initiateTransfer(ship, te);
 			}
 			break;
@@ -573,14 +570,13 @@ export function onTransferComplete(ship: ShipEntry): void {
 	const actionType = ship.action.type;
 	if (actionType === "survey-nearest") {
 		const surveyTarget = ship.action.target;
-		const resolved = surveyTarget ? resolveBody(surveyTarget) : null;
-		const targetBody = resolved?.body ?? null;
+		const resolved = surveyTarget ? resolveEntity(surveyTarget) : null;
+		const targetBody = resolved?.bodyEntry ?? null;
 
 		// Guard: skip survey if target was already surveyed (e.g., by another ship mid-transfer)
-		const asteroidHit = surveyTarget ? findAsteroid(surveyTarget) : null;
 		const alreadySurveyed =
 			(targetBody && isSurveyable(targetBody) && targetBody.survey.surveyLevel > 0) ||
-			(asteroidHit && asteroidHit.asteroid.survey.surveyLevel > 0);
+			(resolved?.asteroidHit && resolved.asteroidHit.asteroid.survey.surveyLevel > 0);
 		if (alreadySurveyed) {
 			ship.action = noAction();
 			const result = evaluateCommandTree(ship);
@@ -679,7 +675,7 @@ function animate(now: number): void {
 		if (state.debugStepFrames === 0) {
 			state.timeSpeed = 0;
 			window.dispatchEvent(new Event("debug-step-done"));
-			const ship = state.bodyMeshes.find((e) => e.isShip) as ShipEntry | undefined;
+			const ship = findShip();
 			if (ship) {
 				const elapsed: number = state.simTime - ship.transferStartTime;
 				const t: number = ship.transferTimeDays > 0 ? elapsed / ship.transferTimeDays : 0;

@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { findBody, rebuildEntityMaps } from "../core/entities";
 import { state } from "../core/state";
 import { seededRandom } from "../core/utils";
 import { estimateMass } from "../data/system-generator";
@@ -23,7 +24,7 @@ import type {
 	TrailState,
 	Vector3Like,
 } from "../types";
-import { isCometEntry, isShipEntry } from "../types";
+import { isShipEntry } from "../types";
 import { cometGroup, labelContainer, scene, trailGroups } from "./scene";
 import { createStarMaterial, generateBodyTexture, generateCloudTextureForBody } from "./textures";
 
@@ -99,31 +100,11 @@ export const COMET_ORBIT_SELECTED_OPACITY: number = 0.05;
 export const UNSURVEYED_ASTEROID_COLOR = [0.545, 0.439, 0.439] as const; // #8B7070 red-grey
 export const SURVEYED_ASTEROID_COLOR = [0.439, 0.439, 0.533] as const; // #707088 blue-grey
 
-// Planet lookup map: O(1) access instead of linear .find() scans
-const planetMap = new Map<string, PlanetEntry>();
-
-export function buildPlanetMap(): void {
-	planetMap.clear();
-	state.bodyMeshes.forEach((entry) => {
-		if (!entry.isMoon && !isShipEntry(entry) && !isCometEntry(entry)) {
-			planetMap.set(entry.data.name, entry as PlanetEntry);
-		}
-	});
-}
-
-export function findPlanetEntry(name: string): PlanetEntry | undefined {
-	// Try map first (O(1)) for performance
-	const cached = planetMap.get(name);
-	if (cached) return cached;
-	// Fallback to search for tests or if map is stale
-	return state.bodyMeshes.find((e) => e.data.name === name && !e.isMoon && !isShipEntry(e)) as
-		| PlanetEntry
-		| undefined;
-}
-
-/** Find any body by name (planet, moon, comet — anything except ships). */
+/** Find any body by name (planet, moon, comet — anything except ships).
+ * @deprecated Use findBody() from core/entities.ts for new code. */
 export function findBodyEntry(name: string): BodyEntry | undefined {
-	return state.bodyMeshes.find((e) => e.data.name === name && !isShipEntry(e));
+	const entry = findBody(name);
+	return entry && !isShipEntry(entry) ? entry : undefined;
 }
 
 const sharedMoonGeoms: THREE.SphereGeometry[] = LOD_SEGS.map(
@@ -388,7 +369,7 @@ export function createBodies(): void {
 	state.BODIES?.forEach((b) => {
 		if (!b.type || b.type !== "Moon") createBody(b, null);
 	});
-	buildPlanetMap();
+	rebuildEntityMaps();
 }
 
 export function createComets(): void {

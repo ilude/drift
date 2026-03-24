@@ -7,6 +7,7 @@ import {
 	selectNextSurveyTarget,
 	tickShipSimulation,
 } from "../core/commands";
+import { rebuildEntityMaps } from "../core/entities";
 import { state } from "../core/state";
 import type { BodyEntry, CommandEntry, ShipEntry } from "../types";
 
@@ -498,6 +499,7 @@ describe("getUnsurvevedMoonsOfHost", () => {
 		const moon = mockBodyEntry("Luna", { isMoon: true });
 		const planet = mockBodyEntry("Earth", { moons: [moon] });
 		state.bodyMeshes = [planet] as BodyEntry[];
+		rebuildEntityMaps();
 		const ship = mockShip({ hostPlanetName: "Earth" });
 		expect(getUnsurvevedMoonsOfHost(ship)).toHaveLength(1);
 		expect(
@@ -509,12 +511,14 @@ describe("getUnsurvevedMoonsOfHost", () => {
 		const moon = mockBodyEntry("Luna", { isMoon: true, survey: { surveyLevel: 1, deposits: [] } });
 		const planet = mockBodyEntry("Earth", { moons: [moon] });
 		state.bodyMeshes = [planet] as BodyEntry[];
+		rebuildEntityMaps();
 		const ship = mockShip({ hostPlanetName: "Earth" });
 		expect(getUnsurvevedMoonsOfHost(ship)).toHaveLength(0);
 	});
 
 	it("returns empty array when host planet not found", () => {
 		state.bodyMeshes = [];
+		rebuildEntityMaps();
 		const ship = mockShip({ hostPlanetName: "Nonexistent" });
 		expect(getUnsurvevedMoonsOfHost(ship)).toHaveLength(0);
 	});
