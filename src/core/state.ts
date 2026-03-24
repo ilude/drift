@@ -94,6 +94,7 @@ export const state: AppState = {
 	moraleMultiplier: 1,
 	supplyMultiplier: 1,
 	depotQuality: 1,
+	shipIntents: new Map(),
 	notifications: [],
 	notificationPauseConfig: {
 		"survey-complete": false,

@@ -157,6 +157,16 @@ export interface CommandResult {
 	target?: string;
 }
 
+// --- Ship intent types ---
+
+export type ShipIntent =
+	| { type: "surveying"; target: string; shipName: string }
+	| { type: "transferring"; destination: string; shipName: string }
+	| { type: "refueling"; location: string; shipName: string }
+	| { type: "overhauling"; location: string; shipName: string }
+	| { type: "shore-leave"; location: string; shipName: string }
+	| { type: "idle"; location: string; shipName: string };
+
 // --- Ship sub-interfaces ---
 
 export interface ShipCrew {
@@ -472,6 +482,7 @@ export interface AppState {
 	supplyMultiplier: number;
 	// Depot quality (1.0 = 100% = standard facilities, eventually per-location)
 	depotQuality: number;
+	shipIntents: Map<string, ShipIntent>;
 }
 
 // --- System data ---
