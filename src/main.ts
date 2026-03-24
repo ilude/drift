@@ -578,7 +578,7 @@ function handleOverhaulCommand(ship: ShipEntry): void {
 		"overhaul",
 		`Ship stranded at ${ship.hostPlanetName} -- insufficient fuel for overhaul`,
 		() => {
-			ship.action = mkAction("overhaul", "overhaul", state.simTime.days, 5);
+			ship.action = mkAction("overhaul", "overhaul", state.simTime.days, computeOverhaulDuration(ship));
 		},
 	);
 	publishIntent(ship.data.name, {

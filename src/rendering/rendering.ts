@@ -448,6 +448,9 @@ function recordTrailSample(entry: BodyEntry, simDt: number, camDist: number): vo
 
 	if (isTransferringShip) seedInitialTrailPoint(entry as ShipEntry);
 
+	// Measure distance BEFORE glue overwrites previous position (otherwise dx/dz = 0)
+	const threshold = advanceTrailAccum(entry, t, isTransferringShip, isComet, simDt, camDist);
+
 	// Glue last vertex to current mesh position
 	if (t.count > 0) {
 		const headPhys = ((t.head - 1 + t.maxPoints) % t.maxPoints) * 3;
@@ -457,7 +460,6 @@ function recordTrailSample(entry: BodyEntry, simDt: number, camDist: number): vo
 		t.line.geometry.attributes.position.needsUpdate = true;
 	}
 
-	const threshold = advanceTrailAccum(entry, t, isTransferringShip, isComet, simDt, camDist);
 	drainTrailAccum(entry, t, threshold, isTransferringShip, isComet);
 }
 
