@@ -60,14 +60,14 @@ export function evaluateCommandTree(ship: ShipEntry): CommandResult | null {
 export function computeMorale(daysSinceLeave: number, deploymentLimit: number): number {
 	if (daysSinceLeave <= deploymentLimit) return 100;
 	const raw = 100 * (deploymentLimit / daysSinceLeave) ** 1.5;
-	// Floor values below 1 to 0 — morale bottoms out at extreme deployment lengths
+	// Floor values below 1 to 0 -- morale bottoms out at extreme deployment lengths
 	return raw < 1 ? 0 : raw;
 }
 
 // Malfunction check interval in days
 const MALFUNCTION_INTERVAL = 30;
 
-// Colony names — ships at these locations get shore leave and resupply automatically
+// Colony names -- ships at these locations get shore leave and resupply automatically
 const COLONY_NAMES = new Set(["Earth"]);
 
 function isAtColony(ship: ShipEntry): boolean {
@@ -135,7 +135,7 @@ export function tickShipSimulation(ship: ShipEntry, simDt: number, simTime: numb
 		);
 	}
 
-	// Colony supply shuttles: fuel + supplies only (not morale — that's shore leave)
+	// Colony supply shuttles: fuel + supplies only (not morale -- that's shore leave)
 	if (atColony) {
 		const dayNow = Math.floor(simTime);
 		const dayPrev = Math.floor(simTime - simDt);
@@ -155,7 +155,7 @@ export function tickShipSimulation(ship: ShipEntry, simDt: number, simTime: numb
 		ship.maintenance.age += simDt;
 	}
 
-	// Fuel consumption (skip during refuel action — ship is being topped off)
+	// Fuel consumption (skip during refuel action -- ship is being topped off)
 	if (!atColony && ship.action.type !== "refuel") {
 		if (ship.shipState === "transferring" && ship.transferTimeDays > 0) {
 			// Engine burn: consume transferFuelTotal proportionally over transfer duration

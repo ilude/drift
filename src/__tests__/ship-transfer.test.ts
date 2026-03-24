@@ -19,7 +19,7 @@ import {
 } from "../rendering/ship-transfer";
 import type { BodyEntry, PlanetEntry } from "../types";
 
-// Minimal PlanetEntry mock — only fields these functions actually read
+// Minimal PlanetEntry mock -- only fields these functions actually read
 function makePlanetEntry(x: number, z: number, distanceAU: number, speed = 0.01): PlanetEntry {
 	return {
 		mesh: { position: { x, y: 0, z } },
@@ -109,7 +109,7 @@ describe("predictTargetWorld", () => {
 	});
 
 	it("non-zero days advances the planet along its Kepler orbit", () => {
-		// Circular orbit (e=0) — world-space radius is constant
+		// Circular orbit (e=0) -- world-space radius is constant
 		const distAU = 1.0;
 		const r = scaleDist(distAU);
 		const planet = makePlanetEntry(r, 0, distAU, orbitSpeed(1));
@@ -133,7 +133,7 @@ describe("predictTargetWorld", () => {
 	});
 
 	it("stationary body (speed=0) returns current mesh position", () => {
-		// Star at origin — speed=0 means no orbital motion
+		// Star at origin -- speed=0 means no orbital motion
 		const star = mockTarget({ mesh: { position: { x: 0, y: 0, z: 0 } }, speed: 0 });
 		const result = predictTargetWorld(star, 100);
 		expect(result.x).toBeCloseTo(0);
@@ -154,7 +154,7 @@ describe("predictTargetWorld", () => {
 	});
 
 	it("two different positions in same orbit have equal world-space radii", () => {
-		// The angular propagation preserves radius — perihelion and a later position
+		// The angular propagation preserves radius -- perihelion and a later position
 		// both sit at currentR, so two snapshots 180 days apart share the same radius
 		const r = scaleDist(1);
 		const body = mockTarget({ mesh: { position: { x: r, y: 0, z: 0 } }, speed: orbitSpeed(1) });
@@ -205,12 +205,12 @@ describe("predictTargetWorld", () => {
 			isShip: false,
 			isComet: false,
 			parentMesh: null,
-			// angle intentionally omitted — this is the bug case
+			// angle intentionally omitted -- this is the bug case
 		} as unknown as BodyEntry;
 		const result = predictTargetWorld(proxy, 100);
 		expect(Number.isNaN(result.x)).toBe(false);
 		expect(Number.isNaN(result.z)).toBe(false);
-		// Should use linear extrapolation — radius preserved
+		// Should use linear extrapolation -- radius preserved
 		const inputR = Math.hypot(10, 5);
 		const resultR = Math.hypot(result.x, result.z);
 		expect(resultR).toBeCloseTo(inputR, 3);
@@ -313,7 +313,7 @@ describe("distanceKmBetween", () => {
 });
 
 // ──────────────────────────────────────────────
-// NaN safety — incomplete BodyEntry objects
+// NaN safety -- incomplete BodyEntry objects
 // ──────────────────────────────────────────────
 import { stationKeepingOffset } from "../rendering/ship-transfer";
 
@@ -330,7 +330,7 @@ function minimalProxy(x: number, z: number, speed: number): BodyEntry {
 	} as unknown as BodyEntry;
 }
 
-describe("NaN safety — incomplete BodyEntry objects", () => {
+describe("NaN safety -- incomplete BodyEntry objects", () => {
 	it("predictTargetWorld with minimal proxy produces no NaN", () => {
 		const proxy = minimalProxy(10, 5, orbitSpeed(3));
 		const result = predictTargetWorld(proxy, 100);

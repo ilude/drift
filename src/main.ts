@@ -305,7 +305,7 @@ function completeSurvey(ship: ShipEntry): void {
 		const summary = deposits.length > 0 ? `${deposits.length} deposits (${names})` : "no deposits";
 		addCoalescedNotification(
 			"survey-complete",
-			`Surveyed ${body.data.name} — ${summary}`,
+			`Surveyed ${body.data.name} -- ${summary}`,
 			body.data.name,
 		);
 	} else {
@@ -333,7 +333,7 @@ function completeSurvey(ship: ShipEntry): void {
 			const summary = deposits.length > 0 ? `${deposits.length} deposits (${names})` : "no deposits";
 			addCoalescedNotification(
 				"survey-complete",
-				`Surveyed ${hit.asteroid.designation} — ${summary}`,
+				`Surveyed ${hit.asteroid.designation} -- ${summary}`,
 				hit.asteroid.designation,
 			);
 		}
@@ -427,7 +427,7 @@ function dispatchCommand(ship: ShipEntry, result: CommandResult): void {
 
 			const target = selectNextSurveyTarget(ship);
 			if (target) {
-				// Resolve target — could be a body or an asteroid
+				// Resolve target -- could be a body or an asteroid
 				const resolved = resolveEntity(target);
 				if (!resolved) break;
 				// Get a BodyEntry for transfer: use bodyEntry if available, else build asteroid proxy
@@ -454,7 +454,7 @@ function dispatchCommand(ship: ShipEntry, result: CommandResult): void {
 					ship.stationTarget = null;
 					publishIntent(ship.data.name, { type: "surveying", target, shipName: ship.data.name });
 				} else if (!canAffordRoundTrip(ship, targetBody)) {
-					// Not enough fuel for hop + return — head home to refuel first
+					// Not enough fuel for hop + return -- head home to refuel first
 					const colony = findColony();
 					if (colony && colony.data.name !== ship.hostPlanetName) {
 						if (initiateTransfer(ship, colony)) {
@@ -464,7 +464,7 @@ function dispatchCommand(ship: ShipEntry, result: CommandResult): void {
 							ship.action = noAction();
 						}
 					} else {
-						// Already at colony — refuel and retry
+						// Already at colony -- refuel and retry
 						ship.fuelKg = ship.fuelCapacityKg;
 						ship.action = noAction();
 					}
@@ -484,7 +484,7 @@ function dispatchCommand(ship: ShipEntry, result: CommandResult): void {
 					}
 				}
 			} else {
-				addCoalescedNotification("mission-complete", "System survey complete — all bodies surveyed");
+				addCoalescedNotification("mission-complete", "System survey complete -- all bodies surveyed");
 				ship.action = mkAction("idle", "idle");
 				publishIntent(ship.data.name, {
 					type: "idle",
@@ -512,8 +512,8 @@ function dispatchCommand(ship: ShipEntry, result: CommandResult): void {
 				if (initiateTransfer(ship, earth)) {
 					ship.action = mkAction("refuel", "refuel");
 				} else {
-					// Can't reach colony — stranded, clear action to avoid stuck state
-					addNotification("low-fuel", `Ship stranded at ${ship.hostPlanetName} — insufficient fuel`);
+					// Can't reach colony -- stranded, clear action to avoid stuck state
+					addNotification("low-fuel", `Ship stranded at ${ship.hostPlanetName} -- insufficient fuel`);
 					ship.action = noAction();
 				}
 			} else {
@@ -535,7 +535,7 @@ function dispatchCommand(ship: ShipEntry, result: CommandResult): void {
 				} else {
 					addNotification(
 						"low-fuel",
-						`Ship stranded at ${ship.hostPlanetName} — insufficient fuel for shore leave`,
+						`Ship stranded at ${ship.hostPlanetName} -- insufficient fuel for shore leave`,
 					);
 					ship.action = noAction();
 				}
@@ -557,7 +557,7 @@ function dispatchCommand(ship: ShipEntry, result: CommandResult): void {
 				} else {
 					addNotification(
 						"low-fuel",
-						`Ship stranded at ${ship.hostPlanetName} — insufficient fuel for overhaul`,
+						`Ship stranded at ${ship.hostPlanetName} -- insufficient fuel for overhaul`,
 					);
 					ship.action = noAction();
 				}
@@ -683,7 +683,7 @@ export function onTransferComplete(ship: ShipEntry): void {
 		ship.action.duration = 5;
 		ship.action.progress = 0;
 	} else {
-		// No pending action — evaluate command tree
+		// No pending action -- evaluate command tree
 		const result = evaluateCommandTree(ship);
 		if (result) dispatchCommand(ship, result);
 	}

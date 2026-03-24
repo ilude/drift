@@ -400,9 +400,9 @@ describe("selectNextSurveyTarget", () => {
 	});
 });
 
-// --- selectNextSurveyTarget — asteroids ---
+// --- selectNextSurveyTarget -- asteroids ---
 
-describe("selectNextSurveyTarget — asteroids", () => {
+describe("selectNextSurveyTarget -- asteroids", () => {
 	beforeEach(() => {
 		state.bodyMeshes = [];
 		state.asteroidBelts = [];
@@ -489,9 +489,9 @@ describe("selectNextSurveyTarget — asteroids", () => {
 	});
 });
 
-// --- selectNextSurveyTarget — intents ---
+// --- selectNextSurveyTarget -- intents ---
 
-describe("selectNextSurveyTarget — intents", () => {
+describe("selectNextSurveyTarget -- intents", () => {
 	function shipAt(x: number, z: number): ShipEntry {
 		return mockShip({
 			data: { name: "Ship" } as unknown as ShipEntry["data"],
@@ -572,9 +572,9 @@ describe("getUnsurvevedMoonsOfHost", () => {
 	});
 });
 
-// --- selectNextSurveyTarget — NaN safety with positional bodies ---
+// --- selectNextSurveyTarget -- NaN safety with positional bodies ---
 
-describe("selectNextSurveyTarget — NaN safety", () => {
+describe("selectNextSurveyTarget -- NaN safety", () => {
 	beforeEach(() => {
 		state.bodyMeshes = [];
 		state.asteroidBelts = [];

@@ -141,7 +141,7 @@ export function predictTargetWorld(
 			parentFutureX = Math.cos(parentTheta) * parentR;
 			parentFutureZ = Math.sin(parentTheta) * parentR;
 		} else {
-			// Parent position unknown — use current
+			// Parent position unknown -- use current
 			parentFutureX = targetEntry.parentMesh.position.x;
 			parentFutureZ = targetEntry.parentMesh.position.z;
 		}
@@ -185,7 +185,7 @@ export function computeHermiteKnots(
 	const dx = targetWorld.x - departX;
 	const dz = targetWorld.z - departZ;
 	const dist = Math.hypot(dx, dz);
-	// Both tangents point along the direct line to target — simple S-curve
+	// Both tangents point along the direct line to target -- simple S-curve
 	const angle = Math.atan2(dz, dx);
 	return {
 		p0x: departX,
@@ -360,7 +360,7 @@ export function createShip(config: ShipConfig): ShipEntry | undefined {
 		stationTarget: null,
 	} as ShipEntry;
 
-	// Velocity tail — always visible, short trail showing direction
+	// Velocity tail -- always visible, short trail showing direction
 	const tailGeom = new THREE.BufferGeometry();
 	tailGeom.setAttribute("position", new THREE.BufferAttribute(entry.tailPositions, 3));
 	tailGeom.setDrawRange(0, 0);
@@ -398,7 +398,7 @@ export function completeTransfer(entry: ShipEntry, entryAngle = 0): void {
 
 	const transferTarget = entry.transferTarget ?? "";
 
-	// Find the target body — could be a planet, moon, or comet
+	// Find the target body -- could be a planet, moon, or comet
 	const target = findBodyEntry(transferTarget);
 
 	entry.shipState = "orbiting";
@@ -550,7 +550,7 @@ export function findAsteroid(
 /**
  * Build a lightweight BodyEntry-compatible proxy for an asteroid.
  * Reads position from the belt's Float32Array. Returns a fresh position object
- * per call — safe to hold references across multiple calls.
+ * per call -- safe to hold references across multiple calls.
  */
 export function asteroidProxy(asteroid: AsteroidInfo, beltEntry: AsteroidBeltEntry): BodyEntry {
 	const idx = asteroid.beltIndex ?? 0;
@@ -601,7 +601,7 @@ export function initiateTransfer(entry: ShipEntry, targetEntry: BodyEntry): bool
 		return false;
 	}
 
-	// Store fuel cost — consumed gradually during transfer, not upfront
+	// Store fuel cost -- consumed gradually during transfer, not upfront
 	const gameDays = result.transferDays ?? 0;
 	entry.transferFuelTotal = result.fuelUsedKg ?? 0;
 

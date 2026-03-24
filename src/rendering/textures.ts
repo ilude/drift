@@ -655,7 +655,7 @@ function generateCloudTexture(
 // --- Texture dispatcher ---
 
 const EARTH_RADIUS_KM = 6371;
-const ROCKY_CLOUD_MIN_RADIUS = 0.8; // Earth radii — smaller rocky bodies have no atmosphere
+const ROCKY_CLOUD_MIN_RADIUS = 0.8; // Earth radii -- smaller rocky bodies have no atmosphere
 
 function bodyCategory(data: BodyData | MoonData): PlanetCategory {
 	const category = (data as BodyData)._category;
