@@ -324,25 +324,30 @@ describe("tickShipSimulation", () => {
 		expect(ship.fuelKg).toBeGreaterThan(25000);
 	});
 
-	it("overhaul gradually repairs hull and restocks supplies", () => {
+	it("overhaul gradually repairs hull, restocks supplies, and recovers morale", () => {
 		const ship = mockShip({
+			hostPlanetName: "Mars",
 			maintenance: { age: 100, supplies: 20, maxSupplies: 100, hullIntegrity: 40 },
 			action: { type: "overhaul", commandId: "1", startTime: 0, duration: 5, progress: 0 },
+			crew: { count: 50, morale: 60, lastShoreLeave: 0, deploymentLimit: 180 },
 		});
 		tickShipSimulation(ship, 1, 10);
-		// +2.5 hull/day, +2.5 supplies/day
+		// +2.5 hull/day, +2.5 supplies/day, +0.5 morale/day
 		expect(ship.maintenance.hullIntegrity).toBeCloseTo(42.5, 1);
 		expect(ship.maintenance.supplies).toBeCloseTo(22.5, 1);
+		expect(ship.crew.morale).toBeCloseTo(60.5, 1);
 	});
 
 	it("overhaul does not exceed maximums", () => {
 		const ship = mockShip({
 			maintenance: { age: 100, supplies: 99, maxSupplies: 100, hullIntegrity: 99 },
 			action: { type: "overhaul", commandId: "1", startTime: 0, duration: 5, progress: 0 },
+			crew: { count: 50, morale: 99.8, lastShoreLeave: 0, deploymentLimit: 180 },
 		});
 		tickShipSimulation(ship, 1, 10);
 		expect(ship.maintenance.hullIntegrity).toBe(100);
 		expect(ship.maintenance.supplies).toBe(100);
+		expect(ship.crew.morale).toBe(100);
 	});
 });
 

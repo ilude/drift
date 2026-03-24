@@ -84,8 +84,13 @@ core/utils.ts, math/orbit.ts, math/visual.ts  (pure math, no app imports)
 - **LOD:** 3-tier sphere geometry (8/24/48 segments), rings/clouds gated at 15px screen radius.
 - **Ship state machine:** orbiting → transferring → orbiting. Transfer uses cubic Hermite with station-keeping capture blend (t^4). Ships use brachistochrone physics (default 0.1g engine) for transfer timing.
 - **Ship command tree:** Priority-ordered list of conditional commands (fuel-below, morale-below, hull-below, supplies-below, always). Evaluated between actions. `immediateCommand` overrides the tree for one-shot manual orders.
-- **Ship simulation:** `tickShipSimulation()` runs per-frame: morale decay (1.5 exponent past 180-day deployment limit), maintenance age, malfunction checks (every 30 days during transfers), fuel drain (station-keeping rates), gradual recovery during actions (refuel: 20%/day, overhaul: +20 hull+supplies/day, shore leave: +5 morale/day).
+- **Ship simulation:** `tickShipSimulation()` runs per-frame: morale decay (1.5 exponent past 180-day deployment limit), maintenance age, malfunction checks (every 30 days during transfers), fuel drain (station-keeping rates), gradual recovery during actions (refuel: 20%/day, overhaul: +2.5% hull+supplies/day +0.5 morale/day, shore leave: +2.5 morale/day +0.25% hull/day from repair crew). All recovery rates scaled by `depotQuality` and per-system hardness multipliers.
 - **Survey system:** Multi-level surveys (1-3) revealing progressively rarer resources. Duration scales with body type and crew/hull condition. `surveyMultiplier` state setting for difficulty tuning.
+- **Rate modifier pattern:** Every rate-based game system uses two orthogonal scaling axes:
+  1. **Quality modifier** (`depotQuality`): represents location facilities — crew competence, equipment modernity, depot capacity. Currently a single global value (1.0 = 100%), eventually calculated per-location from base/colony subsystems.
+  2. **Game hardness multiplier** (per-system on AppState): player-chosen difficulty. 1.0 = default, higher = slower/harder. Current multipliers: `surveyMultiplier`, `repairMultiplier`, `refuelMultiplier`, `moraleMultiplier`, `supplyMultiplier`.
+  - **Formula:** `effectiveRate = baseRate * quality / hardnessMultiplier`
+  - **Convention:** All new rate-based systems MUST include both modifiers. Values are stored as decimals (1.0 = 100%). When brainstorming new systems, proactively identify where quality and hardness modifiers should apply.
 - **Comet trails:** Pre-filled on creation by computing past orbital positions backwards. Trail buffer is 1200 points (vs 400 for planets). Sample rate scales with zoom level.
 - **Render-on-demand:** 30fps cap; render loop stops when paused and resumes on input (wake-render event).
 - **No circular imports.** Pure math modules have zero app imports.

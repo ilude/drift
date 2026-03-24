@@ -397,6 +397,7 @@ export interface AsteroidBeltEntry {
 	yOffsets: Float32Array;
 	count: number;
 	asteroids: AsteroidInfo[];
+	colors: Float32Array;
 }
 
 // --- FlyTo state ---
@@ -463,7 +464,14 @@ export interface AppState {
 	notifications: GameNotification[];
 	notificationPauseConfig: NotificationPauseConfig;
 	firstSurveyCompleted: boolean;
+	// Game hardness multipliers (1.0 = 100% = default, higher = slower/harder)
 	surveyMultiplier: number;
+	repairMultiplier: number;
+	refuelMultiplier: number;
+	moraleMultiplier: number;
+	supplyMultiplier: number;
+	// Depot quality (1.0 = 100% = standard facilities, eventually per-location)
+	depotQuality: number;
 }
 
 // --- System data ---

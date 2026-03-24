@@ -89,6 +89,11 @@ export const state: AppState = {
 	debugStepSpeed: 0,
 	renderNeeded: true,
 	surveyMultiplier: 0.1,
+	repairMultiplier: 1,
+	refuelMultiplier: 1,
+	moraleMultiplier: 1,
+	supplyMultiplier: 1,
+	depotQuality: 1,
 	notifications: [],
 	notificationPauseConfig: {
 		"survey-complete": false,

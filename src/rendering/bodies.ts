@@ -96,6 +96,9 @@ export const COMET_TRAIL_STEP_ARC: number = orbitSpeed(TEMPEL1_PERIOD) * 0.02;
 export const COMET_ORBIT_OPACITY: number = 0.03;
 export const COMET_ORBIT_SELECTED_OPACITY: number = 0.05;
 
+export const UNSURVEYED_ASTEROID_COLOR = [0.545, 0.439, 0.439] as const; // #8B7070 red-grey
+export const SURVEYED_ASTEROID_COLOR = [0.439, 0.439, 0.533] as const; // #707088 blue-grey
+
 // Planet lookup map: O(1) access instead of linear .find() scans
 const planetMap = new Map<string, PlanetEntry>();
 
@@ -527,6 +530,7 @@ export function createAsteroidBelts(): AsteroidBeltEntry[] {
 		const maxIncRad = ((belt.maxInc || 0) * Math.PI) / 180;
 		const count = belt.count;
 		const positions = new Float32Array(count * 3);
+		const colors = new Float32Array(count * 3);
 		const angles = new Float32Array(count);
 		const radii = new Float32Array(count);
 		const speeds = new Float32Array(count);
@@ -584,6 +588,9 @@ export function createAsteroidBelts(): AsteroidBeltEntry[] {
 			positions[i * 3] = p.x;
 			positions[i * 3 + 1] = p.y;
 			positions[i * 3 + 2] = p.z;
+			colors[i * 3] = UNSURVEYED_ASTEROID_COLOR[0];
+			colors[i * 3 + 1] = UNSURVEYED_ASTEROID_COLOR[1];
+			colors[i * 3 + 2] = UNSURVEYED_ASTEROID_COLOR[2];
 
 			asteroids.push({
 				designation: `${prefix}-${String(i + 1).padStart(4, "0")}`,
@@ -598,8 +605,9 @@ export function createAsteroidBelts(): AsteroidBeltEntry[] {
 
 		const geom = new THREE.BufferGeometry();
 		geom.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+		geom.setAttribute("color", new THREE.BufferAttribute(colors, 3));
 		const mat = new THREE.PointsMaterial({
-			color: belt.color,
+			vertexColors: true,
 			size: belt.size,
 			sizeAttenuation: true,
 		});
@@ -610,6 +618,7 @@ export function createAsteroidBelts(): AsteroidBeltEntry[] {
 			belt,
 			points,
 			positions,
+			colors,
 			angles,
 			radii,
 			speeds,

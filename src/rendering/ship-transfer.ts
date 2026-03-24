@@ -638,8 +638,12 @@ export function asteroidProxy(asteroid: AsteroidInfo, beltEntry: AsteroidBeltEnt
 export function initiateTransfer(entry: ShipEntry, targetEntry: BodyEntry): boolean {
 	if (!entry.isShip || entry.shipState === "transferring") return false;
 
-	// Find current host body for distance calculation
-	const host = findBodyEntry(entry.hostPlanetName);
+	// Find current host body for distance calculation (body or asteroid)
+	let host: BodyEntry | undefined = findBodyEntry(entry.hostPlanetName);
+	if (!host) {
+		const hit = findAsteroid(entry.hostPlanetName);
+		if (hit) host = asteroidProxy(hit.asteroid, hit.beltEntry);
+	}
 	if (!host) return false;
 
 	// Compute real distance in km between ship's host and target

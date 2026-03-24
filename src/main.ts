@@ -14,7 +14,7 @@ import { getSolSystem } from "./data/sol-data";
 import { generateSystem } from "./data/system-generator";
 import { DIST_SCALE } from "./math/orbit";
 import { AU_TO_KM, checkTransferKm } from "./math/ship-physics";
-import { findPlanetEntry } from "./rendering/bodies";
+import { findPlanetEntry, SURVEYED_ASTEROID_COLOR } from "./rendering/bodies";
 import {
 	createAsteroidBelts,
 	createBodies,
@@ -305,6 +305,13 @@ function completeSurvey(ship: ShipEntry): void {
 				hit.asteroid.diameter / 2,
 			);
 			hit.asteroid.survey = { surveyLevel: 1, deposits };
+
+			const idx = hit.asteroid.beltIndex ?? 0;
+			const c = hit.beltEntry.colors;
+			c[idx * 3] = SURVEYED_ASTEROID_COLOR[0];
+			c[idx * 3 + 1] = SURVEYED_ASTEROID_COLOR[1];
+			c[idx * 3 + 2] = SURVEYED_ASTEROID_COLOR[2];
+			hit.beltEntry.points.geometry.attributes.color.needsUpdate = true;
 
 			const names = deposits
 				.map((d) => d.resourceId)

@@ -78,6 +78,7 @@ const REFUEL_RATE_PER_DAY = 0.2; // 20% of capacity/day
 const HULL_REPAIR_PER_DAY = 2.5; // +2.5% hull/day during overhaul (~40 days from 0% to full)
 const SUPPLY_RESTOCK_PER_DAY = 2.5; // +2.5 supplies/day during overhaul
 const SHORE_LEAVE_REPAIR_PER_DAY = 0.25; // +0.25% hull/day from repair crew during shore leave
+const OVERHAUL_MORALE_PER_DAY = 0.5; // +0.5 morale/day during overhaul ("working from home", ~140 days from 30% to full)
 
 export function tickShipSimulation(ship: ShipEntry, simDt: number, simTime: number): void {
 	const atColony = isAtColony(ship);
@@ -85,15 +86,30 @@ export function tickShipSimulation(ship: ShipEntry, simDt: number, simTime: numb
 	// Recovery actions only apply while orbiting (not during transfer to destination)
 	const isOrbiting = ship.shipState === "orbiting";
 
-	// Morale: gradual recovery during shore leave, decay when deployed
+	// Effective rates: baseRate * depotQuality / hardnessMultiplier
+	// depotQuality represents location facilities (1.0 = standard, eventually per-location)
+	// hardness multipliers are player-set difficulty (1.0 = default, higher = slower)
+	const dq = state.depotQuality;
+	const moraleRate = (MORALE_RECOVERY_PER_DAY * dq) / state.moraleMultiplier;
+	const overhaulMoraleRate = (OVERHAUL_MORALE_PER_DAY * dq) / state.moraleMultiplier;
+	const repairRate = (HULL_REPAIR_PER_DAY * dq) / state.repairMultiplier;
+	const repairCrewRate = (SHORE_LEAVE_REPAIR_PER_DAY * dq) / state.repairMultiplier;
+	const refuelRate = (REFUEL_RATE_PER_DAY * dq) / state.refuelMultiplier;
+	const supplyRate = (SUPPLY_RESTOCK_PER_DAY * dq) / state.supplyMultiplier;
+
+	// Morale: gradual recovery during shore leave or overhaul, decay when deployed
 	if (isOrbiting && ship.action.type === "shore-leave") {
-		ship.crew.morale = Math.min(100, ship.crew.morale + MORALE_RECOVERY_PER_DAY * simDt);
+		ship.crew.morale = Math.min(100, ship.crew.morale + moraleRate * simDt);
 		ship.crew.lastShoreLeave = simTime;
 		// Repair crew works on hull during shore leave
 		ship.maintenance.hullIntegrity = Math.min(
 			100,
-			ship.maintenance.hullIntegrity + SHORE_LEAVE_REPAIR_PER_DAY * simDt,
+			ship.maintenance.hullIntegrity + repairCrewRate * simDt,
 		);
+	} else if (isOrbiting && ship.action.type === "overhaul") {
+		// Crew recovers morale slowly during overhaul ("working from home")
+		ship.crew.morale = Math.min(100, ship.crew.morale + overhaulMoraleRate * simDt);
+		ship.crew.lastShoreLeave = simTime;
 	} else if (!atColony) {
 		const daysSinceLeave = simTime - ship.crew.lastShoreLeave;
 		ship.crew.morale = computeMorale(daysSinceLeave, ship.crew.deploymentLimit);
@@ -101,7 +117,7 @@ export function tickShipSimulation(ship: ShipEntry, simDt: number, simTime: numb
 
 	// Gradual refueling during refuel action (only while orbiting)
 	if (isOrbiting && ship.action.type === "refuel") {
-		const fuelPerFrame = REFUEL_RATE_PER_DAY * ship.fuelCapacityKg * simDt;
+		const fuelPerFrame = refuelRate * ship.fuelCapacityKg * simDt;
 		ship.fuelKg = Math.min(ship.fuelCapacityKg, ship.fuelKg + fuelPerFrame);
 	}
 
@@ -109,11 +125,11 @@ export function tickShipSimulation(ship: ShipEntry, simDt: number, simTime: numb
 	if (isOrbiting && ship.action.type === "overhaul") {
 		ship.maintenance.hullIntegrity = Math.min(
 			100,
-			ship.maintenance.hullIntegrity + HULL_REPAIR_PER_DAY * simDt,
+			ship.maintenance.hullIntegrity + repairRate * simDt,
 		);
 		ship.maintenance.supplies = Math.min(
 			ship.maintenance.maxSupplies,
-			ship.maintenance.supplies + SUPPLY_RESTOCK_PER_DAY * simDt,
+			ship.maintenance.supplies + supplyRate * simDt,
 		);
 	}
 
