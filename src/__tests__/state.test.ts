@@ -313,8 +313,8 @@ describe("transfer state persistence", () => {
 		saveState();
 		const loaded = loadSavedState();
 
-		expect(loaded).not.toBeNull();
-		const s = loaded?.ships[0];
+		if (!loaded) throw new Error("loadSavedState returned null");
+		const s = loaded.ships[0];
 		expect(s.shipState).toBe("transferring");
 		expect(s.transferTarget).toBe("Mars");
 		expect(s.transferStartTime).toBe(100);
@@ -473,10 +473,89 @@ describe("transfer state persistence", () => {
 		saveState();
 		const loaded = loadSavedState();
 
-		expect(loaded).not.toBeNull();
-		const s = loaded?.ships[0];
+		if (!loaded) throw new Error("loadSavedState returned null");
+		const s = loaded.ships[0];
 		expect(s.shipState).toBeUndefined();
 		expect(s.transferTarget).toBeUndefined();
 		expect(s.p0x).toBeUndefined();
+	});
+
+	it("saveState includes non-sol discovered systems", () => {
+		const ship = {
+			isShip: true,
+			data: { name: "Scout", category: "Ship", type: "Ship" },
+			hostPlanetName: "Earth",
+			fuelKg: 50000,
+			engineId: "chemical",
+			shipState: "orbiting" as ShipEntry["shipState"],
+			transferTarget: null,
+			transferStartTime: 0,
+			transferTimeDays: 0,
+			transferFuelTotal: 0,
+			p0x: 0,
+			p0y: 0,
+			p0z: 0,
+			t0x: 0,
+			t0y: 0,
+			t0z: 0,
+			p1x: 0,
+			p1y: 0,
+			p1z: 0,
+			t1x: 0,
+			t1y: 0,
+			t1z: 0,
+			crew: { size: 6, morale: 1, deploymentDays: 0 },
+			maintenance: { hullIntegrity: 1, supplies: 1, age: 0, lastMalfunction: null },
+			commandTree: { entries: [] },
+		} as unknown as (typeof state.bodyMeshes)[0];
+
+		state.bodyMeshes = [ship];
+		state.currentSystemKey = "sol";
+		state.randomClickCount = 0;
+		state.discoveredSystems = new Map([
+			["sol", { name: "Sol", seed: 0, systemData: null }],
+			["alpha-centauri", { name: "Alpha Centauri", seed: 12345, systemData: null }],
+		]) as typeof state.discoveredSystems;
+
+		saveState();
+		const loaded = loadSavedState();
+
+		expect(loaded).not.toBeNull();
+		expect(loaded?.discoveredSystems).toHaveLength(1);
+		expect(loaded?.discoveredSystems[0]).toEqual({
+			key: "alpha-centauri",
+			name: "Alpha Centauri",
+			seed: 12345,
+		});
+	});
+
+	it("loadSavedState migrates v3 save with singular .ship to v5", () => {
+		const v3Save = JSON.stringify({
+			version: 3,
+			simTime: 0,
+			currentSystemKey: "sol",
+			randomClickCount: 0,
+			ship: {
+				fuelKg: 42000,
+				engineId: "chemical",
+				crew: { size: 6, morale: 1, deploymentDays: 0 },
+				maintenance: { hullIntegrity: 1, supplies: 1, age: 0 },
+				commandTree: { entries: [] },
+			},
+		});
+		localStorage.setItem("solar-sim-state", v3Save);
+
+		// v3 → v4 migration wraps .ship into .ships array, then v4 → v5 bumps version
+		const loaded = loadSavedState();
+		expect(loaded).not.toBeNull();
+		expect(loaded?.ships).toHaveLength(1);
+		expect(loaded?.ships[0].name).toBe("ISS Explorer");
+		expect(loaded?.ships[0].hostPlanetName).toBe("Earth");
+		expect(loaded?.ships[0].fuelKg).toBe(42000);
+	});
+
+	it("loadSavedState returns null for corrupted JSON", () => {
+		localStorage.setItem("solar-sim-state", "not valid json {{{");
+		expect(loadSavedState()).toBeNull();
 	});
 });

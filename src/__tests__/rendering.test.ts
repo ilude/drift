@@ -84,6 +84,7 @@ describe("createShip", () => {
 				e: 0,
 				period: 0,
 				radius: 696340,
+				mass: 1.989e30,
 				color: "#ffdd44",
 				moons: [],
 			},
@@ -94,6 +95,7 @@ describe("createShip", () => {
 				e: 0.017,
 				period: 1.0,
 				radius: 6371,
+				mass: 5.972e24,
 				color: "#4488ff",
 				moons: [],
 			},
@@ -101,7 +103,7 @@ describe("createShip", () => {
 		state.bodyMeshes = [];
 
 		const entry = createShip({ name: "Ship", hostPlanetName: "Earth" });
-		expect(entry).toBeDefined();
+		if (!entry) throw new Error("createShip returned undefined");
 		expect(entry.isShip).toBe(true);
 		expect(entry).toHaveProperty("dryMassKg");
 		expect(entry).toHaveProperty("fuelKg");
@@ -124,6 +126,7 @@ describe("initiateTransfer", () => {
 				e: 0,
 				period: 0,
 				radius: 696340,
+				mass: 1.989e30,
 				color: "#ffdd44",
 				moons: [],
 			},
@@ -134,6 +137,7 @@ describe("initiateTransfer", () => {
 				e: 0.017,
 				period: 1.0,
 				radius: 6371,
+				mass: 5.972e24,
 				color: "#4488ff",
 				moons: [],
 			},
@@ -144,6 +148,7 @@ describe("initiateTransfer", () => {
 				e: 0.093,
 				period: 1.881,
 				radius: 3390,
+				mass: 6.417e23,
 				color: "#ff6644",
 				moons: [],
 			},
@@ -409,6 +414,70 @@ describe("trail distance sampling (ship transfer)", () => {
 	// it reads back the value we just wrote -> dx=0 always -> no samples.
 	// The fix computes distance BEFORE the glue overwrites previous position.
 
+	// Seed the trail with the first position (only called on frame 0).
+	function seedTrail(
+		positions: Float32Array,
+		pos: { x: number; z: number },
+		state: { head: number; count: number; sampleCount: number },
+	): void {
+		positions[0] = pos.x;
+		positions[2] = pos.z;
+		state.head = 1;
+		state.count = 1;
+		state.sampleCount++;
+	}
+
+	// Compute distance from previous position and update glue (head).
+	function updateDistance(
+		positions: Float32Array,
+		pos: { x: number; z: number },
+		maxPoints: number,
+		state: { head: number; count: number },
+		readBeforeGlue: boolean,
+	): number {
+		let distThisFrame = 0;
+
+		if (readBeforeGlue && state.count > 0) {
+			// CORRECT: read previous position BEFORE glue overwrites it
+			const prevIdx = ((state.head - 1 + maxPoints) % maxPoints) * 3;
+			distThisFrame = Math.hypot(pos.x - positions[prevIdx], pos.z - positions[prevIdx + 2]);
+		}
+
+		// Glue: update head to current position
+		if (state.count > 0) {
+			const headPhys = ((state.head - 1 + maxPoints) % maxPoints) * 3;
+			positions[headPhys] = pos.x;
+			positions[headPhys + 2] = pos.z;
+		}
+
+		if (!readBeforeGlue && state.count > 0) {
+			// BUG: read AFTER glue -- always reads back current position
+			const prevIdx = ((state.head - 1 + maxPoints) % maxPoints) * 3;
+			distThisFrame = Math.hypot(pos.x - positions[prevIdx], pos.z - positions[prevIdx + 2]);
+		}
+
+		return distThisFrame;
+	}
+
+	// Record samples based on accumulated distance.
+	function recordSamples(
+		positions: Float32Array,
+		pos: { x: number; z: number },
+		maxPoints: number,
+		threshold: number,
+		state: { head: number; count: number; sampleCount: number; sampleAccum: number },
+	): void {
+		while (state.sampleAccum > threshold) {
+			state.sampleAccum -= threshold;
+			const h3 = state.head * 3;
+			positions[h3] = pos.x;
+			positions[h3 + 2] = pos.z;
+			state.head = (state.head + 1) % maxPoints;
+			if (state.count < maxPoints) state.count++;
+			state.sampleCount++;
+		}
+	}
+
 	function simulateTrailSampling(
 		meshPositions: Array<{ x: number; z: number }>,
 		threshold: number,
@@ -416,54 +485,18 @@ describe("trail distance sampling (ship transfer)", () => {
 	): number {
 		const maxPoints = 400;
 		const positions = new Float32Array(maxPoints * 3);
-		let head = 0;
-		let count = 0;
-		let sampleAccum = 0;
-		let sampleCount = 0;
+		const state = { head: 0, count: 0, sampleCount: 0, sampleAccum: 0 };
 
 		for (const pos of meshPositions) {
-			let distThisFrame = 0;
-
-			if (readBeforeGlue && count > 0) {
-				// CORRECT: read previous position BEFORE glue overwrites it
-				const prevIdx = ((head - 1 + maxPoints) % maxPoints) * 3;
-				distThisFrame = Math.hypot(pos.x - positions[prevIdx], pos.z - positions[prevIdx + 2]);
-			}
-
-			// Glue: update head to current position
-			if (count > 0) {
-				const headPhys = ((head - 1 + maxPoints) % maxPoints) * 3;
-				positions[headPhys] = pos.x;
-				positions[headPhys + 2] = pos.z;
-			}
-
-			if (!readBeforeGlue && count > 0) {
-				// BUG: read AFTER glue -- always reads back current position
-				const prevIdx = ((head - 1 + maxPoints) % maxPoints) * 3;
-				distThisFrame = Math.hypot(pos.x - positions[prevIdx], pos.z - positions[prevIdx + 2]);
-			}
-
-			sampleAccum += distThisFrame;
-			while (sampleAccum > threshold) {
-				sampleAccum -= threshold;
-				const h3 = head * 3;
-				positions[h3] = pos.x;
-				positions[h3 + 2] = pos.z;
-				head = (head + 1) % maxPoints;
-				if (count < maxPoints) count++;
-				sampleCount++;
-			}
-
-			// Seed first point (matches real code: first frame always records)
-			if (count === 0) {
-				positions[0] = pos.x;
-				positions[2] = pos.z;
-				head = 1;
-				count = 1;
-				sampleCount++;
+			if (state.count === 0) {
+				seedTrail(positions, pos, state);
+			} else {
+				const distThisFrame = updateDistance(positions, pos, maxPoints, state, readBeforeGlue);
+				state.sampleAccum += distThisFrame;
+				recordSamples(positions, pos, maxPoints, threshold, state);
 			}
 		}
-		return sampleCount;
+		return state.sampleCount;
 	}
 
 	it("BUG: reading after glue produces only the seed point", () => {

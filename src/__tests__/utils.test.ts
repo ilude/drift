@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { seededRandom } from "../core/utils";
+import { rngWeighted, seededRandom } from "../core/utils";
 
 describe("seededRandom", () => {
 	it("produces deterministic output for same seed", () => {
@@ -46,5 +46,25 @@ describe("seededRandom", () => {
 		const v = rng();
 		expect(v).toBeGreaterThanOrEqual(0);
 		expect(v).toBeLessThan(1);
+	});
+});
+
+describe("rngWeighted", () => {
+	it("returns entry whose cumulative weight matches the random value", () => {
+		const rng = seededRandom(42);
+		const entries = [{ weight: 0.2 }, { weight: 0.3 }, { weight: 0.5 }];
+		const result = rngWeighted(rng, entries);
+		expect(result).toBeDefined();
+		expect(entries).toContain(result);
+	});
+
+	it("triggers fallback when rng returns ~1.0 (floating-point rounding)", () => {
+		// Return a deterministic value very close to 1.0
+		// This can cause floating-point rounding to skip the <= 0 check
+		const mockRng = () => 0.9999999999999999;
+		const entries = [{ weight: 1 }, { weight: 1 }, { weight: 1 }];
+		const result = rngWeighted(mockRng, entries);
+		// Should return the last entry (fallback path at line 30)
+		expect(result).toBe(entries[entries.length - 1]);
 	});
 });

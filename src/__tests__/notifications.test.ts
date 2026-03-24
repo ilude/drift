@@ -183,6 +183,16 @@ describe("notifications", () => {
 			addNotification("low-fuel", "Fuel low");
 			expect(state.timeSpeed).toBe(0);
 		});
+
+		it("dispatches wake-render event when pausing", () => {
+			const dispatchSpy = vi.fn();
+			const mockWindow = { dispatchEvent: dispatchSpy };
+			vi.stubGlobal("window", mockWindow);
+			setPauseConfig("low-fuel", true);
+			addNotification("low-fuel", "Fuel low");
+			expect(dispatchSpy).toHaveBeenCalledWith(expect.objectContaining({ type: "wake-render" }));
+			vi.unstubAllGlobals();
+		});
 	});
 
 	describe("clearNotifications", () => {
@@ -211,6 +221,18 @@ describe("notifications", () => {
 			addCoalescedNotification("survey-complete", "Surveyed Ceres", "Ceres");
 			expect(state.notifications).toHaveLength(1);
 			expect(state.notifications[0].message).toContain("Ceres");
+			vi.restoreAllMocks();
+		});
+
+		it("coalesces without bodyName (else branch) by replacing message", () => {
+			const now = Date.now();
+			vi.spyOn(Date, "now").mockReturnValue(now);
+			addCoalescedNotification("low-fuel", "Fuel critical", "Ship1");
+			// Same type, same window, but no bodyName (triggers else branch at line 54)
+			vi.spyOn(Date, "now").mockReturnValue(now + 500);
+			addCoalescedNotification("low-fuel", "Fuel empty");
+			expect(state.notifications).toHaveLength(1);
+			expect(state.notifications[0].message).toBe("Fuel empty");
 			vi.restoreAllMocks();
 		});
 

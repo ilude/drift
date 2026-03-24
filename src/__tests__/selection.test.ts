@@ -5,8 +5,14 @@ import { describe, expect, it, vi } from "vitest";
 
 import { GameClock } from "../core/game-clock";
 import { state } from "../core/state";
-import type { ShipEntry } from "../types";
-import { formatShipAction, formatShipDuration, getZoomDistance } from "../ui/selection";
+import type { ResourceDeposit, ShipEntry } from "../types";
+import {
+	classifyMiningValue,
+	formatAccessibilityBar,
+	formatShipAction,
+	formatShipDuration,
+	getZoomDistance,
+} from "../ui/selection";
 
 vi.mock("../rendering/scene", () => ({
 	scene: { add: vi.fn() },
@@ -205,5 +211,156 @@ describe("getZoomDistance", () => {
 		for (const type of ["Star", "Planet", "Dwarf Planet", "Moon", "Comet", "Ship"]) {
 			expect(getZoomDistance(type, false)).toBeGreaterThan(0);
 		}
+	});
+});
+
+describe("formatAccessibilityBar", () => {
+	it("formats zero accessibility as all dots", () => {
+		expect(formatAccessibilityBar(0)).toBe("[.....]");
+	});
+
+	it("formats full accessibility as all equals", () => {
+		expect(formatAccessibilityBar(1)).toBe("[=====]");
+	});
+
+	it("formats 0.5 accessibility as 2.5 rounded to 3 equals", () => {
+		expect(formatAccessibilityBar(0.5)).toBe("[===..]");
+	});
+
+	it("formats 0.2 accessibility as 1 equal", () => {
+		expect(formatAccessibilityBar(0.2)).toBe("[=....]");
+	});
+
+	it("formats 0.8 accessibility as 4 equals", () => {
+		expect(formatAccessibilityBar(0.8)).toBe("[====.]");
+	});
+
+	it("always returns 7 characters total with brackets", () => {
+		for (let i = 0; i <= 10; i++) {
+			const result = formatAccessibilityBar(i / 10);
+			expect(result).toHaveLength(7);
+			expect(result).toMatch(/^\[.{5}\]$/);
+		}
+	});
+});
+
+describe("classifyMiningValue", () => {
+	it("returns None and gray for empty deposits", () => {
+		const result = classifyMiningValue([], 1);
+		expect(result).toEqual({
+			score: 0,
+			label: "None",
+			color: "#666666",
+		});
+	});
+
+	it("returns None for deposits all above survey level", () => {
+		const deposits: ResourceDeposit[] = [
+			{
+				resourceId: "iron",
+				quantity: 100000,
+				accessibility: 1,
+				mined: 0,
+				minSurveyLevel: 3,
+			},
+		];
+		const result = classifyMiningValue(deposits, 1);
+		expect(result).toEqual({
+			score: 0,
+			label: "None",
+			color: "#666666",
+		});
+	});
+
+	it("returns Low for score between 0 and 10000", () => {
+		const deposits: ResourceDeposit[] = [
+			{
+				resourceId: "iron",
+				quantity: 1000,
+				accessibility: 1,
+				mined: 0,
+				minSurveyLevel: 1,
+			},
+		];
+		const result = classifyMiningValue(deposits, 1);
+		expect(result.label).toBe("Low");
+		expect(result.color).toBe("#888888");
+		expect(result.score).toBe(1000);
+	});
+
+	it("returns Medium for score between 10000 and 100000", () => {
+		const deposits: ResourceDeposit[] = [
+			{
+				resourceId: "iron",
+				quantity: 50000,
+				accessibility: 0.5,
+				mined: 0,
+				minSurveyLevel: 1,
+			},
+		];
+		const result = classifyMiningValue(deposits, 1);
+		expect(result.label).toBe("Medium");
+		expect(result.color).toBe("#aaaa44");
+		expect(result.score).toBe(25000);
+	});
+
+	it("returns High for score over 100000", () => {
+		const deposits: ResourceDeposit[] = [
+			{
+				resourceId: "iron",
+				quantity: 500000,
+				accessibility: 0.5,
+				mined: 0,
+				minSurveyLevel: 1,
+			},
+		];
+		const result = classifyMiningValue(deposits, 1);
+		expect(result.label).toBe("High");
+		expect(result.color).toBe("#4a6a4a");
+		expect(result.score).toBe(250000);
+	});
+
+	it("combines multiple deposits for total score", () => {
+		const deposits: ResourceDeposit[] = [
+			{
+				resourceId: "iron",
+				quantity: 30000,
+				accessibility: 1,
+				mined: 0,
+				minSurveyLevel: 1,
+			},
+			{
+				resourceId: "water",
+				quantity: 40000,
+				accessibility: 1,
+				mined: 0,
+				minSurveyLevel: 1,
+			},
+		];
+		const result = classifyMiningValue(deposits, 1);
+		expect(result.score).toBe(70000);
+		expect(result.label).toBe("Medium");
+	});
+
+	it("filters deposits by survey level", () => {
+		const deposits: ResourceDeposit[] = [
+			{
+				resourceId: "iron",
+				quantity: 200000,
+				accessibility: 1,
+				mined: 0,
+				minSurveyLevel: 1,
+			},
+			{
+				resourceId: "platinum",
+				quantity: 100000,
+				accessibility: 1,
+				mined: 0,
+				minSurveyLevel: 3,
+			},
+		];
+		const result = classifyMiningValue(deposits, 2);
+		expect(result.score).toBe(200000);
+		expect(result.label).toBe("High");
 	});
 });

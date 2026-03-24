@@ -394,6 +394,42 @@ describe("tickShipSimulation", () => {
 		// 5 deliveries × ceil(100*0.25)=25 = 125 → capped at 100
 		expect(ship.maintenance.supplies).toBe(100);
 	});
+
+	it("colony shuttle capped case: large time step fills to capacity directly", () => {
+		// Ship at colony with very large simDt that exceeds cap limit (30 iterations).
+		// When daysCrossed > 30 (capped), we hit the "capped case" at lines 153-156.
+		// This case directly fills fuel and supplies to max capacity.
+		const ship = mockShip({
+			hostPlanetName: "Earth",
+			fuelKg: 10000,
+			fuelCapacityKg: 100000,
+			maintenance: { age: 0, supplies: 10, maxSupplies: 100, hullIntegrity: 100 },
+		});
+		// Advance 40 days at once: dayNow - dayPrev = 40, capped at 30.
+		// The condition: daysCrossed >= dayNow - dayPrev should fail, entering the else if.
+		// Set simTime=140, simDt=40 so dayPrev=100, dayNow=140, actual=40 but capped to 30.
+		tickShipSimulation(ship, 40, 140);
+		// Capped case fills directly to capacity
+		expect(ship.fuelKg).toBe(100000);
+		expect(ship.maintenance.supplies).toBe(100);
+	});
+
+	it("fuel drain at idle rate (0.05%/day) when action.type is null", () => {
+		// Lines 169-170: When action.type === null, station-keeping rate is 0.0005.
+		// This tests the idle branch specifically.
+		const ship = mockShip({
+			fuelKg: 50000,
+			fuelCapacityKg: 50000,
+			shipState: "orbiting" as const,
+			action: { type: null, commandId: null, startTime: 0, duration: 0, progress: 0 },
+		});
+		const fuelBefore = ship.fuelKg;
+		tickShipSimulation(ship, 1, 10); // simDt=1 day
+		const fuelDrained = fuelBefore - ship.fuelKg;
+		// Idle rate: 0.0005 * 50000 * 1 = 25 kg/day
+		expect(fuelDrained).toBeCloseTo(25, 0);
+		expect(ship.fuelKg).toBeCloseTo(49975, 0);
+	});
 });
 
 // --- selectNextSurveyTarget ---
@@ -1104,6 +1140,109 @@ describe("commanderDecide", () => {
 		});
 		const result = commanderDecide(ship);
 		expect(result).toEqual({ action: "survey" });
+	});
+});
+
+// --- checkPreemptiveService: return-to-base and idle command mappings ---
+
+describe("checkPreemptiveService -- command mappings", () => {
+	it("maps return-to-base command to { action: 'refuel' } when triggered", () => {
+		// Fuel 25%, threshold 20%, judgment 0.9
+		// effective = 20 + 80 * 0.9 * 0.3 = 41.6 → 25 < 41.6 → triggers
+		const ship = mockShip({
+			hostPlanetName: "Earth",
+			fuelKg: 12500,
+			fuelCapacityKg: 50000,
+			commander: { judgment: 0.9, experience: 30 },
+			commandTree: {
+				entries: [
+					mockEntry("fuel-check", "return-to-base", {
+						condition: { type: "fuel-below", threshold: 20 },
+					}),
+					mockEntry("survey", "survey-nearest"),
+				],
+			},
+		});
+		const result = checkPreemptiveService(ship, { action: "survey" });
+		expect(result).toEqual({ action: "refuel" });
+	});
+
+	it("maps idle command to { action: 'idle' } when triggered", () => {
+		// Fuel 25%, threshold 20%, judgment 0.9 → triggers
+		const ship = mockShip({
+			hostPlanetName: "Earth",
+			fuelKg: 12500,
+			fuelCapacityKg: 50000,
+			commander: { judgment: 0.9, experience: 30 },
+			commandTree: {
+				entries: [
+					mockEntry("fuel-check", "idle", {
+						condition: { type: "fuel-below", threshold: 20 },
+					}),
+					mockEntry("survey", "survey-nearest"),
+				],
+			},
+		});
+		const result = checkPreemptiveService(ship, { action: "survey" });
+		expect(result).toEqual({ action: "idle" });
+	});
+});
+
+// --- checkDeferMaintenance: morale-below case ---
+
+describe("checkDeferMaintenance -- morale-below case", () => {
+	function mockUnsurveyed(name: string): BodyEntry {
+		return {
+			data: { name, type: "Dwarf Planet", distance: 2.77 },
+			isMoon: false,
+			survey: { surveyLevel: 0, deposits: [] },
+		} as unknown as BodyEntry;
+	}
+
+	beforeEach(() => {
+		state.bodyMeshes = [];
+	});
+
+	it("defers shore-leave triggered by morale-below when morale is above personal floor", () => {
+		// Morale 20, threshold 25, judgment 0.8
+		// personalFloor = 5 + (25 - 5) * (1 - 0.8) = 5 + 4 = 9
+		// 20 > 9 → safe to defer → survey instead
+		const ship = mockShip({
+			hostPlanetName: "Ceres",
+			commander: { judgment: 0.8, experience: 20 },
+			crew: { count: 50, morale: 20, lastShoreLeave: 0, deploymentLimit: 180 },
+			commandTree: {
+				entries: [
+					mockEntry("morale-check", "shore-leave", {
+						condition: { type: "morale-below", threshold: 25 },
+					}),
+				],
+			},
+		});
+		state.bodyMeshes = [mockUnsurveyed("Ceres")] as BodyEntry[];
+		rebuildEntityMaps();
+		expect(commanderDecide(ship)).toEqual({ action: "survey" });
+	});
+
+	it("does not defer shore-leave when morale is below commander's personal floor", () => {
+		// Morale 3, threshold 25, judgment 0.8
+		// personalFloor = 5 + (25 - 5) * (1 - 0.8) = 9
+		// 3 < 9 → too risky → take shore-leave
+		const ship = mockShip({
+			hostPlanetName: "Ceres",
+			commander: { judgment: 0.8, experience: 20 },
+			crew: { count: 50, morale: 3, lastShoreLeave: 0, deploymentLimit: 180 },
+			commandTree: {
+				entries: [
+					mockEntry("morale-check", "shore-leave", {
+						condition: { type: "morale-below", threshold: 25 },
+					}),
+				],
+			},
+		});
+		state.bodyMeshes = [mockUnsurveyed("Ceres")] as BodyEntry[];
+		rebuildEntityMaps();
+		expect(commanderDecide(ship)).toEqual({ action: "shore-leave" });
 	});
 });
 

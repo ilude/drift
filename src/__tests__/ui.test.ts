@@ -141,6 +141,7 @@ describe("ship info panel", () => {
 				e: 0,
 				period: 0,
 				radius: 696340,
+				mass: 1.989e30,
 				color: "#ffdd44",
 				moons: [],
 			},
@@ -151,6 +152,7 @@ describe("ship info panel", () => {
 				e: 0,
 				period: 1.0,
 				radius: 6371,
+				mass: 5.972e24,
 				color: "#4488ff",
 				moons: [],
 			},
@@ -180,6 +182,16 @@ describe("ship info panel", () => {
 			dryMassKg: 5000,
 			fuelKg: 50000,
 			fuelCapacityKg: 50000,
+			crew: { count: 10, morale: 80, lastShoreLeave: 0, deploymentLimit: 180 },
+			maintenance: { hullIntegrity: 100, age: 0, supplies: 100, maxSupplies: 100 },
+			action: { type: null, commandId: null, startTime: 0, duration: 0, progress: 0 },
+			commander: { judgment: 0.3, experience: 0 },
+			commands: [],
+			immediateCommand: null,
+			stationTarget: null,
+			transferStartTime: 0,
+			transferTimeDays: 0,
+			transferDisplayStart: 0,
 		};
 		state.bodyMeshes.push(shipEntry as unknown as BodyEntry);
 		state.bodyMeshes.push({
