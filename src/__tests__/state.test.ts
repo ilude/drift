@@ -8,26 +8,11 @@ import {
 	restoreShipState,
 	saveState,
 	simTimeToDate,
-	simTimeToDay,
 	speedLabel,
 	state,
 	truncateDate,
 } from "../core/state";
 import type { SavedStateData, ShipEntry } from "../types";
-
-describe("simTimeToDay", () => {
-	it("returns 0 for simTime 0", () => {
-		expect(simTimeToDay(0)).toBe(0);
-	});
-
-	it("returns 1 for simTime 1", () => {
-		expect(simTimeToDay(1)).toBe(1);
-	});
-
-	it("floors the result", () => {
-		expect(simTimeToDay(0.5)).toBe(0);
-	});
-});
 
 describe("simTimeToDate", () => {
 	it("returns epoch date at simTime 0", () => {
@@ -247,7 +232,7 @@ describe("ship state persistence", () => {
 	it("restoreShipState matches ships by name", () => {
 		state.bodyMeshes = [
 			{ isShip: true, data: { name: "ISS Explorer" }, fuelKg: 100000, engineId: "chemical" },
-			{ isShip: true, data: { name: "Magellan" }, fuelKg: 50000, engineId: "chemical" },
+			{ isShip: true, data: { name: "ISS Magellan" }, fuelKg: 50000, engineId: "chemical" },
 		] as typeof state.bodyMeshes;
 
 		const saved: SavedStateData = {
@@ -258,7 +243,7 @@ describe("ship state persistence", () => {
 			discoveredSystems: [],
 			ships: [
 				{
-					name: "Magellan",
+					name: "ISS Magellan",
 					hostPlanetName: "Mars",
 					fuelKg: 30000,
 					engineId: "nuclear",
@@ -304,12 +289,16 @@ describe("transfer state persistence", () => {
 			transferTimeDays: 200,
 			transferFuelTotal: 5000,
 			p0x: 1.1,
+			p0y: 1.15,
 			p0z: 2.2,
 			t0x: 3.3,
+			t0y: 3.35,
 			t0z: 4.4,
 			p1x: 5.5,
+			p1y: 5.55,
 			p1z: 6.6,
 			t1x: 7.7,
+			t1y: 7.75,
 			t1z: 8.8,
 			crew: { size: 6, morale: 0.9, deploymentDays: 30 },
 			maintenance: { hullIntegrity: 1, supplies: 1, age: 0, lastMalfunction: null },
@@ -332,12 +321,16 @@ describe("transfer state persistence", () => {
 		expect(s.transferTimeDays).toBe(200);
 		expect(s.transferFuelTotal).toBe(5000);
 		expect(s.p0x).toBe(1.1);
+		expect(s.p0y).toBe(1.15);
 		expect(s.p0z).toBe(2.2);
 		expect(s.t0x).toBe(3.3);
+		expect(s.t0y).toBe(3.35);
 		expect(s.t0z).toBe(4.4);
 		expect(s.p1x).toBe(5.5);
+		expect(s.p1y).toBe(5.55);
 		expect(s.p1z).toBe(6.6);
 		expect(s.t1x).toBe(7.7);
+		expect(s.t1y).toBe(7.75);
 		expect(s.t1z).toBe(8.8);
 	});
 
@@ -353,12 +346,16 @@ describe("transfer state persistence", () => {
 			transferTimeDays: 0,
 			transferFuelTotal: 0,
 			p0x: 0,
+			p0y: 0,
 			p0z: 0,
 			t0x: 0,
+			t0y: 0,
 			t0z: 0,
 			p1x: 0,
+			p1y: 0,
 			p1z: 0,
 			t1x: 0,
+			t1y: 0,
 			t1z: 0,
 		} as unknown as (typeof state.bodyMeshes)[0];
 
@@ -385,12 +382,16 @@ describe("transfer state persistence", () => {
 					transferTimeDays: 200,
 					transferFuelTotal: 5000,
 					p0x: 1.1,
+					p0y: 1.15,
 					p0z: 2.2,
 					t0x: 3.3,
+					t0y: 3.35,
 					t0z: 4.4,
 					p1x: 5.5,
+					p1y: 5.55,
 					p1z: 6.6,
 					t1x: 7.7,
+					t1y: 7.75,
 					t1z: 8.8,
 				},
 			],
@@ -404,6 +405,7 @@ describe("transfer state persistence", () => {
 		expect(e.transferTimeDays).toBe(200);
 		expect(e.transferFuelTotal).toBe(5000);
 		expect(e.p0x).toBe(1.1);
+		expect(e.p0y).toBe(1.15);
 		expect(e.p1z).toBe(6.6);
 	});
 
@@ -447,12 +449,16 @@ describe("transfer state persistence", () => {
 			transferTimeDays: 0,
 			transferFuelTotal: 0,
 			p0x: 0,
+			p0y: 0,
 			p0z: 0,
 			t0x: 0,
+			t0y: 0,
 			t0z: 0,
 			p1x: 0,
+			p1y: 0,
 			p1z: 0,
 			t1x: 0,
+			t1y: 0,
 			t1z: 0,
 			crew: { size: 6, morale: 1, deploymentDays: 0 },
 			maintenance: { hullIntegrity: 1, supplies: 1, age: 0, lastMalfunction: null },

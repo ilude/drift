@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { findAsteroidEntity, rebuildEntityMaps } from "../core/entities";
+import { findAsteroidEntity, findBody, rebuildEntityMaps } from "../core/entities";
 import { gameWarn, state } from "../core/state";
 import {
 	DIST_SCALE,
@@ -22,7 +22,6 @@ import { isCometEntry, isShipEntry } from "../types";
 import {
 	createLabel,
 	createTrail,
-	findBodyEntry,
 	orbitToWorld,
 	SEL_RING_INNER,
 	SEL_RING_OUTER,
@@ -52,12 +51,16 @@ const _hermiteOut: Vector3Like = { x: 0, y: 0, z: 0 };
 
 export function hermiteEval(
 	p0x: number,
+	p0y: number,
 	p0z: number,
 	t0x: number,
+	t0y: number,
 	t0z: number,
 	p1x: number,
+	p1y: number,
 	p1z: number,
 	t1x: number,
+	t1y: number,
 	t1z: number,
 	t: number,
 ): Vector3Like {
@@ -66,6 +69,7 @@ export function hermiteEval(
 	const h01 = t * t * (3 - 2 * t);
 	const h11 = t * t * (t - 1);
 	_hermiteOut.x = h00 * p0x + h10 * t0x + h01 * p1x + h11 * t1x;
+	_hermiteOut.y = h00 * p0y + h10 * t0y + h01 * p1y + h11 * t1y;
 	_hermiteOut.z = h00 * p0z + h10 * t0z + h01 * p1z + h11 * t1z;
 	return _hermiteOut;
 }
@@ -75,12 +79,16 @@ const _hermiteDerivOut: Vector3Like = { x: 0, y: 0, z: 0 };
 /** Compute the tangent (derivative) of the cubic Hermite spline at parameter t. */
 export function hermiteDerivative(
 	p0x: number,
+	p0y: number,
 	p0z: number,
 	t0x: number,
+	t0y: number,
 	t0z: number,
 	p1x: number,
+	p1y: number,
 	p1z: number,
 	t1x: number,
+	t1y: number,
 	t1z: number,
 	t: number,
 ): Vector3Like {
@@ -90,6 +98,7 @@ export function hermiteDerivative(
 	const dh01 = -6 * t * t + 6 * t;
 	const dh11 = 3 * t * t - 2 * t;
 	_hermiteDerivOut.x = dh00 * p0x + dh10 * t0x + dh01 * p1x + dh11 * t1x;
+	_hermiteDerivOut.y = dh00 * p0y + dh10 * t0y + dh01 * p1y + dh11 * t1y;
 	_hermiteDerivOut.z = dh00 * p0z + dh10 * t0z + dh01 * p1z + dh11 * t1z;
 	return _hermiteDerivOut;
 }
@@ -97,23 +106,28 @@ export function hermiteDerivative(
 export function transferPosition(entry: ShipEntry, t: number): Vector3Like {
 	return hermiteEval(
 		entry.p0x,
+		entry.p0y,
 		entry.p0z,
 		entry.t0x,
+		entry.t0y,
 		entry.t0z,
 		entry.p1x,
+		entry.p1y,
 		entry.p1z,
 		entry.t1x,
+		entry.t1y,
 		entry.t1z,
 		t,
 	);
 }
 
-const _targetWorldOut = { x: 0, z: 0 };
+const _targetWorldOut = { x: 0, y: 0, z: 0 };
 export function predictTargetWorld(
 	targetEntry: BodyEntry,
 	daysFromNow: number,
-): { x: number; z: number } {
+): { x: number; y: number; z: number } {
 	const px = targetEntry.mesh.position.x;
+	const py = targetEntry.mesh.position.y ?? 0;
 	const pz = targetEntry.mesh.position.z;
 
 	// Stationary bodies (star), ships, or entities without orbital elements (asteroid proxies)
@@ -124,10 +138,12 @@ export function predictTargetWorld(
 			const currentR = Math.hypot(px, pz);
 			const arrivalAngle = currentAngle + targetEntry.speed * daysFromNow;
 			_targetWorldOut.x = Math.cos(arrivalAngle) * currentR;
+			_targetWorldOut.y = py;
 			_targetWorldOut.z = Math.sin(arrivalAngle) * currentR;
 			return _targetWorldOut;
 		}
 		_targetWorldOut.x = px;
+		_targetWorldOut.y = py;
 		_targetWorldOut.z = pz;
 		return _targetWorldOut;
 	}
@@ -147,6 +163,7 @@ export function predictTargetWorld(
 			periRad,
 		);
 		_targetWorldOut.x = w.x;
+		_targetWorldOut.y = w.y;
 		_targetWorldOut.z = w.z;
 		return _targetWorldOut;
 	}
@@ -175,6 +192,7 @@ export function predictTargetWorld(
 		const moonKr = keplerRadius(targetEntry.data.distance, moonE, moonTheta);
 		const moonR = moonKr * MOON_DIST_SCALE;
 		_targetWorldOut.x = parentFutureX + Math.cos(moonTheta) * moonR;
+		_targetWorldOut.y = 0;
 		_targetWorldOut.z = parentFutureZ + Math.sin(moonTheta) * moonR;
 		return _targetWorldOut;
 	}
@@ -186,40 +204,55 @@ export function predictTargetWorld(
 	const kr = keplerRadius(targetEntry.data.distance, ecc, theta);
 	const r = scaleDist(kr);
 	_targetWorldOut.x = Math.cos(theta) * r;
+	_targetWorldOut.y = 0;
 	_targetWorldOut.z = Math.sin(theta) * r;
 	return _targetWorldOut;
 }
 
 export function computeHermiteKnots(
 	departX: number,
+	departY: number,
 	departZ: number,
 	targetEntry: BodyEntry,
 	gameDays: number,
 ): {
 	p0x: number;
+	p0y: number;
 	p0z: number;
 	t0x: number;
+	t0y: number;
 	t0z: number;
 	p1x: number;
+	p1y: number;
 	p1z: number;
 	t1x: number;
+	t1y: number;
 	t1z: number;
 } {
 	const targetWorld = predictTargetWorld(targetEntry, gameDays);
 	const dx = targetWorld.x - departX;
+	const dy = targetWorld.y - departY;
 	const dz = targetWorld.z - departZ;
-	const dist = Math.hypot(dx, dz);
-	// Both tangents point along the direct line to target -- simple S-curve
-	const angle = Math.atan2(dz, dx);
+	const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+	// Tangent direction: unit vector from departure to arrival, scaled by 0.4 * dist
+	const invDist = dist > 0 ? 1 / dist : 0;
+	const ux = dx * invDist;
+	const uy = dy * invDist;
+	const uz = dz * invDist;
+	const tangentMag = dist * 0.4;
 	return {
 		p0x: departX,
+		p0y: departY,
 		p0z: departZ,
-		t0x: Math.cos(angle) * dist * 0.4,
-		t0z: Math.sin(angle) * dist * 0.4,
+		t0x: ux * tangentMag,
+		t0y: uy * tangentMag,
+		t0z: uz * tangentMag,
 		p1x: targetWorld.x,
+		p1y: targetWorld.y,
 		p1z: targetWorld.z,
-		t1x: Math.cos(angle) * dist * 0.4,
-		t1z: Math.sin(angle) * dist * 0.4,
+		t1x: ux * tangentMag,
+		t1y: uy * tangentMag,
+		t1z: uz * tangentMag,
 	};
 }
 
@@ -237,7 +270,7 @@ export function createShip(config: ShipConfig): ShipEntry | undefined {
 	}
 
 	// Find host planet by name; fall back to planet closest to 1 AU
-	const hostPlanetEntry = findBodyEntry(config.hostPlanetName);
+	const hostPlanetEntry = findBody(config.hostPlanetName);
 	const planets = state.BODIES?.filter((b) => b.type === "Planet");
 	if (!hostPlanetEntry && (!planets || planets.length === 0)) return undefined;
 	const homePlanetData = hostPlanetEntry
@@ -325,12 +358,16 @@ export function createShip(config: ShipConfig): ShipEntry | undefined {
 		transferDisplayDays: 0,
 		transferFuelTotal: 0,
 		p0x: 0,
+		p0y: 0,
 		p0z: 0,
 		t0x: 0,
+		t0y: 0,
 		t0z: 0, // Hermite departure point + tangent
 		p1x: 0,
+		p1y: 0,
 		p1z: 0,
 		t1x: 0,
+		t1y: 0,
 		t1z: 0, // Hermite arrival point + tangent
 		pendingTransfer: null,
 		// Visual: velocity tail
@@ -424,7 +461,7 @@ export function completeTransfer(entry: ShipEntry, entryAngle = 0): void {
 	const transferTarget = entry.transferTarget ?? "";
 
 	// Find the target body -- could be a planet, moon, or comet
-	const target = findBodyEntry(transferTarget);
+	const target = findBody(transferTarget);
 
 	entry.shipState = "orbiting";
 	// If target is a moon, use parent planet name for station-keeping
@@ -453,7 +490,7 @@ export function completeTransfer(entry: ShipEntry, entryAngle = 0): void {
 		);
 	} else {
 		// Check if target is an asteroid
-		const hit = findAsteroid(transferTarget);
+		const hit = findAsteroidEntity(transferTarget);
 		if (hit) {
 			const proxy = asteroidProxy(hit.asteroid, hit.beltEntry);
 			const offset = stationKeepingOffset(proxy);
@@ -462,7 +499,7 @@ export function completeTransfer(entry: ShipEntry, entryAngle = 0): void {
 			entry.angle = entryAngle;
 			entry.mesh.position.set(
 				proxy.mesh.position.x + Math.cos(entry.angle) * offset,
-				0,
+				proxy.mesh.position.y ?? 0,
 				proxy.mesh.position.z + Math.sin(entry.angle) * offset,
 			);
 		} else {
@@ -481,12 +518,16 @@ function commitTransfer(
 	targetName: string,
 ): void {
 	entry.p0x = knots.p0x;
+	entry.p0y = knots.p0y;
 	entry.p0z = knots.p0z;
 	entry.t0x = knots.t0x;
+	entry.t0y = knots.t0y;
 	entry.t0z = knots.t0z;
 	entry.p1x = knots.p1x;
+	entry.p1y = knots.p1y;
 	entry.p1z = knots.p1z;
 	entry.t1x = knots.t1x;
+	entry.t1y = knots.t1y;
 	entry.t1z = knots.t1z;
 
 	entry.transferStartTime = state.simTime.days;
@@ -506,21 +547,6 @@ function commitTransfer(
 	entry.trail.head = 0;
 	entry.trail.sampleAccum = 0;
 	entry.trail.line.geometry.setDrawRange(0, 0);
-}
-
-export function beginTransfer(entry: ShipEntry): void {
-	const p = entry.pendingTransfer;
-	if (!p) return;
-
-	let tgt: BodyEntry | undefined = findBodyEntry(p.targetName);
-	if (!tgt) {
-		const hit = findAsteroid(p.targetName);
-		if (hit) tgt = asteroidProxy(hit.asteroid, hit.beltEntry);
-	}
-	if (!tgt) return;
-
-	const knots = computeHermiteKnots(entry.mesh.position.x, entry.mesh.position.z, tgt, p.gameDays);
-	commitTransfer(entry, knots, p.gameDays, p.targetName);
 }
 
 let statusTimer: ReturnType<typeof setTimeout> | null = null;
@@ -567,17 +593,6 @@ export function distanceKmBetween(a: BodyEntry, b: BodyEntry): number {
 }
 
 /**
- * Find an asteroid by designation across all belts.
- * Returns the asteroid info and its parent belt entry, or null.
- * @deprecated Use findAsteroidEntity() from core/entities.ts for new code.
- */
-export function findAsteroid(
-	designation: string,
-): { asteroid: AsteroidInfo; beltEntry: AsteroidBeltEntry } | null {
-	return findAsteroidEntity(designation) ?? null;
-}
-
-/**
  * Build a lightweight BodyEntry-compatible proxy for an asteroid.
  * Reads position from the belt's Float32Array. Returns a fresh position object
  * per call -- safe to hold references across multiple calls.
@@ -603,13 +618,17 @@ export function asteroidProxy(asteroid: AsteroidInfo, beltEntry: AsteroidBeltEnt
 	} as unknown as BodyEntry;
 }
 
-export function initiateTransfer(entry: ShipEntry, targetEntry: BodyEntry): boolean {
+export function initiateTransfer(
+	entry: ShipEntry,
+	targetEntry: BodyEntry,
+	showUI = false,
+): boolean {
 	if (!entry.isShip || entry.shipState === "transferring") return false;
 
 	// Find current host body for distance calculation (body or asteroid)
-	let host: BodyEntry | undefined = findBodyEntry(entry.hostPlanetName);
+	let host: BodyEntry | undefined = findBody(entry.hostPlanetName);
 	if (!host) {
-		const hit = findAsteroid(entry.hostPlanetName);
+		const hit = findAsteroidEntity(entry.hostPlanetName);
 		if (hit) host = asteroidProxy(hit.asteroid, hit.beltEntry);
 	}
 	if (!host) return false;
@@ -625,9 +644,11 @@ export function initiateTransfer(entry: ShipEntry, targetEntry: BodyEntry): bool
 	});
 
 	if (!result.feasible) {
-		showTransferStatus(
-			`Need ${result.deltaVRequired?.toFixed(1)} km/s, have ${result.deltaVAvailable?.toFixed(1)} km/s`,
-		);
+		if (showUI) {
+			showTransferStatus(
+				`Need ${result.deltaVRequired?.toFixed(1)} km/s, have ${result.deltaVAvailable?.toFixed(1)} km/s`,
+			);
+		}
 		return false;
 	}
 
@@ -637,6 +658,7 @@ export function initiateTransfer(entry: ShipEntry, targetEntry: BodyEntry): bool
 
 	const knots = computeHermiteKnots(
 		entry.mesh.position.x,
+		entry.mesh.position.y,
 		entry.mesh.position.z,
 		targetEntry,
 		gameDays,

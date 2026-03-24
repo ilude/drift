@@ -299,12 +299,16 @@ export interface ShipEntry extends BaseEntry {
 	transferDisplayDays: number;
 	transferFuelTotal: number;
 	p0x: number;
+	p0y: number;
 	p0z: number;
 	t0x: number;
+	t0y: number;
 	t0z: number;
 	p1x: number;
+	p1y: number;
 	p1z: number;
 	t1x: number;
+	t1y: number;
 	t1z: number;
 	pendingTransfer: PendingTransfer | null;
 	// Visual
@@ -526,12 +530,16 @@ export interface SavedShipData {
 	transferFuelTotal?: number;
 	// Hermite spline knots
 	p0x?: number;
+	p0y?: number;
 	p0z?: number;
 	t0x?: number;
+	t0y?: number;
 	t0z?: number;
 	p1x?: number;
+	p1y?: number;
 	p1z?: number;
 	t1x?: number;
+	t1y?: number;
 	t1z?: number;
 }
 

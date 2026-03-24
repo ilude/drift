@@ -18,10 +18,6 @@ export function simTimeToDate(simTime: number): Date {
 	return new Date(SIM_EPOCH.getTime() + ms);
 }
 
-export function simTimeToDay(simTime: number): number {
-	return Math.floor(simTime);
-}
-
 export function truncateDate(date: Date, speed: number): Date {
 	if (speed >= 30) {
 		date.setDate(1);
@@ -149,12 +145,16 @@ export function saveState(): void {
 					transferTimeDays: ship.transferTimeDays,
 					transferFuelTotal: ship.transferFuelTotal,
 					p0x: ship.p0x,
+					p0y: ship.p0y,
 					p0z: ship.p0z,
 					t0x: ship.t0x,
+					t0y: ship.t0y,
 					t0z: ship.t0z,
 					p1x: ship.p1x,
+					p1y: ship.p1y,
 					p1z: ship.p1z,
 					t1x: ship.t1x,
+					t1y: ship.t1y,
 					t1z: ship.t1z,
 				}
 			: {}),
@@ -221,12 +221,16 @@ export function restoreShipState(savedData: SavedStateData | null): void {
 			shipEntry.transferTimeDays = savedShip.transferTimeDays ?? 0;
 			shipEntry.transferFuelTotal = savedShip.transferFuelTotal ?? 0;
 			shipEntry.p0x = savedShip.p0x ?? 0;
+			shipEntry.p0y = savedShip.p0y ?? 0;
 			shipEntry.p0z = savedShip.p0z ?? 0;
 			shipEntry.t0x = savedShip.t0x ?? 0;
+			shipEntry.t0y = savedShip.t0y ?? 0;
 			shipEntry.t0z = savedShip.t0z ?? 0;
 			shipEntry.p1x = savedShip.p1x ?? 0;
+			shipEntry.p1y = savedShip.p1y ?? 0;
 			shipEntry.p1z = savedShip.p1z ?? 0;
 			shipEntry.t1x = savedShip.t1x ?? 0;
+			shipEntry.t1y = savedShip.t1y ?? 0;
 			shipEntry.t1z = savedShip.t1z ?? 0;
 		}
 	}

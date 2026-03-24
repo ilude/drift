@@ -39,44 +39,49 @@ function makePlanetEntry(x: number, z: number, distanceAU: number, speed = 0.01)
 // ──────────────────────────────────────────────
 describe("hermiteEval", () => {
 	it("t=0 returns the departure point", () => {
-		const r = hermiteEval(10, 5, 0, 0, 20, 15, 0, 0, 0);
+		const r = hermiteEval(10, 0, 5, 0, 0, 0, 20, 0, 15, 0, 0, 0, 0);
 		expect(r.x).toBeCloseTo(10);
 		expect(r.z).toBeCloseTo(5);
 	});
 
 	it("t=1 returns the arrival point", () => {
-		const r = hermiteEval(10, 5, 0, 0, 20, 15, 0, 0, 1);
+		const r = hermiteEval(10, 0, 5, 0, 0, 0, 20, 0, 15, 0, 0, 0, 1);
 		expect(r.x).toBeCloseTo(20);
 		expect(r.z).toBeCloseTo(15);
 	});
 
 	it("midpoint with zero tangents returns average of endpoints", () => {
-		const r = hermiteEval(0, 0, 0, 0, 10, 20, 0, 0, 0.5);
+		const r = hermiteEval(0, 0, 0, 0, 0, 0, 10, 0, 20, 0, 0, 0, 0.5);
 		expect(r.x).toBeCloseTo(5);
 		expect(r.z).toBeCloseTo(10);
 	});
 
 	it("non-zero tangent produces a midpoint different from the zero-tangent case", () => {
-		// hermiteEval reuses a scratch object, so capture values before the next call
-		hermiteEval(0, 0, 0, 0, 10, 0, 0, 0, 0.5);
-		const flatX = hermiteEval(0, 0, 0, 0, 10, 0, 0, 0, 0.5).x; // 5.0
-		// h10 at t=0.5 = 0.5*(0.5)^2 = 0.125 → t0x=20 contributes 2.5, giving x=7.5
-		const curvedX = hermiteEval(0, 0, 20, 0, 10, 0, 0, 0, 0.5).x;
+		hermiteEval(0, 0, 0, 0, 0, 0, 10, 0, 0, 0, 0, 0, 0.5);
+		const flatX = hermiteEval(0, 0, 0, 0, 0, 0, 10, 0, 0, 0, 0, 0, 0.5).x;
+		const curvedX = hermiteEval(0, 0, 0, 20, 0, 0, 10, 0, 0, 0, 0, 0, 0.5).x;
 		expect(curvedX).not.toBeCloseTo(flatX);
 	});
 
 	it("returns a Vector3Like (has x, y, z)", () => {
-		const r = hermiteEval(1, 2, 0, 0, 3, 4, 0, 0, 0.5);
+		const r = hermiteEval(1, 0, 2, 0, 0, 0, 3, 0, 4, 0, 0, 0, 0.5);
 		expect(typeof r.x).toBe("number");
 		expect(typeof r.y).toBe("number");
 		expect(typeof r.z).toBe("number");
 	});
 
 	it("returns the same scratch object reference on every call", () => {
-		const r1 = hermiteEval(0, 0, 0, 0, 1, 1, 0, 0, 0.5);
+		const r1 = hermiteEval(0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0.5);
 		const ref = r1;
-		const r2 = hermiteEval(5, 5, 0, 0, 10, 10, 0, 0, 0.5);
+		const r2 = hermiteEval(5, 0, 5, 0, 0, 0, 10, 0, 10, 0, 0, 0, 0.5);
 		expect(r2).toBe(ref);
+	});
+
+	it("interpolates Y component correctly", () => {
+		const r = hermiteEval(0, 10, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0.5);
+		expect(r.y).toBeCloseTo(15);
+		expect(hermiteEval(0, 10, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0).y).toBeCloseTo(10);
+		expect(hermiteEval(0, 10, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 1).y).toBeCloseTo(20);
 	});
 });
 
@@ -224,22 +229,22 @@ describe("predictTargetWorld", () => {
 describe("computeHermiteKnots", () => {
 	it("departure point matches given depart coordinates", () => {
 		const planet = makePlanetEntry(100, 0, 1.0);
-		const knots = computeHermiteKnots(10, 5, planet, 0);
+		const knots = computeHermiteKnots(10, 0, 5, planet, 0);
 		expect(knots.p0x).toBeCloseTo(10);
+		expect(knots.p0y).toBeCloseTo(0);
 		expect(knots.p0z).toBeCloseTo(5);
 	});
 
 	it("arrival point matches predicted target world position", () => {
 		const planet = makePlanetEntry(100, 0, 1.0, 0);
-		const knots = computeHermiteKnots(0, 0, planet, 0);
+		const knots = computeHermiteKnots(0, 0, 0, planet, 0);
 		expect(knots.p1x).toBeCloseTo(100, 2);
 		expect(knots.p1z).toBeCloseTo(0, 2);
 	});
 
 	it("departure tangent points directly toward target", () => {
 		const planet = makePlanetEntry(100, 0, 1.0, 0);
-		const knots = computeHermiteKnots(0, 0, planet, 0);
-		// Both tangents should point along +x (direct line to target)
+		const knots = computeHermiteKnots(0, 0, 0, planet, 0);
 		const mag = Math.hypot(knots.t0x, knots.t0z);
 		expect(mag).toBeGreaterThan(0);
 		expect(knots.t0x / mag).toBeCloseTo(1, 3);
@@ -248,7 +253,7 @@ describe("computeHermiteKnots", () => {
 
 	it("arrival tangent points along approach direction", () => {
 		const planet = makePlanetEntry(100, 0, 1.0, 0);
-		const knots = computeHermiteKnots(0, 0, planet, 0);
+		const knots = computeHermiteKnots(0, 0, 0, planet, 0);
 		const mag = Math.hypot(knots.t1x, knots.t1z);
 		expect(mag).toBeGreaterThan(0);
 		expect(knots.t1x / mag).toBeCloseTo(1, 3);
@@ -258,11 +263,19 @@ describe("computeHermiteKnots", () => {
 	it("tangent magnitudes are proportional to travel distance", () => {
 		const nearPlanet = makePlanetEntry(10, 0, 0.1, 0);
 		const farPlanet = makePlanetEntry(200, 0, 4.0, 0);
-		const kNear = computeHermiteKnots(0, 0, nearPlanet, 0);
-		const kFar = computeHermiteKnots(0, 0, farPlanet, 0);
+		const kNear = computeHermiteKnots(0, 0, 0, nearPlanet, 0);
+		const kFar = computeHermiteKnots(0, 0, 0, farPlanet, 0);
 		const nearMag = Math.hypot(kNear.t0x, kNear.t0z);
 		const farMag = Math.hypot(kFar.t0x, kFar.t0z);
 		expect(farMag).toBeGreaterThan(nearMag);
+	});
+
+	it("includes Y in knots when target has non-zero Y", () => {
+		const planet = makePlanetEntry(100, 0, 1.0, 0);
+		(planet.mesh.position as { y: number }).y = 5;
+		const knots = computeHermiteKnots(0, 0, 0, planet, 0);
+		expect(knots.p1y).toBeCloseTo(5);
+		expect(knots.t0y).not.toBe(0);
 	});
 });
 
@@ -336,6 +349,7 @@ describe("NaN safety -- incomplete BodyEntry objects", () => {
 		const proxy = minimalProxy(10, 5, orbitSpeed(3));
 		const result = predictTargetWorld(proxy, 100);
 		expect(Number.isNaN(result.x)).toBe(false);
+		expect(Number.isNaN(result.y)).toBe(false);
 		expect(Number.isNaN(result.z)).toBe(false);
 	});
 
@@ -343,38 +357,52 @@ describe("NaN safety -- incomplete BodyEntry objects", () => {
 		const proxy = minimalProxy(10, 5, 0);
 		const result = predictTargetWorld(proxy, 100);
 		expect(Number.isNaN(result.x)).toBe(false);
+		expect(Number.isNaN(result.y)).toBe(false);
 		expect(Number.isNaN(result.z)).toBe(false);
 	});
 
 	it("computeHermiteKnots with minimal proxy produces no NaN in any knot value", () => {
 		const proxy = minimalProxy(10, 5, orbitSpeed(3));
-		const knots = computeHermiteKnots(0, 0, proxy, 100);
-		expect(Number.isNaN(knots.p0x)).toBe(false);
-		expect(Number.isNaN(knots.p0z)).toBe(false);
-		expect(Number.isNaN(knots.t0x)).toBe(false);
-		expect(Number.isNaN(knots.t0z)).toBe(false);
-		expect(Number.isNaN(knots.p1x)).toBe(false);
-		expect(Number.isNaN(knots.p1z)).toBe(false);
-		expect(Number.isNaN(knots.t1x)).toBe(false);
-		expect(Number.isNaN(knots.t1z)).toBe(false);
+		const knots = computeHermiteKnots(0, 0, 0, proxy, 100);
+		for (const key of [
+			"p0x",
+			"p0y",
+			"p0z",
+			"t0x",
+			"t0y",
+			"t0z",
+			"p1x",
+			"p1y",
+			"p1z",
+			"t1x",
+			"t1y",
+			"t1z",
+		] as const) {
+			expect(Number.isNaN(knots[key])).toBe(false);
+		}
 	});
 
 	it("hermiteEval with knots from minimal proxy produces no NaN", () => {
 		const proxy = minimalProxy(10, 5, orbitSpeed(3));
-		const knots = computeHermiteKnots(0, 0, proxy, 100);
+		const knots = computeHermiteKnots(0, 0, 0, proxy, 100);
 		for (const t of [0, 0.25, 0.5, 0.75, 1]) {
 			const result = hermiteEval(
 				knots.p0x,
+				knots.p0y,
 				knots.p0z,
 				knots.t0x,
+				knots.t0y,
 				knots.t0z,
 				knots.p1x,
+				knots.p1y,
 				knots.p1z,
 				knots.t1x,
+				knots.t1y,
 				knots.t1z,
 				t,
 			);
 			expect(Number.isNaN(result.x)).toBe(false);
+			expect(Number.isNaN(result.y)).toBe(false);
 			expect(Number.isNaN(result.z)).toBe(false);
 		}
 	});
@@ -395,17 +423,24 @@ describe("NaN safety -- incomplete BodyEntry objects", () => {
 	});
 
 	it("computeHermiteKnots with coincident departure and target produces no NaN", () => {
-		// Edge case: ship departs from exactly where the target is
 		const proxy = minimalProxy(0, 0, 0);
-		const knots = computeHermiteKnots(0, 0, proxy, 0);
-		expect(Number.isNaN(knots.p0x)).toBe(false);
-		expect(Number.isNaN(knots.p0z)).toBe(false);
-		expect(Number.isNaN(knots.t0x)).toBe(false);
-		expect(Number.isNaN(knots.t0z)).toBe(false);
-		expect(Number.isNaN(knots.p1x)).toBe(false);
-		expect(Number.isNaN(knots.p1z)).toBe(false);
-		expect(Number.isNaN(knots.t1x)).toBe(false);
-		expect(Number.isNaN(knots.t1z)).toBe(false);
+		const knots = computeHermiteKnots(0, 0, 0, proxy, 0);
+		for (const key of [
+			"p0x",
+			"p0y",
+			"p0z",
+			"t0x",
+			"t0y",
+			"t0z",
+			"p1x",
+			"p1y",
+			"p1z",
+			"t1x",
+			"t1y",
+			"t1z",
+		] as const) {
+			expect(Number.isNaN(knots[key])).toBe(false);
+		}
 	});
 });
 
@@ -415,17 +450,17 @@ describe("NaN safety -- incomplete BodyEntry objects", () => {
 describe("computeHermiteKnots tangent symmetry", () => {
 	it("departure and arrival tangents have equal magnitude", () => {
 		const planet = makePlanetEntry(100, 0, 1.0, 0);
-		const knots = computeHermiteKnots(0, 0, planet, 0);
-		const t0mag = Math.hypot(knots.t0x, knots.t0z);
-		const t1mag = Math.hypot(knots.t1x, knots.t1z);
+		const knots = computeHermiteKnots(0, 0, 0, planet, 0);
+		const t0mag = Math.hypot(knots.t0x, knots.t0y, knots.t0z);
+		const t1mag = Math.hypot(knots.t1x, knots.t1y, knots.t1z);
 		expect(t0mag).toBeCloseTo(t1mag, 6);
 	});
 
 	it("equal tangent magnitudes hold for diagonal transfers", () => {
 		const planet = makePlanetEntry(80, 60, 1.5, 0);
-		const knots = computeHermiteKnots(10, 20, planet, 0);
-		const t0mag = Math.hypot(knots.t0x, knots.t0z);
-		const t1mag = Math.hypot(knots.t1x, knots.t1z);
+		const knots = computeHermiteKnots(10, 0, 20, planet, 0);
+		const t0mag = Math.hypot(knots.t0x, knots.t0y, knots.t0z);
+		const t1mag = Math.hypot(knots.t1x, knots.t1y, knots.t1z);
 		expect(t0mag).toBeCloseTo(t1mag, 6);
 	});
 });
@@ -434,123 +469,147 @@ describe("computeHermiteKnots tangent symmetry", () => {
 // Re-spline continuity: position does not jump when endpoint moves
 // ──────────────────────────────────────────────
 describe("re-spline endpoint continuity", () => {
-	// Simulate the re-spline logic from rendering.ts in isolation so it can be
-	// tested without a full Three.js scene.
 	function resplineFromCurrent(
 		entry: {
 			p0x: number;
+			p0y: number;
 			p0z: number;
 			t0x: number;
+			t0y: number;
 			t0z: number;
 			p1x: number;
+			p1y: number;
 			p1z: number;
 			t1x: number;
+			t1y: number;
 			t1z: number;
 			transferTimeDays: number;
 		},
 		tEased: number,
 		elapsed: number,
 		newP1x: number,
+		newP1y: number,
 		newP1z: number,
 	) {
 		const curPos = hermiteEval(
 			entry.p0x,
+			entry.p0y,
 			entry.p0z,
 			entry.t0x,
+			entry.t0y,
 			entry.t0z,
 			entry.p1x,
+			entry.p1y,
 			entry.p1z,
 			entry.t1x,
+			entry.t1y,
 			entry.t1z,
 			tEased,
 		);
 		const posBeforeX = curPos.x;
+		const posBeforeY = curPos.y;
 		const posBeforeZ = curPos.z;
 
 		const curDeriv = hermiteDerivative(
 			entry.p0x,
+			entry.p0y,
 			entry.p0z,
 			entry.t0x,
+			entry.t0y,
 			entry.t0z,
 			entry.p1x,
+			entry.p1y,
 			entry.p1z,
 			entry.t1x,
+			entry.t1y,
 			entry.t1z,
 			tEased,
 		);
 
 		const remainingDays = Math.max(entry.transferTimeDays - elapsed, 1);
 		const dx = newP1x - curPos.x;
+		const dy = newP1y - curPos.y;
 		const dz = newP1z - curPos.z;
-		const dist = Math.hypot(dx, dz);
-		const tAngle = Math.atan2(dz, dx);
+		const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+		const invDist = dist > 0 ? 1 / dist : 0;
+		const tangentMag = dist * 0.4;
 		const scale = remainingDays / Math.max(entry.transferTimeDays, 1);
 
 		const newEntry = {
 			p0x: curPos.x,
+			p0y: curPos.y,
 			p0z: curPos.z,
 			t0x: curDeriv.x * scale,
+			t0y: curDeriv.y * scale,
 			t0z: curDeriv.z * scale,
 			p1x: newP1x,
+			p1y: newP1y,
 			p1z: newP1z,
-			t1x: Math.cos(tAngle) * dist * 0.4,
-			t1z: Math.sin(tAngle) * dist * 0.4,
+			t1x: dx * invDist * tangentMag,
+			t1y: dy * invDist * tangentMag,
+			t1z: dz * invDist * tangentMag,
 			transferTimeDays: remainingDays,
 		};
 
-		// After re-spline, t=0 on the new spline should equal the position just before
 		const posAfter = hermiteEval(
 			newEntry.p0x,
+			newEntry.p0y,
 			newEntry.p0z,
 			newEntry.t0x,
+			newEntry.t0y,
 			newEntry.t0z,
 			newEntry.p1x,
+			newEntry.p1y,
 			newEntry.p1z,
 			newEntry.t1x,
+			newEntry.t1y,
 			newEntry.t1z,
 			0,
 		);
 
-		return { posBeforeX, posBeforeZ, posAfterX: posAfter.x, posAfterZ: posAfter.z };
+		return {
+			posBeforeX,
+			posBeforeY,
+			posBeforeZ,
+			posAfterX: posAfter.x,
+			posAfterY: posAfter.y,
+			posAfterZ: posAfter.z,
+		};
 	}
 
 	it("position is continuous when arrival endpoint moves mid-transfer", () => {
-		const knots = computeHermiteKnots(0, 0, makePlanetEntry(100, 0, 1.0, 0), 365);
+		const knots = computeHermiteKnots(0, 0, 0, makePlanetEntry(100, 0, 1.0, 0), 365);
 		const entry = { ...knots, transferTimeDays: 365 };
 
-		// Simulate being 40% through the transfer
 		const t = 0.4;
 		const tEased = t * t * (3 - 2 * t);
 		const elapsed = 365 * t;
 
-		// Target has moved significantly
-		const { posBeforeX, posBeforeZ, posAfterX, posAfterZ } = resplineFromCurrent(
-			entry,
-			tEased,
-			elapsed,
-			95,
-			20,
-		);
-
-		expect(Math.hypot(posAfterX - posBeforeX, posAfterZ - posBeforeZ)).toBeLessThan(0.01);
+		const r = resplineFromCurrent(entry, tEased, elapsed, 95, 0, 20);
+		expect(
+			Math.sqrt(
+				(r.posAfterX - r.posBeforeX) ** 2 +
+					(r.posAfterY - r.posBeforeY) ** 2 +
+					(r.posAfterZ - r.posBeforeZ) ** 2,
+			),
+		).toBeLessThan(0.01);
 	});
 
 	it("position is continuous for a transfer near completion (80%)", () => {
-		const knots = computeHermiteKnots(0, 0, makePlanetEntry(50, 50, 1.0, 0), 200);
+		const knots = computeHermiteKnots(0, 0, 0, makePlanetEntry(50, 50, 1.0, 0), 200);
 		const entry = { ...knots, transferTimeDays: 200 };
 
 		const t = 0.8;
 		const tEased = t * t * (3 - 2 * t);
 		const elapsed = 200 * t;
 
-		const { posBeforeX, posBeforeZ, posAfterX, posAfterZ } = resplineFromCurrent(
-			entry,
-			tEased,
-			elapsed,
-			52,
-			48,
-		);
-
-		expect(Math.hypot(posAfterX - posBeforeX, posAfterZ - posBeforeZ)).toBeLessThan(0.01);
+		const r = resplineFromCurrent(entry, tEased, elapsed, 52, 0, 48);
+		expect(
+			Math.sqrt(
+				(r.posAfterX - r.posBeforeX) ** 2 +
+					(r.posAfterY - r.posBeforeY) ** 2 +
+					(r.posAfterZ - r.posBeforeZ) ** 2,
+			),
+		).toBeLessThan(0.01);
 	});
 });
