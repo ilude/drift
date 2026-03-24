@@ -156,7 +156,7 @@ export const ENGINE_TYPES: EngineType[] = [
 	{
 		id: "conventional",
 		name: "Conventional TN",
-		accelG: 1,
+		accelG: 0.1,
 		ispS: 1_000_000,
 		dryMassKg: 5_000,
 	},

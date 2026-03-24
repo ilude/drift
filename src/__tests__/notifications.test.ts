@@ -15,7 +15,6 @@ function resetState() {
 	state.notifications = [];
 	state.simTime = 100;
 	state.timeSpeed = 1;
-	state.firstSurveyCompleted = false;
 	state.notificationPauseConfig = {
 		"survey-complete": false,
 		"low-fuel": false,
@@ -74,23 +73,9 @@ describe("notifications", () => {
 			expect(state.timeSpeed).toBe(0);
 		});
 
-		it("pauses on first survey-complete regardless of config (tutorial)", () => {
-			// config is false for survey-complete
+		it("does not pause on survey-complete when config is false", () => {
 			expect(state.notificationPauseConfig["survey-complete"]).toBe(false);
 			addNotification("survey-complete", "Surveyed Mars");
-			expect(state.timeSpeed).toBe(0);
-		});
-
-		it("sets firstSurveyCompleted after first survey-complete", () => {
-			expect(state.firstSurveyCompleted).toBe(false);
-			addNotification("survey-complete", "Surveyed Mars");
-			expect(state.firstSurveyCompleted).toBe(true);
-		});
-
-		it("does NOT pause on second survey-complete when config is false", () => {
-			state.firstSurveyCompleted = true;
-			state.timeSpeed = 1;
-			addNotification("survey-complete", "Surveyed Ceres");
 			expect(state.timeSpeed).toBe(1);
 		});
 

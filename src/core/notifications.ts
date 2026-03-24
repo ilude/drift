@@ -8,8 +8,6 @@ let lastNotificationRealTime = 0;
 let lastNotificationType: NotificationType | null = null;
 
 export function addNotification(type: NotificationType, message: string, bodyName?: string): void {
-	const isTutorialSurvey = type === "survey-complete" && !state.firstSurveyCompleted;
-
 	const notification: GameNotification = {
 		id: nextId++,
 		type,
@@ -31,10 +29,8 @@ export function addNotification(type: NotificationType, message: string, bodyNam
 
 	state.notifications.push(notification);
 
-	const shouldPauseNow = isTutorialSurvey || state.notificationPauseConfig[type];
-	if (shouldPauseNow) {
+	if (state.notificationPauseConfig[type]) {
 		state.timeSpeed = 0;
-		if (isTutorialSurvey) state.firstSurveyCompleted = true;
 		if (typeof window !== "undefined") {
 			window.dispatchEvent(new Event("wake-render"));
 		}

@@ -188,16 +188,16 @@ describe("initiateTransfer", () => {
 		expect(ship.shipState).toBe("orbiting");
 	});
 
-	it("uses brachistochrone transfer time (~2 days for Earth-Mars at 1g)", () => {
+	it("uses brachistochrone transfer time (~6 days for Earth-Mars at 0.1g)", () => {
 		const ship = setupSystem();
 		const mars = state.bodyMeshes.find((e) => e.data.name === "Mars");
 		expect(mars).toBeDefined();
 		initiateTransfer(ship, mars as unknown as PlanetEntry);
 		// Ship goes directly to transferring (no departing state)
 		expect(ship.shipState).toBe("transferring");
-		// Brachistochrone at 1g: ~2 days Earth->Mars
-		expect(ship.transferTimeDays).toBeLessThan(5);
-		expect(ship.transferTimeDays).toBeGreaterThan(1);
+		// Brachistochrone at 0.1g: ~6 days Earth->Mars
+		expect(ship.transferTimeDays).toBeLessThan(15);
+		expect(ship.transferTimeDays).toBeGreaterThan(2);
 	});
 });
 
