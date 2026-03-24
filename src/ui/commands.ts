@@ -31,74 +31,6 @@ function isThresholdCondition(c: CommandCondition): c is ThresholdCondition {
 	return c.type !== "always";
 }
 
-/** Build a 6-char text bar: e.g. "████░░" for 67% */
-export function buildStatusBar(value: number): string {
-	const filled = Math.round((value / 100) * 6);
-	return "█".repeat(filled) + "░".repeat(6 - filled);
-}
-
-/** Color for a percentage value: green > 70%, amber > 40%, red otherwise */
-export function statusColor(value: number): string {
-	if (value > 70) return "#6a8a6a";
-	if (value > 40) return "#8a7a3a";
-	return "#8a3a3a";
-}
-
-function buildStatusBars(ship: ShipEntry): HTMLDivElement {
-	const fuelPct = (ship.fuelKg / ship.fuelCapacityKg) * 100;
-	const hullPct = ship.maintenance.hullIntegrity;
-	const moralePct = ship.crew.morale;
-	const supplyPct = (ship.maintenance.supplies / ship.maintenance.maxSupplies) * 100;
-
-	const div = document.createElement("div");
-	div.className = "cmd-status-bars";
-
-	const rows: Array<[string, number]> = [
-		["F", fuelPct],
-		["H", hullPct],
-		["M", moralePct],
-		["S", supplyPct],
-	];
-
-	// Two columns: F+H on first line, M+S on second
-	const line1 = document.createElement("div");
-	line1.className = "cmd-status-line";
-	const line2 = document.createElement("div");
-	line2.className = "cmd-status-line";
-
-	for (let i = 0; i < rows.length; i++) {
-		const [label, pct] = rows[i];
-		const cell = document.createElement("span");
-		cell.className = "cmd-status-cell";
-
-		const labelEl = document.createElement("span");
-		labelEl.textContent = `${label}:`;
-		labelEl.style.color = "#5a6a5a";
-
-		const bar = document.createElement("span");
-		bar.textContent = buildStatusBar(pct);
-		bar.style.color = statusColor(pct);
-
-		const pctEl = document.createElement("span");
-		pctEl.textContent = ` ${Math.round(pct)}%`;
-		pctEl.style.color = statusColor(pct);
-
-		cell.appendChild(labelEl);
-		cell.appendChild(bar);
-		cell.appendChild(pctEl);
-
-		if (i < 2) {
-			line1.appendChild(cell);
-		} else {
-			line2.appendChild(cell);
-		}
-	}
-
-	div.appendChild(line1);
-	div.appendChild(line2);
-	return div;
-}
-
 // Immediate order options shown in "Give Order" dropdown
 const IMMEDIATE_ORDERS: Array<{ label: string; command: CommandType }> = [
 	{ label: "Survey Nearest", command: "survey-nearest" },
@@ -163,9 +95,6 @@ export function renderCommandTree(ship: ShipEntry, container: HTMLElement): void
 	heading.className = "cmd-heading";
 	heading.textContent = "Standing Orders";
 	container.appendChild(heading);
-
-	// Status bars
-	container.appendChild(buildStatusBars(ship));
 
 	// Give Order button
 	container.appendChild(buildGiveOrderButton(ship, container));

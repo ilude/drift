@@ -737,22 +737,6 @@ body {
 	padding-bottom: 2px;
 	border-bottom: 1px solid #2a3a2a;
 }
-.cmd-status-bars {
-	margin-bottom: 4px;
-	font-size: 10px;
-	font-family: "Courier New", monospace;
-}
-.cmd-status-line {
-	display: flex;
-	gap: 8px;
-	margin-bottom: 1px;
-}
-.cmd-status-cell {
-	display: flex;
-	align-items: center;
-	gap: 2px;
-	min-width: 80px;
-}
 .cmd-cond-indicator {
 	font-size: 8px;
 	flex-shrink: 0;
