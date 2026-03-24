@@ -544,7 +544,11 @@ export function beginTransfer(entry: ShipEntry): void {
 	const p = entry.pendingTransfer;
 	if (!p) return;
 
-	const tgt = findBodyEntry(p.targetName);
+	let tgt: BodyEntry | undefined = findBodyEntry(p.targetName);
+	if (!tgt) {
+		const hit = findAsteroid(p.targetName);
+		if (hit) tgt = asteroidProxy(hit.asteroid, hit.beltEntry);
+	}
 	if (!tgt) return;
 
 	const knots = computeHermiteKnots(entry.mesh.position.x, entry.mesh.position.z, tgt, p.gameDays);
@@ -608,21 +612,20 @@ export function findAsteroid(
 	return null;
 }
 
-/** Scratch object reused by asteroidProxy to avoid allocation. */
-const _proxyPos = { x: 0, y: 0, z: 0 };
-
 /**
  * Build a lightweight BodyEntry-compatible proxy for an asteroid.
- * The proxy reads its position from the belt's Float32Array so it stays current.
- * WARNING: Returns a shared object — copy values before calling again.
+ * Reads position from the belt's Float32Array. Returns a fresh position object
+ * per call — safe to hold references across multiple calls.
  */
 export function asteroidProxy(asteroid: AsteroidInfo, beltEntry: AsteroidBeltEntry): BodyEntry {
 	const idx = asteroid.beltIndex ?? 0;
-	_proxyPos.x = beltEntry.positions[idx * 3];
-	_proxyPos.y = beltEntry.positions[idx * 3 + 1];
-	_proxyPos.z = beltEntry.positions[idx * 3 + 2];
+	const pos = {
+		x: beltEntry.positions[idx * 3],
+		y: beltEntry.positions[idx * 3 + 1],
+		z: beltEntry.positions[idx * 3 + 2],
+	};
 	return {
-		mesh: { position: _proxyPos },
+		mesh: { position: pos },
 		data: {
 			name: asteroid.designation,
 			distance: asteroid.au,

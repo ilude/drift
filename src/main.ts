@@ -388,6 +388,9 @@ function canAffordRoundTrip(ship: ShipEntry, target: BodyEntry): boolean {
 }
 
 function dispatchCommand(ship: ShipEntry, result: CommandResult): void {
+	// Clear one-shot immediate command on ANY dispatch (not just transfer)
+	ship.immediateCommand = null;
+
 	switch (result.action) {
 		case "survey": {
 			// Survey unsurveyed moons of the current host before moving to the next planet
@@ -449,8 +452,8 @@ function dispatchCommand(ship: ShipEntry, result: CommandResult): void {
 					}
 				}
 			} else {
-				addNotification("mission-complete", "System survey complete — all bodies surveyed");
-				ship.action = noAction();
+				addCoalescedNotification("mission-complete", "System survey complete — all bodies surveyed");
+				ship.action = mkAction("idle", "idle");
 			}
 			break;
 		}
@@ -459,7 +462,6 @@ function dispatchCommand(ship: ShipEntry, result: CommandResult): void {
 				const te = findPlanetEntry(result.target);
 				if (te) initiateTransfer(ship, te);
 			}
-			ship.immediateCommand = null;
 			break;
 		}
 		case "refuel": {
@@ -484,6 +486,10 @@ function dispatchCommand(ship: ShipEntry, result: CommandResult): void {
 				if (initiateTransfer(ship, colony)) {
 					ship.action = mkAction("shore-leave", "shore-leave");
 				} else {
+					addNotification(
+						"low-fuel",
+						`Ship stranded at ${ship.hostPlanetName} — insufficient fuel for shore leave`,
+					);
 					ship.action = noAction();
 				}
 			} else {
@@ -497,6 +503,10 @@ function dispatchCommand(ship: ShipEntry, result: CommandResult): void {
 				if (initiateTransfer(ship, yard)) {
 					ship.action = mkAction("overhaul", "overhaul");
 				} else {
+					addNotification(
+						"low-fuel",
+						`Ship stranded at ${ship.hostPlanetName} — insufficient fuel for overhaul`,
+					);
 					ship.action = noAction();
 				}
 			} else {
@@ -565,6 +575,19 @@ export function onTransferComplete(ship: ShipEntry): void {
 		const surveyTarget = ship.action.target;
 		const resolved = surveyTarget ? resolveBody(surveyTarget) : null;
 		const targetBody = resolved?.body ?? null;
+
+		// Guard: skip survey if target was already surveyed (e.g., by another ship mid-transfer)
+		const asteroidHit = surveyTarget ? findAsteroid(surveyTarget) : null;
+		const alreadySurveyed =
+			(targetBody && isSurveyable(targetBody) && targetBody.survey.surveyLevel > 0) ||
+			(asteroidHit && asteroidHit.asteroid.survey.surveyLevel > 0);
+		if (alreadySurveyed) {
+			ship.action = noAction();
+			const result = evaluateCommandTree(ship);
+			if (result) dispatchCommand(ship, result);
+			return;
+		}
+
 		const mass = resolved?.mass ?? EARTH_MASS_KG;
 		const dur = getSurveyDuration(mass, ship);
 		ship.action.startTime = state.simTime;
