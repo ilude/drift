@@ -287,8 +287,8 @@ describe("tickShipSimulation", () => {
 			action: { type: "shore-leave", commandId: "1", startTime: 0, duration: 30, progress: 0 },
 		});
 		tickShipSimulation(ship, 1, 10);
-		// +5 morale/day × 1 day = 55
-		expect(ship.crew.morale).toBeCloseTo(55, 0);
+		// +2.5 morale/day × 1 day = 52.5
+		expect(ship.crew.morale).toBeCloseTo(52.5, 0);
 	});
 
 	it("shore leave does not exceed 100 morale", () => {

@@ -40,7 +40,7 @@ import {
 	setupClickHandlers,
 	updateFlyTo,
 	updateFollow,
-	updateInfoPosition,
+	updateSelectedBody,
 } from "./ui/selection";
 import type { PerfTimings } from "./ui/ui";
 import { buildBodyList, setupUI, updateHUD, updateLabels, updatePerfDisplay } from "./ui/ui";
@@ -640,7 +640,7 @@ function animate(now: number): void {
 	cachedCamDist = camera.position.distanceTo(controls.target);
 	updateLabels(cachedCamDist);
 	const _t3 = performance.now();
-	if (state.selectedBody) updateInfoPosition();
+	if (state.selectedBody) updateSelectedBody();
 	updateHUD(cachedCamDist);
 	const _t4 = performance.now();
 

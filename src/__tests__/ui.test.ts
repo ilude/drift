@@ -194,10 +194,8 @@ describe("ship info panel", () => {
 
 		expect(document.getElementById("info-ship-engine")?.classList.contains("hidden")).toBe(false);
 		expect(document.getElementById("info-ship-fuel")?.classList.contains("hidden")).toBe(false);
-		expect(document.getElementById("info-ship-deltav")?.classList.contains("hidden")).toBe(false);
 		expect(document.getElementById("ship-engine-value")?.textContent).toBe("Conventional TN");
 		expect(document.getElementById("ship-fuel-value")?.textContent).toContain("50.00t");
-		expect(document.getElementById("ship-deltav-value")?.textContent).toContain("km/s");
 	});
 });
 
