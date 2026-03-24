@@ -1,11 +1,14 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import {
 	checkCondition,
 	computeMorale,
 	evaluateCommandTree,
+	getUnsurvevedMoonsOfHost,
+	selectNextSurveyTarget,
 	tickShipSimulation,
 } from "../core/commands";
-import type { CommandEntry, ShipEntry } from "../types";
+import { state } from "../core/state";
+import type { BodyEntry, CommandEntry, ShipEntry } from "../types";
 
 function mockShip(overrides: Partial<ShipEntry> = {}): ShipEntry {
 	return {
@@ -16,7 +19,8 @@ function mockShip(overrides: Partial<ShipEntry> = {}): ShipEntry {
 		action: { type: null, commandId: null, startTime: 0, duration: 0, progress: 0 },
 		commandTree: { entries: [] },
 		immediateCommand: null,
-		hostPlanetName: "Earth",
+		hostPlanetName: "Mars",
+		shipState: "orbiting" as const,
 		...overrides,
 	} as unknown as ShipEntry;
 }
@@ -336,5 +340,85 @@ describe("tickShipSimulation", () => {
 		tickShipSimulation(ship, 1, 10);
 		expect(ship.maintenance.hullIntegrity).toBe(100);
 		expect(ship.maintenance.supplies).toBe(100);
+	});
+});
+
+// --- selectNextSurveyTarget ---
+
+function mockBodyEntry(name: string, overrides: Record<string, unknown> = {}): BodyEntry {
+	return {
+		data: { name, type: "Planet" },
+		isMoon: false,
+		isShip: false,
+		isComet: false,
+		survey: { surveyLevel: 0, deposits: [] },
+		mesh: { position: { distanceToSquared: () => 1 } },
+		moons: [],
+		...overrides,
+	} as unknown as BodyEntry;
+}
+
+function mockShipWithMesh(overrides: Partial<ShipEntry> = {}): ShipEntry {
+	return mockShip({
+		mesh: { position: { distanceToSquared: () => 1 } } as unknown as ShipEntry["mesh"],
+		...overrides,
+	});
+}
+
+describe("selectNextSurveyTarget", () => {
+	beforeEach(() => {
+		state.bodyMeshes = [];
+	});
+
+	it("skips bodies where isMoon is true", () => {
+		const moon = mockBodyEntry("Luna", { isMoon: true });
+		const planet = mockBodyEntry("Mars");
+		state.bodyMeshes = [moon, planet] as BodyEntry[];
+		expect(selectNextSurveyTarget(mockShipWithMesh())).toBe("Mars");
+	});
+
+	it("returns null when only moon candidates exist", () => {
+		const moon = mockBodyEntry("Luna", { isMoon: true });
+		state.bodyMeshes = [moon] as BodyEntry[];
+		expect(selectNextSurveyTarget(mockShipWithMesh())).toBeNull();
+	});
+
+	it("skips already-surveyed bodies", () => {
+		const surveyed = mockBodyEntry("Venus", { survey: { surveyLevel: 1, deposits: [] } });
+		state.bodyMeshes = [surveyed] as BodyEntry[];
+		expect(selectNextSurveyTarget(mockShipWithMesh())).toBeNull();
+	});
+});
+
+// --- getUnsurvevedMoonsOfHost ---
+
+describe("getUnsurvevedMoonsOfHost", () => {
+	beforeEach(() => {
+		state.bodyMeshes = [];
+	});
+
+	it("returns unsurveyed moons of the ship's host planet", () => {
+		const moon = mockBodyEntry("Luna", { isMoon: true });
+		const planet = mockBodyEntry("Earth", { moons: [moon] });
+		state.bodyMeshes = [planet] as BodyEntry[];
+		const ship = mockShip({ hostPlanetName: "Earth" });
+		expect(getUnsurvevedMoonsOfHost(ship)).toHaveLength(1);
+		expect(
+			(getUnsurvevedMoonsOfHost(ship)[0] as unknown as { data: { name: string } }).data.name,
+		).toBe("Luna");
+	});
+
+	it("returns empty array when all moons are surveyed", () => {
+		const moon = mockBodyEntry("Luna", { isMoon: true, survey: { surveyLevel: 1, deposits: [] } });
+		const planet = mockBodyEntry("Earth", { moons: [moon] });
+		state.bodyMeshes = [planet] as BodyEntry[];
+		const ship = mockShip({ hostPlanetName: "Earth" });
+		expect(getUnsurvevedMoonsOfHost(ship)).toHaveLength(0);
+	});
+
+	it("returns empty array when host planet not found", () => {
+		state.bodyMeshes = [];
+		const ship = mockShip({ hostPlanetName: "Nonexistent" });
+		expect(getUnsurvevedMoonsOfHost(ship)).toHaveLength(0);
 	});
 });
