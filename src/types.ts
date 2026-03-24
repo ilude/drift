@@ -504,6 +504,8 @@ export interface DiscoveredSystem {
 // --- Saved state ---
 
 export interface SavedShipData {
+	name: string;
+	hostPlanetName: string;
 	fuelKg: number;
 	engineId: string;
 	crew: ShipCrew;
@@ -517,7 +519,7 @@ export interface SavedStateData {
 	currentSystemKey: string;
 	randomClickCount: number;
 	discoveredSystems: Array<{ key: string; name: string; seed: number }>;
-	ship: SavedShipData | null;
+	ships: SavedShipData[];
 }
 
 // --- Lambert solver result ---

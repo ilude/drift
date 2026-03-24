@@ -11,7 +11,7 @@ import {
 } from "../math/visual";
 import { camera, setAntialias, ZOOM_BASE } from "../rendering/scene";
 import type { BodyEntry, CategoryKey, CategoryVisibility, SystemData } from "../types";
-import { isSurveyable } from "../types";
+import { isShipEntry, isSurveyable } from "../types";
 import { recenterOnStar, selectBody } from "./selection";
 
 // --- Body list panel ---
@@ -189,11 +189,12 @@ export function updateLabels(camDist: number): void {
 	const screenH = window.innerHeight;
 	const screenW = window.innerWidth;
 
-	const shipEntry = findShip();
-	const surveyTarget =
-		shipEntry && shipEntry.action.type === "survey-nearest"
-			? (shipEntry.action.target ?? null)
-			: null;
+	const surveyTargets = new Set<string>();
+	for (const e of state.bodyMeshes) {
+		if (isShipEntry(e) && e.action.type === "survey-nearest" && e.action.target) {
+			surveyTargets.add(e.action.target);
+		}
+	}
 
 	const needsScaleUpdate = scaleFactor !== lastScaleFactor;
 	const needsLodUpdate =
@@ -263,7 +264,7 @@ export function updateLabels(camDist: number): void {
 		if (!entry.isShip) {
 			let suffix = "";
 			if (isSurveyable(entry) && entry.survey.surveyLevel > 0) suffix = " \u2713";
-			else if (entry.data.name === surveyTarget) suffix = " *";
+			else if (surveyTargets.has(entry.data.name)) suffix = " *";
 			const expectedText = entry.data.name + suffix;
 			if (entry.labelDiv.textContent !== expectedText) {
 				entry.labelDiv.textContent = expectedText;
@@ -352,23 +353,42 @@ export function updateHUD(camDist: number): void {
 
 	const activityEl = document.getElementById("ship-activity");
 	if (activityEl) {
-		const ship = findShip();
-		if (ship) {
+		const selectedShip =
+			state.selectedBody && isShipEntry(state.selectedBody) ? state.selectedBody : null;
+		if (selectedShip) {
+			const ship = selectedShip;
+			const name = ship.data.name;
+			let statusText: string;
 			if (ship.shipState === "transferring") {
-				activityEl.textContent = `Ship: In transit to ${ship.transferTarget}`;
+				statusText = `In transit to ${ship.transferTarget}`;
 			} else if (ship.action.type === "survey-nearest" && ship.action.startTime > 0) {
 				const elapsed = Math.floor(state.simTime - ship.action.startTime);
 				const dur = Math.floor(ship.action.duration);
-				activityEl.textContent = `Ship: Surveying ${ship.action.target ?? ship.hostPlanetName} (${elapsed}d/${dur}d)`;
+				statusText = `Surveying ${ship.action.target ?? ship.hostPlanetName} (${elapsed}d/${dur}d)`;
 			} else if (ship.action.type === "shore-leave" && ship.action.startTime > 0) {
-				activityEl.textContent = "Ship: Shore Leave";
+				statusText = "Shore Leave";
 			} else if (ship.action.type === "overhaul" && ship.action.startTime > 0) {
-				activityEl.textContent = "Ship: Overhaul";
+				statusText = "Overhaul";
 			} else {
-				activityEl.textContent = `Ship: Orbiting ${ship.hostPlanetName}`;
+				statusText = `Orbiting ${ship.hostPlanetName}`;
 			}
+			activityEl.textContent = `${name}: ${statusText}`;
 		} else {
-			activityEl.textContent = "";
+			const ships = state.bodyMeshes.filter((e) => isShipEntry(e));
+			if (ships.length === 0) {
+				activityEl.textContent = "";
+			} else {
+				const surveying = ships.filter(
+					(s) => isShipEntry(s) && s.action.type === "survey-nearest",
+				).length;
+				const transferring = ships.filter(
+					(s) => isShipEntry(s) && s.shipState === "transferring",
+				).length;
+				const idle = ships.filter(
+					(s) => isShipEntry(s) && (!s.action.type || s.action.type === "idle"),
+				).length;
+				activityEl.textContent = `${ships.length} ships: ${surveying} surveying, ${transferring} in transit, ${idle} idle`;
+			}
 		}
 	}
 }
@@ -648,6 +668,7 @@ function renderNotifDropdown(dropdown: HTMLElement): void {
 		entry.addEventListener("click", () => {
 			markRead(notif.id);
 			if (notif.bodyName) {
+				// TODO: asteroid notifications need resolveEntity + asteroid selection support
 				const body = findBody(notif.bodyName);
 				if (body) selectBody(body);
 			}

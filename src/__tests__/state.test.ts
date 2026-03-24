@@ -154,18 +154,29 @@ describe("speedLabel", () => {
 
 describe("ship state persistence", () => {
 	it("restoreShipState round-trips fuelKg and engineId", () => {
-		const saved = {
-			version: 1,
+		const saved: SavedStateData = {
+			version: 4,
 			simTime: 0,
 			currentSystemKey: "sol",
 			randomClickCount: 0,
 			discoveredSystems: [],
-			ship: { fuelKg: 75000, engineId: "nuclear" },
-		} as SavedStateData;
+			ships: [
+				{
+					name: "ISS Explorer",
+					hostPlanetName: "Earth",
+					fuelKg: 75000,
+					engineId: "nuclear",
+					crew: undefined as unknown as ShipEntry["crew"],
+					maintenance: undefined as unknown as ShipEntry["maintenance"],
+					commandTree: undefined as unknown as ShipEntry["commandTree"],
+				},
+			],
+		};
 
 		state.bodyMeshes = [
 			{
 				isShip: true,
+				data: { name: "ISS Explorer" },
 				fuelKg: 100000,
 				engineId: "chemical",
 			},
@@ -181,19 +192,30 @@ describe("ship state persistence", () => {
 		state.bodyMeshes = [
 			{
 				isShip: true,
+				data: { name: "ISS Explorer" },
 				fuelKg: 100000,
 				engineId: "chemical",
 			},
 		] as typeof state.bodyMeshes;
 
-		const saved = {
-			version: 1,
+		const saved: SavedStateData = {
+			version: 4,
 			simTime: 0,
 			currentSystemKey: "sol",
 			randomClickCount: 0,
 			discoveredSystems: [],
-			ship: { fuelKg: 75000, engineId: "nuclear" },
-		} as SavedStateData;
+			ships: [
+				{
+					name: "ISS Explorer",
+					hostPlanetName: "Earth",
+					fuelKg: 75000,
+					engineId: "nuclear",
+					crew: undefined as unknown as ShipEntry["crew"],
+					maintenance: undefined as unknown as ShipEntry["maintenance"],
+					commandTree: undefined as unknown as ShipEntry["commandTree"],
+				},
+			],
+		};
 		restoreShipState(saved);
 
 		expect((state.bodyMeshes[0] as unknown as ShipEntry).fuelKg).toBe(75000);
@@ -204,6 +226,7 @@ describe("ship state persistence", () => {
 		state.bodyMeshes = [
 			{
 				isShip: true,
+				data: { name: "ISS Explorer" },
 				fuelKg: 100000,
 				engineId: "chemical",
 			},
@@ -215,7 +238,38 @@ describe("ship state persistence", () => {
 		restoreShipState({} as unknown as SavedStateData);
 		expect((state.bodyMeshes[0] as unknown as ShipEntry).fuelKg).toBe(100000);
 
-		restoreShipState({ ship: null } as unknown as SavedStateData);
+		restoreShipState({ ships: [] } as unknown as SavedStateData);
 		expect((state.bodyMeshes[0] as unknown as ShipEntry).fuelKg).toBe(100000);
+	});
+
+	it("restoreShipState matches ships by name", () => {
+		state.bodyMeshes = [
+			{ isShip: true, data: { name: "ISS Explorer" }, fuelKg: 100000, engineId: "chemical" },
+			{ isShip: true, data: { name: "Magellan" }, fuelKg: 50000, engineId: "chemical" },
+		] as typeof state.bodyMeshes;
+
+		const saved: SavedStateData = {
+			version: 4,
+			simTime: 0,
+			currentSystemKey: "sol",
+			randomClickCount: 0,
+			discoveredSystems: [],
+			ships: [
+				{
+					name: "Magellan",
+					hostPlanetName: "Mars",
+					fuelKg: 30000,
+					engineId: "nuclear",
+					crew: undefined as unknown as ShipEntry["crew"],
+					maintenance: undefined as unknown as ShipEntry["maintenance"],
+					commandTree: undefined as unknown as ShipEntry["commandTree"],
+				},
+			],
+		};
+		restoreShipState(saved);
+
+		expect((state.bodyMeshes[0] as unknown as ShipEntry).fuelKg).toBe(100000);
+		expect((state.bodyMeshes[1] as unknown as ShipEntry).fuelKg).toBe(30000);
+		expect((state.bodyMeshes[1] as unknown as ShipEntry).engineId).toBe("nuclear");
 	});
 });

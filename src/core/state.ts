@@ -1,4 +1,10 @@
-import type { AppState, CategoryKey, CategoryVisibility, SavedStateData } from "../types";
+import type {
+	AppState,
+	CategoryKey,
+	CategoryVisibility,
+	SavedShipData,
+	SavedStateData,
+} from "../types";
 import { isShipEntry } from "../types";
 
 export const MAX_CLICK_DIST = 50;
@@ -48,7 +54,7 @@ export function speedLabel(timeSpeed: number): string {
 
 export const MASTER_SEED: number = 42;
 const SAVE_KEY = "solar-sim-state";
-const SAVE_VERSION = 3;
+const SAVE_VERSION = 4;
 
 export const state: AppState = {
 	bodyMeshes: [],
@@ -114,18 +120,15 @@ export function saveState(): void {
 		if (key === "sol") return;
 		systems.push({ key, name: sys.name, seed: sys.seed as number });
 	});
-	// Capture ship physics state
-	const shipEntry = state.bodyMeshes.find((e) => isShipEntry(e));
-	const shipData =
-		shipEntry && isShipEntry(shipEntry)
-			? {
-					fuelKg: shipEntry.fuelKg,
-					engineId: shipEntry.engineId,
-					crew: shipEntry.crew,
-					maintenance: shipEntry.maintenance,
-					commandTree: shipEntry.commandTree,
-				}
-			: null;
+	const ships: SavedShipData[] = state.bodyMeshes.filter(isShipEntry).map((ship) => ({
+		name: ship.data.name,
+		hostPlanetName: ship.hostPlanetName,
+		fuelKg: ship.fuelKg,
+		engineId: ship.engineId,
+		crew: { ...ship.crew },
+		maintenance: { ...ship.maintenance },
+		commandTree: { entries: [...ship.commandTree.entries] },
+	}));
 
 	const data: SavedStateData = {
 		version: SAVE_VERSION,
@@ -133,7 +136,7 @@ export function saveState(): void {
 		currentSystemKey: state.currentSystemKey,
 		randomClickCount: state.randomClickCount,
 		discoveredSystems: systems,
-		ship: shipData,
+		ships,
 	};
 	try {
 		localStorage.setItem(SAVE_KEY, JSON.stringify(data));
@@ -147,6 +150,19 @@ export function loadSavedState(): SavedStateData | null {
 		const raw = localStorage.getItem(SAVE_KEY);
 		if (!raw) return null;
 		const data = JSON.parse(raw) as SavedStateData;
+		if (data.version === 3 && (data as unknown as Record<string, unknown>).ship) {
+			return {
+				...data,
+				version: 4,
+				ships: [
+					{
+						name: "ISS Explorer",
+						hostPlanetName: "Earth",
+						...((data as unknown as Record<string, unknown>).ship as object),
+					},
+				],
+			} as SavedStateData;
+		}
 		if (data.version !== SAVE_VERSION) return null;
 		return data;
 	} catch (_) {
@@ -155,12 +171,14 @@ export function loadSavedState(): SavedStateData | null {
 }
 
 export function restoreShipState(savedData: SavedStateData | null): void {
-	if (!savedData || !savedData.ship) return;
-	const shipEntry = state.bodyMeshes.find((e) => isShipEntry(e));
-	if (!shipEntry || !isShipEntry(shipEntry)) return;
-	if (savedData.ship.fuelKg !== undefined) shipEntry.fuelKg = savedData.ship.fuelKg;
-	if (savedData.ship.engineId !== undefined) shipEntry.engineId = savedData.ship.engineId;
-	if (savedData.ship.crew) shipEntry.crew = savedData.ship.crew;
-	if (savedData.ship.maintenance) shipEntry.maintenance = savedData.ship.maintenance;
-	if (savedData.ship.commandTree) shipEntry.commandTree = savedData.ship.commandTree;
+	if (!savedData || !savedData.ships || savedData.ships.length === 0) return;
+	for (const savedShip of savedData.ships) {
+		const shipEntry = state.bodyMeshes.find((e) => isShipEntry(e) && e.data.name === savedShip.name);
+		if (!shipEntry || !isShipEntry(shipEntry)) continue;
+		shipEntry.fuelKg = savedShip.fuelKg;
+		shipEntry.engineId = savedShip.engineId;
+		if (savedShip.crew) shipEntry.crew = savedShip.crew;
+		if (savedShip.maintenance) shipEntry.maintenance = savedShip.maintenance;
+		if (savedShip.commandTree) shipEntry.commandTree = savedShip.commandTree;
+	}
 }
