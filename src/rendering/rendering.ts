@@ -305,6 +305,18 @@ export function updatePositions(dt: number, camDist: number): void {
 		if (trailDirty) {
 			// Rebuild index array: oldest to newest draw order
 			buildTrailIndices(t.head, t.count, t.maxPoints, t.indices);
+
+			// Ship trails fade from transparent (oldest) to full color (newest)
+			if (isTransferringShip) {
+				for (let j = 0; j < t.count; j++) {
+					const fade = t.count > 1 ? j / (t.count - 1) : 1;
+					const idx = t.indices[j] * 3;
+					t.colors[idx] = t.baseColor.r * fade;
+					t.colors[idx + 1] = t.baseColor.g * fade;
+					t.colors[idx + 2] = t.baseColor.b * fade;
+				}
+			}
+
 			t.line.geometry.attributes.position.needsUpdate = true;
 			t.line.geometry.attributes.color.needsUpdate = true;
 			(t.line.geometry.index as THREE.BufferAttribute).needsUpdate = true;
