@@ -73,7 +73,7 @@ function isAtColony(ship: ShipEntry): boolean {
 }
 
 // Gradual recovery rates (per day)
-const MORALE_RECOVERY_PER_DAY = 5; // +5 morale/day during shore leave
+const MORALE_RECOVERY_PER_DAY = 2.5; // +2.5 morale/day during shore leave (~28 days from 30% to full)
 const REFUEL_RATE_PER_DAY = 0.2; // 20% of capacity/day
 const HULL_REPAIR_PER_DAY = 20; // +20 hull/day during overhaul
 const SUPPLY_RESTOCK_PER_DAY = 20; // +20 supplies/day during overhaul
