@@ -1,6 +1,5 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import { seededRandom } from "../core/utils";
 import { DIST_SCALE } from "../math/orbit";
 
 // Scene
@@ -125,69 +124,6 @@ scene.add(trailGroups);
 
 export const cometGroup: THREE.Group = new THREE.Group();
 scene.add(cometGroup);
-
-// Star field
-export let starField: THREE.Points;
-const STAR_COUNT = 4000;
-const STAR_RADIUS = 4000;
-(function buildStarField(): void {
-	const rng = seededRandom(9999);
-	const positions = new Float32Array(STAR_COUNT * 3);
-	const colors = new Float32Array(STAR_COUNT * 3);
-	const sizes = new Float32Array(STAR_COUNT);
-
-	for (let i = 0; i < STAR_COUNT; i++) {
-		// Uniform random point on sphere via rejection sampling of cube
-		let x: number, y: number, z: number, len: number;
-		do {
-			x = rng() * 2 - 1;
-			y = rng() * 2 - 1;
-			z = rng() * 2 - 1;
-			len = Math.sqrt(x * x + y * y + z * z);
-		} while (len === 0 || len > 1);
-		const inv = STAR_RADIUS / len;
-		positions[i * 3] = x * inv;
-		positions[i * 3 + 1] = y * inv;
-		positions[i * 3 + 2] = z * inv;
-
-		// Color: mostly warm white, occasional blue-white or faint orange
-		const roll = rng();
-		if (roll < 0.07) {
-			// Blue-white
-			colors[i * 3] = 0.85 + rng() * 0.1;
-			colors[i * 3 + 1] = 0.9 + rng() * 0.08;
-			colors[i * 3 + 2] = 1.0;
-		} else if (roll < 0.13) {
-			// Faint orange
-			colors[i * 3] = 1.0;
-			colors[i * 3 + 1] = 0.78 + rng() * 0.1;
-			colors[i * 3 + 2] = 0.6 + rng() * 0.15;
-		} else {
-			// Warm white
-			colors[i * 3] = 0.95 + rng() * 0.05;
-			colors[i * 3 + 1] = 0.93 + rng() * 0.07;
-			colors[i * 3 + 2] = 0.88 + rng() * 0.12;
-		}
-
-		sizes[i] = 1.0 + rng() * 2.0;
-	}
-
-	const geo = new THREE.BufferGeometry();
-	geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-	geo.setAttribute("color", new THREE.BufferAttribute(colors, 3));
-	geo.setAttribute("size", new THREE.BufferAttribute(sizes, 1));
-
-	const mat = new THREE.PointsMaterial({
-		sizeAttenuation: false,
-		size: 1.5,
-		transparent: true,
-		opacity: 0.8,
-		vertexColors: true,
-	});
-
-	starField = new THREE.Points(geo, mat);
-	scene.add(starField);
-})();
 
 // AU distance rings
 const AU_RINGS = [1, 5, 10, 30];

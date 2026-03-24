@@ -121,7 +121,7 @@ export const state: AppState = {
 		"mission-complete": true,
 		malfunction: true,
 		"ship-destroyed": true,
-		"transfer-complete": true,
+		"transfer-complete": false,
 		"action-complete": false,
 	},
 	firstSurveyCompleted: false,

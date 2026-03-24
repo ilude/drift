@@ -4,8 +4,9 @@
 	box-sizing: border-box;
 }
 
+html,
 body {
-	background: #0a0a0f;
+	background: #000;
 	color: #88cc88;
 	font-family: "Courier New", "Consolas", monospace;
 	font-size: 12px;
@@ -17,9 +18,15 @@ body {
 	position: fixed;
 	top: 0;
 	left: 0;
-	width: 100%;
-	height: 100%;
+	width: 100vw;
+	height: 100vh;
 	z-index: 0;
+	overflow: hidden;
+	background: #000;
+}
+
+#canvas-container canvas {
+	display: block;
 }
 
 /* Header bar */
@@ -233,6 +240,7 @@ body {
 	top: 40px;
 	right: 12px;
 	width: 240px;
+	background: transparent;
 }
 
 #info-close {
@@ -250,6 +258,7 @@ body {
 
 #info-content {
 	padding: 6px 8px;
+	background: #0d0d14;
 }
 
 .info-row {

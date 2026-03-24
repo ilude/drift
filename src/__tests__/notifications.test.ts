@@ -24,7 +24,7 @@ function resetState() {
 		"mission-complete": true,
 		malfunction: true,
 		"ship-destroyed": true,
-		"transfer-complete": true,
+		"transfer-complete": false,
 		"action-complete": false,
 	};
 	clearNotifications();
@@ -246,10 +246,10 @@ describe("notifications", () => {
 	});
 
 	describe("new notification types (transfer-complete, action-complete)", () => {
-		it("transfer-complete pauses by default", () => {
-			expect(state.notificationPauseConfig["transfer-complete"]).toBe(true);
+		it("transfer-complete does not pause by default", () => {
+			expect(state.notificationPauseConfig["transfer-complete"]).toBe(false);
 			addNotification("transfer-complete", "Ship arrived at Mars");
-			expect(state.timeSpeed).toBe(0);
+			expect(state.timeSpeed).toBe(1);
 		});
 
 		it("action-complete does not pause by default", () => {
@@ -271,8 +271,8 @@ describe("notifications", () => {
 			expect(state.notifications[0].type).toBe("action-complete");
 		});
 
-		it("shouldPause returns true for transfer-complete by default", () => {
-			expect(shouldPause("transfer-complete")).toBe(true);
+		it("shouldPause returns false for transfer-complete by default", () => {
+			expect(shouldPause("transfer-complete")).toBe(false);
 		});
 
 		it("shouldPause returns false for action-complete by default", () => {
