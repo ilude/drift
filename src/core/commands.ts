@@ -75,8 +75,9 @@ function isAtColony(ship: ShipEntry): boolean {
 // Gradual recovery rates (per day)
 const MORALE_RECOVERY_PER_DAY = 2.5; // +2.5 morale/day during shore leave (~28 days from 30% to full)
 const REFUEL_RATE_PER_DAY = 0.2; // 20% of capacity/day
-const HULL_REPAIR_PER_DAY = 20; // +20 hull/day during overhaul
-const SUPPLY_RESTOCK_PER_DAY = 20; // +20 supplies/day during overhaul
+const HULL_REPAIR_PER_DAY = 2.5; // +2.5% hull/day during overhaul (~40 days from 0% to full)
+const SUPPLY_RESTOCK_PER_DAY = 2.5; // +2.5 supplies/day during overhaul
+const SHORE_LEAVE_REPAIR_PER_DAY = 0.25; // +0.25% hull/day from repair crew during shore leave
 
 export function tickShipSimulation(ship: ShipEntry, simDt: number, simTime: number): void {
 	const atColony = isAtColony(ship);
@@ -88,6 +89,11 @@ export function tickShipSimulation(ship: ShipEntry, simDt: number, simTime: numb
 	if (isOrbiting && ship.action.type === "shore-leave") {
 		ship.crew.morale = Math.min(100, ship.crew.morale + MORALE_RECOVERY_PER_DAY * simDt);
 		ship.crew.lastShoreLeave = simTime;
+		// Repair crew works on hull during shore leave
+		ship.maintenance.hullIntegrity = Math.min(
+			100,
+			ship.maintenance.hullIntegrity + SHORE_LEAVE_REPAIR_PER_DAY * simDt,
+		);
 	} else if (!atColony) {
 		const daysSinceLeave = simTime - ship.crew.lastShoreLeave;
 		ship.crew.morale = computeMorale(daysSinceLeave, ship.crew.deploymentLimit);
