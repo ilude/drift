@@ -169,13 +169,14 @@ describe("initiateTransfer", () => {
 		return ship;
 	}
 
-	it("deducts fuel on successful transfer", () => {
+	it("stores fuel cost for gradual consumption during transfer", () => {
 		const ship = setupSystem();
-		const fuelBefore = ship.fuelKg;
 		const mars = state.bodyMeshes.find((e) => e.data.name === "Mars");
 		expect(mars).toBeDefined();
 		initiateTransfer(ship, mars as unknown as PlanetEntry);
-		expect(ship.fuelKg).toBeLessThan(fuelBefore);
+		// Fuel is NOT deducted upfront — stored for per-frame consumption
+		expect(ship.transferFuelTotal).toBeGreaterThan(0);
+		expect(ship.shipState).toBe("transferring");
 	});
 
 	it("rejects transfer when fuel is insufficient", () => {

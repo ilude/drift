@@ -281,6 +281,7 @@ export interface ShipEntry extends BaseEntry {
 	transferTarget: string | null;
 	transferStartTime: number;
 	transferTimeDays: number;
+	transferFuelTotal: number;
 	p0x: number;
 	p0z: number;
 	t0x: number;

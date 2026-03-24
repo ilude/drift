@@ -374,6 +374,7 @@ export function createShip(): ShipEntry | undefined {
 		transferTarget: null,
 		transferStartTime: 0,
 		transferTimeDays: 0,
+		transferFuelTotal: 0,
 		p0x: 0,
 		p0z: 0,
 		t0x: 0,
@@ -466,6 +467,7 @@ export function completeTransfer(entry: ShipEntry): void {
 	entry.shipState = "orbiting";
 	entry.hostPlanetName = transferTarget;
 	entry.transferTarget = null;
+	entry.transferFuelTotal = 0;
 	entry.pendingTransfer = null;
 	entry.speed = SHIP_LOCAL_SPEED;
 
@@ -610,10 +612,9 @@ export function initiateTransfer(entry: ShipEntry, targetEntry: BodyEntry): bool
 		return false;
 	}
 
-	// Deduct fuel
-	entry.fuelKg -= result.fuelUsedKg ?? 0;
-
+	// Store fuel cost — consumed gradually during transfer, not upfront
 	const gameDays = result.transferDays ?? 0;
+	entry.transferFuelTotal = result.fuelUsedKg ?? 0;
 
 	// Compute Hermite spline from current position to predicted target position
 	const knots = computeHermiteKnots(
