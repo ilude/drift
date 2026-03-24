@@ -448,15 +448,11 @@ function completeAction(ship: ShipEntry): void {
 		completeSurvey(ship);
 	} else if (actionType === "shore-leave") {
 		ship.crew.lastShoreLeave = state.simTime;
-		ship.crew.morale = 100;
 		ship.action = noAction();
 	} else if (actionType === "overhaul") {
 		ship.maintenance.age = 0;
-		ship.maintenance.hullIntegrity = 100;
-		ship.maintenance.supplies = ship.maintenance.maxSupplies;
 		ship.action = noAction();
 	} else if (actionType === "refuel") {
-		ship.fuelKg = ship.fuelCapacityKg;
 		ship.action = noAction();
 	}
 
@@ -509,18 +505,16 @@ export function onTransferComplete(ship: ShipEntry): void {
 			ship.stationTarget = surveyTarget ?? null;
 		}
 	} else if (actionType === "refuel") {
-		ship.fuelKg = ship.fuelCapacityKg;
-		ship.action = noAction();
-		const result = evaluateCommandTree(ship);
-		if (result) dispatchCommand(ship, result);
+		ship.action.startTime = state.simTime;
+		ship.action.duration = 5;
+		ship.action.progress = 0;
 	} else if (actionType === "shore-leave") {
 		ship.action.startTime = state.simTime;
 		ship.action.duration = 30;
 		ship.action.progress = 0;
 	} else if (actionType === "overhaul") {
-		const duration = 5;
 		ship.action.startTime = state.simTime;
-		ship.action.duration = duration;
+		ship.action.duration = 5;
 		ship.action.progress = 0;
 	} else {
 		// No pending action — evaluate command tree

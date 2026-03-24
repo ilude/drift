@@ -276,4 +276,65 @@ describe("tickShipSimulation", () => {
 		tickShipSimulation(ship, 10, 10);
 		expect(ship.fuelKg).toBeGreaterThanOrEqual(0);
 	});
+
+	it("shore leave gradually recovers morale", () => {
+		const ship = mockShip({
+			crew: { count: 50, morale: 50, lastShoreLeave: 0, deploymentLimit: 180 },
+			action: { type: "shore-leave", commandId: "1", startTime: 0, duration: 30, progress: 0 },
+		});
+		tickShipSimulation(ship, 1, 10);
+		// +5 morale/day × 1 day = 55
+		expect(ship.crew.morale).toBeCloseTo(55, 0);
+	});
+
+	it("shore leave does not exceed 100 morale", () => {
+		const ship = mockShip({
+			crew: { count: 50, morale: 98, lastShoreLeave: 0, deploymentLimit: 180 },
+			action: { type: "shore-leave", commandId: "1", startTime: 0, duration: 30, progress: 0 },
+		});
+		tickShipSimulation(ship, 1, 10);
+		expect(ship.crew.morale).toBe(100);
+	});
+
+	it("refuel gradually tops off fuel", () => {
+		const ship = mockShip({
+			fuelKg: 25000,
+			fuelCapacityKg: 50000,
+			action: { type: "refuel", commandId: "1", startTime: 0, duration: 5, progress: 0 },
+		});
+		tickShipSimulation(ship, 1, 10);
+		// 20%/day × 50000 × 1 day = +10000
+		expect(ship.fuelKg).toBeCloseTo(35000, 0);
+	});
+
+	it("refuel does not consume fuel while refueling", () => {
+		const ship = mockShip({
+			fuelKg: 25000,
+			fuelCapacityKg: 50000,
+			action: { type: "refuel", commandId: "1", startTime: 0, duration: 5, progress: 0 },
+		});
+		tickShipSimulation(ship, 1, 10);
+		expect(ship.fuelKg).toBeGreaterThan(25000);
+	});
+
+	it("overhaul gradually repairs hull and restocks supplies", () => {
+		const ship = mockShip({
+			maintenance: { age: 100, supplies: 20, maxSupplies: 100, hullIntegrity: 40 },
+			action: { type: "overhaul", commandId: "1", startTime: 0, duration: 5, progress: 0 },
+		});
+		tickShipSimulation(ship, 1, 10);
+		// +20 hull/day, +20 supplies/day
+		expect(ship.maintenance.hullIntegrity).toBeCloseTo(60, 0);
+		expect(ship.maintenance.supplies).toBeCloseTo(40, 0);
+	});
+
+	it("overhaul does not exceed maximums", () => {
+		const ship = mockShip({
+			maintenance: { age: 100, supplies: 95, maxSupplies: 100, hullIntegrity: 95 },
+			action: { type: "overhaul", commandId: "1", startTime: 0, duration: 5, progress: 0 },
+		});
+		tickShipSimulation(ship, 1, 10);
+		expect(ship.maintenance.hullIntegrity).toBe(100);
+		expect(ship.maintenance.supplies).toBe(100);
+	});
 });

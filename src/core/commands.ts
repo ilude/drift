@@ -72,15 +72,44 @@ function isAtColony(ship: ShipEntry): boolean {
 	return ship.shipState === "orbiting" && COLONY_NAMES.has(ship.hostPlanetName);
 }
 
+// Gradual recovery rates (per day)
+const MORALE_RECOVERY_PER_DAY = 5; // +5 morale/day during shore leave
+const REFUEL_RATE_PER_DAY = 0.2; // 20% of capacity/day
+const HULL_REPAIR_PER_DAY = 20; // +20 hull/day during overhaul
+const SUPPLY_RESTOCK_PER_DAY = 20; // +20 supplies/day during overhaul
+
 export function tickShipSimulation(ship: ShipEntry, simDt: number, simTime: number): void {
 	const atColony = isAtColony(ship);
 
-	// At colony: supply shuttles top off ship once per day
-	if (atColony) {
+	// Morale: gradual recovery during shore leave, decay when deployed
+	if (ship.action.type === "shore-leave") {
+		ship.crew.morale = Math.min(100, ship.crew.morale + MORALE_RECOVERY_PER_DAY * simDt);
 		ship.crew.lastShoreLeave = simTime;
-		ship.crew.morale = 100;
+	} else if (!atColony) {
+		const daysSinceLeave = simTime - ship.crew.lastShoreLeave;
+		ship.crew.morale = computeMorale(daysSinceLeave, ship.crew.deploymentLimit);
+	}
 
-		// Supply shuttles once per game day (fuel + supplies only)
+	// Gradual refueling during refuel action
+	if (ship.action.type === "refuel") {
+		const fuelPerFrame = REFUEL_RATE_PER_DAY * ship.fuelCapacityKg * simDt;
+		ship.fuelKg = Math.min(ship.fuelCapacityKg, ship.fuelKg + fuelPerFrame);
+	}
+
+	// Gradual hull repair + supply restock during overhaul
+	if (ship.action.type === "overhaul") {
+		ship.maintenance.hullIntegrity = Math.min(
+			100,
+			ship.maintenance.hullIntegrity + HULL_REPAIR_PER_DAY * simDt,
+		);
+		ship.maintenance.supplies = Math.min(
+			ship.maintenance.maxSupplies,
+			ship.maintenance.supplies + SUPPLY_RESTOCK_PER_DAY * simDt,
+		);
+	}
+
+	// Colony supply shuttles: fuel + supplies only (not morale — that's shore leave)
+	if (atColony) {
 		const dayNow = Math.floor(simTime);
 		const dayPrev = Math.floor(simTime - simDt);
 		if (dayNow > dayPrev) {
@@ -92,9 +121,6 @@ export function tickShipSimulation(ship: ShipEntry, simDt: number, simTime: numb
 				ship.maintenance.supplies + supplyPerShuttle,
 			);
 		}
-	} else {
-		const daysSinceLeave = simTime - ship.crew.lastShoreLeave;
-		ship.crew.morale = computeMorale(daysSinceLeave, ship.crew.deploymentLimit);
 	}
 
 	// Maintenance age: only accumulates away from colony
@@ -102,8 +128,8 @@ export function tickShipSimulation(ship: ShipEntry, simDt: number, simTime: numb
 		ship.maintenance.age += simDt;
 	}
 
-	// Fuel consumption
-	if (!atColony) {
+	// Fuel consumption (skip during refuel action — ship is being topped off)
+	if (!atColony && ship.action.type !== "refuel") {
 		if (ship.shipState === "transferring" && ship.transferTimeDays > 0) {
 			// Engine burn: consume transferFuelTotal proportionally over transfer duration
 			const fuelPerDay = ship.transferFuelTotal / ship.transferTimeDays;
