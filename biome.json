@@ -13,6 +13,14 @@
 				"noUndeclaredVariables": "error",
 				"noUnusedVariables": "warn"
 			},
+			"complexity": {
+				"noExcessiveCognitiveComplexity": {
+					"level": "warn",
+					"options": {
+						"maxAllowedComplexity": 15
+					}
+				}
+			},
 			"style": {
 				"useTemplate": "off"
 			}
