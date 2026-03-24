@@ -250,14 +250,21 @@ describe("tickShipSimulation", () => {
 		expect(ship.fuelKg).toBeLessThan(50000);
 	});
 
-	it("fuel does NOT drain when action.type is null", () => {
-		const ship = mockShip({
+	it("fuel drains at lower rate when idle (baseline station-keeping)", () => {
+		const shipActive = mockShip({
+			fuelKg: 50000,
+			fuelCapacityKg: 50000,
+			action: { type: "survey-nearest", commandId: "1", startTime: 0, duration: 0, progress: 0 },
+		});
+		const shipIdle = mockShip({
 			fuelKg: 50000,
 			fuelCapacityKg: 50000,
 			action: { type: null, commandId: null, startTime: 0, duration: 0, progress: 0 },
 		});
-		tickShipSimulation(ship, 1, 10);
-		expect(ship.fuelKg).toBe(50000);
+		tickShipSimulation(shipActive, 1, 10);
+		tickShipSimulation(shipIdle, 1, 10);
+		expect(shipIdle.fuelKg).toBeLessThan(50000);
+		expect(shipIdle.fuelKg).toBeGreaterThan(shipActive.fuelKg);
 	});
 
 	it("fuel never goes below 0", () => {

@@ -102,9 +102,11 @@ export function tickShipSimulation(ship: ShipEntry, simDt: number, simTime: numb
 		ship.maintenance.age += simDt;
 	}
 
-	// Fuel drain during active non-transfer actions away from colony (0.5% of capacity per day)
-	if (!atColony && ship.action.type !== null && ship.shipState !== "transferring") {
-		const drain = 0.005 * ship.fuelCapacityKg * simDt;
+	// Fuel drain away from colony (life support, station-keeping thrusters)
+	// Baseline: 0.05%/day idle, 0.1%/day active (survey/overhaul). Transfers deducted upfront.
+	if (!atColony && ship.shipState !== "transferring") {
+		const rate = ship.action.type !== null ? 0.001 : 0.0005;
+		const drain = rate * ship.fuelCapacityKg * simDt;
 		ship.fuelKg = Math.max(0, ship.fuelKg - drain);
 	}
 
