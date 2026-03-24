@@ -150,6 +150,19 @@ setOnTransferComplete(onTransferComplete);
 // Auto-save on page unload
 window.addEventListener("beforeunload", saveState);
 
+// Dismiss splash screen and reveal game UI
+const splash = document.getElementById("splash-screen");
+if (splash) {
+	splash.querySelector(".splash-bar-fill")?.addEventListener("animationend", () => {
+		const fill = splash.querySelector(".splash-bar-fill") as HTMLElement;
+		if (fill) fill.style.width = "100%";
+		splash.classList.add("fade-out");
+		splash.addEventListener("transitionend", () => {
+			document.body.classList.add("loaded");
+		});
+	});
+}
+
 // ---------------------------------------------------------------------------
 // Teardown & load system
 // ---------------------------------------------------------------------------

@@ -14,6 +14,134 @@ body {
 	user-select: none;
 }
 
+/* ── Splash screen ── */
+#splash-screen {
+	position: fixed;
+	inset: 0;
+	z-index: 9999;
+	background: #000;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	transition: opacity 0.6s ease-out;
+}
+
+#splash-screen.fade-out {
+	opacity: 0;
+	pointer-events: none;
+}
+
+.splash-scanlines {
+	position: absolute;
+	inset: 0;
+	background: repeating-linear-gradient(
+		to bottom,
+		transparent 0px,
+		transparent 2px,
+		rgba(0, 0, 0, 0.3) 2px,
+		rgba(0, 0, 0, 0.3) 4px
+	);
+	pointer-events: none;
+}
+
+.splash-content {
+	text-align: center;
+	z-index: 1;
+}
+
+.splash-title {
+	font-family: "Courier New", monospace;
+	font-size: 72px;
+	font-weight: bold;
+	color: #33ff66;
+	text-shadow:
+		0 0 20px rgba(51, 255, 102, 0.6),
+		0 0 40px rgba(51, 255, 102, 0.3),
+		0 0 80px rgba(51, 255, 102, 0.1);
+	letter-spacing: 24px;
+	margin-bottom: 12px;
+}
+
+.splash-subtitle {
+	font-family: "Courier New", monospace;
+	font-size: 11px;
+	color: #448844;
+	letter-spacing: 4px;
+	text-transform: uppercase;
+	margin-bottom: 32px;
+}
+
+.splash-version {
+	font-family: "Courier New", monospace;
+	font-size: 10px;
+	color: #336633;
+	letter-spacing: 2px;
+	margin-bottom: 48px;
+}
+
+.splash-loader {
+	margin-bottom: 48px;
+}
+
+.splash-blink {
+	font-family: "Courier New", monospace;
+	font-size: 12px;
+	color: #88cc88;
+	letter-spacing: 2px;
+	animation: blink-text 1s step-end infinite;
+}
+
+@keyframes blink-text {
+	0%,
+	100% {
+		opacity: 1;
+	}
+	50% {
+		opacity: 0;
+	}
+}
+
+.splash-bar {
+	width: 280px;
+	height: 6px;
+	border: 1px solid #336633;
+	margin: 12px auto 0;
+	background: #0a0a0a;
+}
+
+.splash-bar-fill {
+	height: 100%;
+	width: 0%;
+	background: #33ff66;
+	box-shadow: 0 0 8px rgba(51, 255, 102, 0.5);
+	animation: bar-fill 1.5s ease-in-out forwards;
+}
+
+@keyframes bar-fill {
+	0% {
+		width: 0%;
+	}
+	30% {
+		width: 25%;
+	}
+	60% {
+		width: 55%;
+	}
+	80% {
+		width: 80%;
+	}
+	100% {
+		width: 95%;
+	}
+}
+
+.splash-footer {
+	font-family: "Courier New", monospace;
+	font-size: 9px;
+	color: #2a4a2a;
+	letter-spacing: 2px;
+}
+
 #canvas-container {
 	position: fixed;
 	top: 0;
@@ -666,4 +794,21 @@ body {
 }
 .notif-mark-all:hover {
 	color: #aaccaa;
+}
+
+/* ── Hide game UI until loaded (reinforces inline <style> in index.html) ── */
+body:not(.loaded) #canvas-container,
+body:not(.loaded) #header-bar,
+body:not(.loaded) #status-bar,
+body:not(.loaded) #body-list-panel,
+body:not(.loaded) #info-panel,
+body:not(.loaded) #notif-dropdown,
+body:not(.loaded) #speed-selector-dropdown,
+body:not(.loaded) #system-switcher-dropdown,
+body:not(.loaded) #view-menu-dropdown {
+	display: none;
+}
+
+body.loaded #splash-screen {
+	display: none;
 }
