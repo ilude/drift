@@ -1,6 +1,7 @@
 import type { BodyEntry, CommandCondition, CommandResult, ShipEntry } from "../types";
 import { isShipEntry, isSurveyable } from "../types";
 import { findBody } from "./entities";
+import { getClaimedTargets } from "./intents";
 import { state } from "./state";
 import { seededRandom } from "./utils";
 
@@ -188,6 +189,7 @@ export function tickShipSimulation(ship: ShipEntry, simDt: number, simTime: numb
 export function selectNextSurveyTarget(ship: ShipEntry): string | null {
 	const sx = ship.mesh.position.x;
 	const sz = ship.mesh.position.z;
+	const claimed = getClaimedTargets(ship.data.name);
 
 	// Collect body candidates with distance
 	const candidates: { name: string; distSq: number }[] = [];
@@ -199,6 +201,7 @@ export function selectNextSurveyTarget(ship: ShipEntry): string | null {
 		if (body.survey.surveyLevel !== 0) continue;
 		if (body.data.type === "Star") continue;
 		if (body.isMoon) continue;
+		if (claimed.has(body.data.name)) continue;
 		const dx = body.mesh.position.x - sx;
 		const dz = body.mesh.position.z - sz;
 		candidates.push({ name: body.data.name, distSq: dx * dx + dz * dz });
@@ -208,6 +211,7 @@ export function selectNextSurveyTarget(ship: ShipEntry): string | null {
 	for (const beltEntry of state.asteroidBelts) {
 		for (const asteroid of beltEntry.asteroids) {
 			if (asteroid.survey.surveyLevel !== 0) continue;
+			if (claimed.has(asteroid.designation)) continue;
 			const idx = asteroid.beltIndex ?? 0;
 			const ax = beltEntry.positions[idx * 3] - sx;
 			const az = beltEntry.positions[idx * 3 + 2] - sz;

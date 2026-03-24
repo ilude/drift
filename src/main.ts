@@ -15,6 +15,7 @@ import {
 	rebuildEntityMaps,
 	resolveEntity,
 } from "./core/entities";
+import { publishIntent } from "./core/intents";
 import { addCoalescedNotification, addNotification } from "./core/notifications";
 import { loadSavedState, MASTER_SEED, restoreShipState, saveState, state } from "./core/state";
 import { seededRandom } from "./core/utils";
@@ -111,7 +112,9 @@ createBodies();
 createComets();
 // Initial position tick so all bodies are placed before ship creation
 updatePositions(1e-10, 300);
-createShip();
+createShip({ name: "ISS Explorer", hostPlanetName: "Earth" });
+createShip({ name: "Magellan", hostPlanetName: "Mars" });
+createShip({ name: "Kepler", hostPlanetName: "Jupiter" });
 if (saved) restoreShipState(saved);
 state.asteroidBelts = createAsteroidBelts();
 rebuildEntityMaps();
@@ -210,6 +213,7 @@ function teardownSystem(): void {
 
 	state.selectedBody = null;
 	state.flyTo = null;
+	state.shipIntents.clear();
 	document.getElementById("info-panel")?.classList.add("hidden");
 }
 
@@ -220,7 +224,10 @@ function loadSystem(systemData: SystemData): void {
 	state.ASTEROID_BELTS = systemData.asteroidBelts;
 	createBodies();
 	createComets();
-	createShip();
+	updatePositions(1e-10, 300);
+	const firstPlanet =
+		state.bodyMeshes.find((e) => !isShipEntry(e) && e.data.type === "Planet")?.data.name ?? "Earth";
+	createShip({ name: "ISS Explorer", hostPlanetName: firstPlanet });
 	state.asteroidBelts = createAsteroidBelts();
 	rebuildEntityMaps();
 
@@ -393,6 +400,11 @@ function dispatchCommand(ship: ShipEntry, result: CommandResult): void {
 					const moon = unsurvevedMoons[0];
 					const dur = getSurveyDuration(moon.data.mass, ship);
 					ship.action = mkAction("survey-nearest", "survey", state.simTime, dur, moon.data.name);
+					publishIntent(ship.data.name, {
+						type: "surveying",
+						target: moon.data.name,
+						shipName: ship.data.name,
+					});
 					break;
 				}
 			}
@@ -424,6 +436,7 @@ function dispatchCommand(ship: ShipEntry, result: CommandResult): void {
 					const dur = getSurveyDuration(targetMass, ship);
 					ship.action = mkAction("survey-nearest", "survey", state.simTime, dur, target);
 					ship.stationTarget = null;
+					publishIntent(ship.data.name, { type: "surveying", target, shipName: ship.data.name });
 				} else if (!canAffordRoundTrip(ship, targetBody)) {
 					// Not enough fuel for hop + return — head home to refuel first
 					const colony = findColony();
@@ -444,6 +457,11 @@ function dispatchCommand(ship: ShipEntry, result: CommandResult): void {
 					if (initiateTransfer(ship, targetBody)) {
 						ship.action = mkAction("survey-nearest", "survey", 0, 0, target);
 						ship.stationTarget = null;
+						publishIntent(ship.data.name, {
+							type: "transferring",
+							destination: target,
+							shipName: ship.data.name,
+						});
 					} else {
 						ship.action = noAction();
 					}
@@ -451,6 +469,11 @@ function dispatchCommand(ship: ShipEntry, result: CommandResult): void {
 			} else {
 				addCoalescedNotification("mission-complete", "System survey complete — all bodies surveyed");
 				ship.action = mkAction("idle", "idle");
+				publishIntent(ship.data.name, {
+					type: "idle",
+					location: ship.hostPlanetName,
+					shipName: ship.data.name,
+				});
 			}
 			break;
 		}
@@ -458,6 +481,11 @@ function dispatchCommand(ship: ShipEntry, result: CommandResult): void {
 			if (result.target) {
 				const te = findPlanet(result.target);
 				if (te) initiateTransfer(ship, te);
+				publishIntent(ship.data.name, {
+					type: "transferring",
+					destination: result.target,
+					shipName: ship.data.name,
+				});
 			}
 			break;
 		}
@@ -475,6 +503,11 @@ function dispatchCommand(ship: ShipEntry, result: CommandResult): void {
 				ship.fuelKg = ship.fuelCapacityKg;
 				ship.action = noAction();
 			}
+			publishIntent(ship.data.name, {
+				type: "refueling",
+				location: earth?.data.name ?? ship.hostPlanetName,
+				shipName: ship.data.name,
+			});
 			break;
 		}
 		case "shore-leave": {
@@ -492,6 +525,11 @@ function dispatchCommand(ship: ShipEntry, result: CommandResult): void {
 			} else {
 				ship.action = mkAction("shore-leave", "shore-leave", state.simTime, 30);
 			}
+			publishIntent(ship.data.name, {
+				type: "shore-leave",
+				location: colony?.data.name ?? ship.hostPlanetName,
+				shipName: ship.data.name,
+			});
 			break;
 		}
 		case "overhaul": {
@@ -510,10 +548,20 @@ function dispatchCommand(ship: ShipEntry, result: CommandResult): void {
 				const dur = 5;
 				ship.action = mkAction("overhaul", "overhaul", state.simTime, dur);
 			}
+			publishIntent(ship.data.name, {
+				type: "overhauling",
+				location: yard?.data.name ?? ship.hostPlanetName,
+				shipName: ship.data.name,
+			});
 			break;
 		}
 		case "idle":
 			ship.action = noAction();
+			publishIntent(ship.data.name, {
+				type: "idle",
+				location: ship.hostPlanetName,
+				shipName: ship.data.name,
+			});
 			break;
 	}
 }
@@ -589,6 +637,11 @@ export function onTransferComplete(ship: ShipEntry): void {
 		ship.action.startTime = state.simTime;
 		ship.action.duration = dur;
 		ship.action.progress = 0;
+		publishIntent(ship.data.name, {
+			type: "surveying",
+			target: surveyTarget ?? ship.hostPlanetName,
+			shipName: ship.data.name,
+		});
 		// Station-keeping only for comets (moons orbit parent planet normally)
 		if (targetBody && isCometEntry(targetBody)) {
 			ship.stationTarget = surveyTarget ?? null;

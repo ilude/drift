@@ -284,16 +284,35 @@ function removeTransferPath(entry: ShipEntry): void {
 	}
 }
 
-export function createShip(): ShipEntry | undefined {
-	const planets = state.BODIES?.filter((b) => b.type === "Planet");
-	if (planets.length === 0) return;
-	const homePlanet =
-		planets.find((b) => b.name === "Earth") ||
-		planets.reduce((best, b) => (Math.abs(b.distance - 1) < Math.abs(best.distance - 1) ? b : best));
+export interface ShipConfig {
+	name: string;
+	hostPlanetName: string;
+	engineId?: string;
+	color?: string;
+}
 
+export function createShip(config: ShipConfig): ShipEntry | undefined {
+	if (state.bodyMeshes.some((e) => e.data.name === config.name)) {
+		console.warn(`Ship "${config.name}" already exists`);
+		return undefined;
+	}
+
+	// Find host planet by name; fall back to planet closest to 1 AU
+	const hostPlanetEntry = findBodyEntry(config.hostPlanetName);
+	const planets = state.BODIES?.filter((b) => b.type === "Planet");
+	if (!hostPlanetEntry && (!planets || planets.length === 0)) return undefined;
+	const homePlanetData = hostPlanetEntry
+		? hostPlanetEntry.data
+		: (planets.find((b) => b.name === config.hostPlanetName) ??
+			planets.reduce((best, b) =>
+				Math.abs(b.distance - 1) < Math.abs(best.distance - 1) ? b : best,
+			));
+	if (!homePlanetData) return undefined;
+
+	const shipColor = config.color ?? "#bbbbbb";
 	const geom = new THREE.SphereGeometry(SHIP_SIZE, 8, 8);
 	const mat = new THREE.MeshStandardMaterial({
-		color: "#bbbbbb",
+		color: shipColor,
 		roughness: 0.6,
 		metalness: 0.4,
 	});
@@ -315,18 +334,19 @@ export function createShip(): ShipEntry | undefined {
 	selRing.rotation.x = -Math.PI / 2;
 	mesh.add(selRing);
 
-	const labelDiv = createLabel("Ship", "#bbbbbb", false);
-	const trail = createTrail("#bbbbbb", TRAIL_MAX_POINTS);
+	const labelDiv = createLabel(config.name, shipColor, false);
+	const trail = createTrail(shipColor, TRAIL_MAX_POINTS);
 
-	const defaultEngine = ENGINE_TYPES[0]; // conventional TN
+	const resolvedEngineId = config.engineId ?? ENGINE_TYPES[0].id;
+	const defaultEngine = ENGINE_TYPES.find((e) => e.id === resolvedEngineId) ?? ENGINE_TYPES[0];
 	const entry = {
 		data: {
-			name: "Ship",
+			name: config.name,
 			type: "Ship" as const,
-			distance: homePlanet.distance,
+			distance: homePlanetData.distance,
 			period: 0,
 			radius: 1,
-			color: "#bbbbbb",
+			color: shipColor,
 			moons: [] as MoonData[],
 		},
 		mesh,
@@ -355,8 +375,8 @@ export function createShip(): ShipEntry | undefined {
 		fuelCapacityKg: 50_000,
 		// Ship state
 		shipState: "orbiting" as const,
-		hostPlanetName: homePlanet.name,
-		orbitA: homePlanet.distance,
+		hostPlanetName: homePlanetData.name,
+		orbitA: homePlanetData.distance,
 		// Transfer fields (Hermite spline)
 		transferTarget: null,
 		transferStartTime: 0,

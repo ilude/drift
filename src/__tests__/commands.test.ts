@@ -13,6 +13,7 @@ import type { BodyEntry, CommandEntry, ShipEntry } from "../types";
 
 function mockShip(overrides: Partial<ShipEntry> = {}): ShipEntry {
 	return {
+		data: { name: "Ship" },
 		fuelKg: 50000,
 		fuelCapacityKg: 50000,
 		crew: { count: 50, morale: 100, lastShoreLeave: 0, deploymentLimit: 180 },
@@ -485,6 +486,53 @@ describe("selectNextSurveyTarget — asteroids", () => {
 		];
 		const ship = shipAt(0, 0);
 		expect(selectNextSurveyTarget(ship)).toBe("Venus");
+	});
+});
+
+// --- selectNextSurveyTarget — intents ---
+
+describe("selectNextSurveyTarget — intents", () => {
+	function shipAt(x: number, z: number): ShipEntry {
+		return mockShip({
+			data: { name: "Ship" } as unknown as ShipEntry["data"],
+			mesh: { position: { x, z, distanceToSquared: () => 1 } } as unknown as ShipEntry["mesh"],
+		});
+	}
+
+	beforeEach(() => {
+		state.bodyMeshes = [];
+		state.asteroidBelts = [];
+		state.shipIntents.clear();
+	});
+
+	it("skips bodies claimed by other ships via intents", () => {
+		const mars = mockBodyEntry("Mars", { mesh: { position: { x: 5, y: 0, z: 5 } } });
+		const jupiter = mockBodyEntry("Jupiter", { mesh: { position: { x: 20, y: 0, z: 20 } } });
+		state.bodyMeshes = [mars, jupiter] as BodyEntry[];
+		state.shipIntents.set("Ship-A", { type: "surveying", target: "Mars", shipName: "Ship-A" });
+		const ship = shipAt(0, 0);
+		expect(selectNextSurveyTarget(ship)).toBe("Jupiter");
+	});
+
+	it("skips bodies being transferred to by other ships", () => {
+		const mars = mockBodyEntry("Mars", { mesh: { position: { x: 5, y: 0, z: 5 } } });
+		const jupiter = mockBodyEntry("Jupiter", { mesh: { position: { x: 20, y: 0, z: 20 } } });
+		state.bodyMeshes = [mars, jupiter] as BodyEntry[];
+		state.shipIntents.set("Ship-A", {
+			type: "transferring",
+			destination: "Mars",
+			shipName: "Ship-A",
+		});
+		const ship = shipAt(0, 0);
+		expect(selectNextSurveyTarget(ship)).toBe("Jupiter");
+	});
+
+	it("does not skip own claims", () => {
+		const mars = mockBodyEntry("Mars", { mesh: { position: { x: 5, y: 0, z: 5 } } });
+		state.bodyMeshes = [mars] as BodyEntry[];
+		state.shipIntents.set("Ship", { type: "surveying", target: "Mars", shipName: "Ship" });
+		const ship = shipAt(0, 0);
+		expect(selectNextSurveyTarget(ship)).toBe("Mars");
 	});
 });
 

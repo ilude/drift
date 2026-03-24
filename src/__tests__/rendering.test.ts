@@ -99,7 +99,7 @@ describe("createShip", () => {
 		];
 		state.bodyMeshes = [];
 
-		const entry = createShip();
+		const entry = createShip({ name: "Ship", hostPlanetName: "Earth" });
 		expect(entry).toBeDefined();
 		expect(entry.isShip).toBe(true);
 		expect(entry).toHaveProperty("dryMassKg");
@@ -164,7 +164,7 @@ describe("initiateTransfer", () => {
 			}
 		});
 
-		const ship = createShip();
+		const ship = createShip({ name: "Ship", hostPlanetName: "Earth" });
 		if (!ship) throw new Error("createShip returned undefined");
 		return ship;
 	}
