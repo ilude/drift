@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { findAsteroidEntity, findBody, findShip } from "../core/entities";
 import { getUnreadCount, markAllRead, markRead } from "../core/notifications";
-import { formatDateTime, simTimeToDate, state, truncateDate } from "../core/state";
+import { formatDateTime, gameLog, simTimeToDate, state, truncateDate } from "../core/state";
 import { generateSystem } from "../data/system-generator";
 import {
 	bodyScaleFactor,
@@ -10,7 +10,7 @@ import {
 	MOON_LOD_ZOOM,
 } from "../math/visual";
 import { camera, labelContainer, setAntialias, ZOOM_BASE } from "../rendering/scene";
-import type { BodyEntry, CategoryKey, CategoryVisibility, SystemData } from "../types";
+import type { BodyEntry, CategoryKey, CategoryVisibility, ShipEntry, SystemData } from "../types";
 import { isShipEntry, isSurveyable } from "../types";
 import { recenterOnStar, selectBody } from "./selection";
 
@@ -270,7 +270,9 @@ export function updateLabels(camDist: number): void {
 
 		const catKey = (entry.isMoon ? "Moon" : entry.data.type) as CategoryKey;
 		const showLabels = cv[catKey]?.labels ?? true;
-		const targetDisplay = showLabels ? "" : "none";
+		// Orbiting ships: label hidden (name shown under host body label)
+		const orbitingShipHidden = isShipEntry(entry) && entry.shipState === "orbiting";
+		const targetDisplay = showLabels && !orbitingShipHidden ? "" : "none";
 		if (entry.labelDisplay !== targetDisplay) {
 			entry.labelDiv.style.display = targetDisplay;
 			entry.labelDisplay = targetDisplay;
@@ -417,64 +419,6 @@ export function updateHUD(camDist: number): void {
 			badge.style.display = "";
 		} else {
 			badge.style.display = "none";
-		}
-	}
-
-	const activityEl = document.getElementById("ship-activity");
-	const durationEl = document.getElementById("ship-action-duration");
-	if (activityEl) {
-		const selectedShip =
-			state.selectedBody && isShipEntry(state.selectedBody) ? state.selectedBody : null;
-		if (selectedShip) {
-			const ship = selectedShip;
-			const name = ship.data.name;
-			let actionText: string;
-			let durationText = "";
-			if (ship.shipState === "transferring") {
-				actionText = `${name}: In transit to ${ship.transferTarget}`;
-			} else if (ship.action.type === "survey-nearest" && ship.action.startTime > 0) {
-				const elapsed = Math.floor(state.simTime - ship.action.startTime);
-				const dur = Math.floor(ship.action.duration);
-				actionText = `${name}: Surveying ${ship.action.target ?? ship.hostPlanetName}`;
-				durationText = `Duration: ${elapsed}d/${dur}d`;
-			} else if (ship.action.type === "refuel" && ship.action.startTime > 0) {
-				const elapsed = Math.floor(state.simTime - ship.action.startTime);
-				const dur = Math.floor(ship.action.duration);
-				actionText = `${name}: Refueling`;
-				durationText = `Duration: ${elapsed}d/${dur}d`;
-			} else if (ship.action.type === "shore-leave" && ship.action.startTime > 0) {
-				const elapsed = Math.floor(state.simTime - ship.action.startTime);
-				const dur = Math.floor(ship.action.duration);
-				actionText = `${name}: Shore Leave`;
-				durationText = `Duration: ${elapsed}d/${dur}d`;
-			} else if (ship.action.type === "overhaul" && ship.action.startTime > 0) {
-				const elapsed = Math.floor(state.simTime - ship.action.startTime);
-				const dur = Math.floor(ship.action.duration);
-				actionText = `${name}: Overhaul`;
-				durationText = `Duration: ${elapsed}d/${dur}d`;
-			} else {
-				actionText = `${name}: Orbiting ${ship.hostPlanetName}`;
-			}
-			activityEl.textContent = actionText;
-			if (durationEl) durationEl.textContent = durationText;
-		} else {
-			const ships = state.bodyMeshes.filter((e) => isShipEntry(e));
-			if (ships.length === 0) {
-				activityEl.textContent = "";
-				if (durationEl) durationEl.textContent = "";
-			} else {
-				const surveying = ships.filter(
-					(s) => isShipEntry(s) && s.action.type === "survey-nearest",
-				).length;
-				const transferring = ships.filter(
-					(s) => isShipEntry(s) && s.shipState === "transferring",
-				).length;
-				const idle = ships.filter(
-					(s) => isShipEntry(s) && (!s.action.type || s.action.type === "idle"),
-				).length;
-				activityEl.textContent = `${ships.length} ships: ${surveying} surveying, ${transferring} in transit, ${idle} idle`;
-				if (durationEl) durationEl.textContent = "";
-			}
 		}
 	}
 }
@@ -677,7 +621,7 @@ export function setupUI(loadSystem: (systemData: SystemData) => void): void {
 			const ship = findShip();
 			const elapsed = ship ? state.simTime - ship.transferStartTime : 0;
 			const t = ship && ship.transferTimeDays > 0 ? elapsed / ship.transferTimeDays : 0;
-			console.log(`DEBUG STEP [${backward ? "B" : "N"}]:`, {
+			gameLog(`DEBUG STEP [${backward ? "B" : "N"}]:`, {
 				speed,
 				simTime: state.simTime.toFixed(3),
 				shipState: ship?.shipState,

@@ -17,7 +17,15 @@ import {
 } from "./core/entities";
 import { publishIntent } from "./core/intents";
 import { addCoalescedNotification, addNotification } from "./core/notifications";
-import { loadSavedState, MASTER_SEED, restoreShipState, saveState, state } from "./core/state";
+import {
+	gameLog,
+	gameWarn,
+	loadSavedState,
+	MASTER_SEED,
+	restoreShipState,
+	saveState,
+	state,
+} from "./core/state";
 import { seededRandom } from "./core/utils";
 import { generateDeposits } from "./data/resources";
 import { getSolSystem } from "./data/sol-data";
@@ -398,7 +406,7 @@ function dispatchCommand(ship: ShipEntry, result: CommandResult): void {
 		_dispatchDepth = 0;
 		return;
 	}
-	console.log(
+	gameLog(
 		`[dispatch] ${ship.data.name}: ${result.action}${result.target ? ` → ${result.target}` : ""}`,
 	);
 
@@ -470,7 +478,7 @@ function dispatchCommand(ship: ShipEntry, result: CommandResult): void {
 					}
 				} else {
 					// Transfer directly to the body
-					console.log(`[dispatch] ${ship.data.name}: initiating transfer to ${target}`);
+					gameLog(`[dispatch] ${ship.data.name}: initiating transfer to ${target}`);
 					if (initiateTransfer(ship, targetBody)) {
 						ship.action = mkAction("survey-nearest", "survey", 0, 0, target);
 						ship.stationTarget = null;
@@ -585,7 +593,7 @@ function dispatchCommand(ship: ShipEntry, result: CommandResult): void {
 }
 
 function completeAction(ship: ShipEntry): void {
-	console.log(`[completeAction] ${ship.data.name}: ${ship.action.type} completed`);
+	gameLog(`[completeAction] ${ship.data.name}: ${ship.action.type} completed`);
 	const actionType = ship.action.type;
 	if (actionType === "survey-nearest") {
 		completeSurvey(ship);
@@ -626,7 +634,7 @@ function tickShip(ship: ShipEntry, simDt: number): void {
 	// Auto-evaluate command tree when idle and orbiting (kicks off autonomous behavior)
 	// Skip until positions have been computed (simTime > 0.1 ensures at least a few frames)
 	if (ship.shipState === "orbiting" && !ship.action.type && state.simTime > 0.1) {
-		console.log(`[tickShip] ${ship.data.name}: idle, re-evaluating command tree`);
+		gameLog(`[tickShip] ${ship.data.name}: idle, re-evaluating command tree`);
 		const result = evaluateCommandTree(ship);
 		if (result) dispatchCommand(ship, result);
 	}
@@ -634,7 +642,7 @@ function tickShip(ship: ShipEntry, simDt: number): void {
 
 /** Called when a ship arrives at a planet after transfer. */
 export function onTransferComplete(ship: ShipEntry): void {
-	console.log(
+	gameLog(
 		`[transferComplete] ${ship.data.name}: arrived at ${ship.hostPlanetName}`,
 		`action=${ship.action.type} target=${ship.action.target}`,
 	);
@@ -756,7 +764,7 @@ function animate(now: number): void {
 			if (ship) {
 				const elapsed: number = state.simTime - ship.transferStartTime;
 				const t: number = ship.transferTimeDays > 0 ? elapsed / ship.transferTimeDays : 0;
-				console.log("DEBUG STEP PAUSED:", {
+				gameLog("DEBUG STEP PAUSED:", {
 					simTime: state.simTime.toFixed(3),
 					shipState: ship.shipState,
 					t: t.toFixed(4),
@@ -825,7 +833,7 @@ function animate(now: number): void {
 	_perfTimings.render = _t5 - _t4;
 	_perfTimings.total = _t5 - _t0;
 	if (_perfTimings.total > 100) {
-		console.warn("[SLOW FRAME]", {
+		gameWarn("[SLOW FRAME]", {
 			total: `${_perfTimings.total.toFixed(1)}ms`,
 			positions: `${_perfTimings.positions.toFixed(1)}ms`,
 			asteroids: `${_perfTimings.asteroids.toFixed(1)}ms`,

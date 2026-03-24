@@ -45,6 +45,18 @@ export function formatDateTime(date: Date): string {
 	return `${y}-${mo}-${d} ${h}:${mi}:${s}`;
 }
 
+/** Log with in-game datetime prefix. */
+export function gameLog(...args: unknown[]): void {
+	const d = simTimeToDate(state.simTime);
+	console.log(`[${formatDateTime(d)}]`, ...args);
+}
+
+/** Warn with in-game datetime prefix. */
+export function gameWarn(...args: unknown[]): void {
+	const d = simTimeToDate(state.simTime);
+	console.warn(`[${formatDateTime(d)}]`, ...args);
+}
+
 export function speedLabel(timeSpeed: number): string {
 	if (timeSpeed === 0) return "Paused";
 	if (timeSpeed < 1) return `${Math.round(timeSpeed * 24)} hrs / sec`;

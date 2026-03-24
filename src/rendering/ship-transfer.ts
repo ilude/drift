@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { findAsteroidEntity, rebuildEntityMaps } from "../core/entities";
-import { state } from "../core/state";
+import { gameWarn, state } from "../core/state";
 import {
 	DIST_SCALE,
 	keplerRadius,
@@ -208,7 +208,7 @@ export interface ShipConfig {
 
 export function createShip(config: ShipConfig): ShipEntry | undefined {
 	if (state.bodyMeshes.some((e) => e.data.name === config.name)) {
-		console.warn(`Ship "${config.name}" already exists`);
+		gameWarn(`Ship "${config.name}" already exists`);
 		return undefined;
 	}
 

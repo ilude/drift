@@ -26,24 +26,31 @@ function formatShipAction(entry: import("../types").ShipEntry): string {
 	}
 	const action = entry.action;
 	if (action.type === "survey-nearest" && action.startTime > 0) {
-		const elapsed = Math.floor(action.progress * action.duration);
-		return `Surveying ${action.target ?? "?"} (${elapsed}d/${action.duration}d)`;
+		return `Surveying ${action.target ?? "?"}`;
 	}
 	if (action.type === "survey-nearest") {
 		return `En route to ${action.target ?? "?"}`;
 	}
 	if (action.type === "shore-leave" && action.startTime > 0) {
-		const elapsed = Math.floor(action.progress * action.duration);
-		return `Shore Leave (${elapsed}d/${action.duration}d)`;
+		return "Shore Leave";
 	}
 	if (action.type === "overhaul" && action.startTime > 0) {
-		const elapsed = Math.floor(action.progress * action.duration);
-		return `Overhaul (${elapsed}d/${action.duration}d)`;
+		return "Overhaul";
 	}
 	if (action.type === "refuel") {
-		return "Refueling...";
+		return "Refueling";
 	}
 	return "Idle";
+}
+
+function formatShipDuration(entry: import("../types").ShipEntry): string {
+	const action = entry.action;
+	if (action.startTime > 0 && action.duration > 0) {
+		const elapsed = Math.floor(action.progress * action.duration);
+		const dur = Math.floor(action.duration);
+		return `${elapsed}d / ${dur}d`;
+	}
+	return "";
 }
 
 const ZOOM_DIST_RECENTER: number = ZOOM_BASE / 0.25;
@@ -158,6 +165,7 @@ export function selectBody(entry: BodyEntry): void {
 	const hullRow: HTMLElement | null = document.getElementById("info-hull-row");
 	const suppliesRow: HTMLElement | null = document.getElementById("info-supplies-row");
 	const actionRow: HTMLElement | null = document.getElementById("info-action-row");
+	const durationRow: HTMLElement | null = document.getElementById("info-duration-row");
 	const resourcesSection: HTMLElement | null = document.getElementById("info-resources-section");
 	const cmdContainer: HTMLElement | null = document.getElementById("command-tree-container");
 
@@ -171,6 +179,7 @@ export function selectBody(entry: BodyEntry): void {
 		hullRow?.classList.remove("hidden");
 		suppliesRow?.classList.remove("hidden");
 		actionRow?.classList.remove("hidden");
+		durationRow?.classList.remove("hidden");
 		resourcesSection?.classList.add("hidden");
 
 		// Render command tree editor
@@ -262,6 +271,12 @@ export function selectBody(entry: BodyEntry): void {
 		if (actionValueEl) {
 			actionValueEl.textContent = formatShipAction(entry);
 		}
+
+		// Duration
+		const durationValueEl = document.getElementById("info-duration-value");
+		if (durationValueEl) {
+			durationValueEl.textContent = formatShipDuration(entry);
+		}
 	} else {
 		transferRow?.classList.add("hidden");
 		engineRow?.classList.add("hidden");
@@ -272,6 +287,7 @@ export function selectBody(entry: BodyEntry): void {
 		hullRow?.classList.add("hidden");
 		suppliesRow?.classList.add("hidden");
 		actionRow?.classList.add("hidden");
+		durationRow?.classList.add("hidden");
 		cmdContainer?.classList.add("hidden");
 
 		// Resource viewer for surveyed bodies
@@ -437,6 +453,12 @@ function updateShipStatus(entry: ShipEntry): void {
 	const actionEl = document.getElementById("info-action-value");
 	if (actionEl) {
 		actionEl.textContent = formatShipAction(entry);
+	}
+
+	// Duration (live)
+	const durationEl = document.getElementById("info-duration-value");
+	if (durationEl) {
+		durationEl.textContent = formatShipDuration(entry);
 	}
 }
 
