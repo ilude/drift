@@ -464,6 +464,7 @@ export interface AppState {
 	notifications: GameNotification[];
 	notificationPauseConfig: NotificationPauseConfig;
 	firstSurveyCompleted: boolean;
+	surveyMultiplier: number;
 }
 
 // --- System data ---

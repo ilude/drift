@@ -88,6 +88,7 @@ export const state: AppState = {
 	debugStepFrames: 0,
 	debugStepSpeed: 0,
 	renderNeeded: true,
+	surveyMultiplier: 0.1,
 	notifications: [],
 	notificationPauseConfig: {
 		"survey-complete": false,

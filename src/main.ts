@@ -237,7 +237,7 @@ function getSurveyDuration(mass: number, ship: ShipEntry): number {
 	const base = Math.max(1, Math.round(1 + (logRatio / maxLog) * 39)); // 1–40 days
 	const morale = Math.max(10, ship.crew.morale) / 100;
 	const hull = Math.max(10, ship.maintenance.hullIntegrity) / 100;
-	return Math.ceil(base / (morale * hull));
+	return Math.max(1, Math.ceil((base / (morale * hull)) * state.surveyMultiplier));
 }
 
 function getSystemSeed(): number {
