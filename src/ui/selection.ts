@@ -5,9 +5,7 @@ import {
 	brachistochroneDeltaV,
 	brachistochroneTime,
 	ENGINE_TYPES,
-	exhaustVelocity,
 	G_ACCEL,
-	rocketDeltaV,
 } from "../math/ship-physics";
 import { easeOutCubic } from "../math/visual";
 import {
@@ -16,15 +14,7 @@ import {
 	initiateTransfer,
 } from "../rendering/rendering";
 import { camera, controls, renderer, ZOOM_BASE } from "../rendering/scene";
-import type {
-	AsteroidBeltData,
-	AsteroidInfo,
-	BodyData,
-	BodyEntry,
-	CometEntryData,
-	FlyToState,
-	PlanetEntry,
-} from "../types";
+import type { AsteroidBeltData, AsteroidInfo, BodyEntry, FlyToState, PlanetEntry } from "../types";
 import { isCometEntry, isShipEntry, isSurveyable } from "../types";
 import { renderCommandTree } from "./commands";
 
@@ -32,40 +22,6 @@ const ZOOM_DIST_RECENTER: number = ZOOM_BASE / 0.25;
 const ZOOM_DIST_STAR: number = 75;
 const ZOOM_DIST_PLANET: number = 38;
 const ZOOM_DIST_MOON: number = 20;
-
-export interface InfoFields {
-	distance: string;
-	period: string;
-	radius: string;
-	moons: string;
-}
-
-export function formatCometInfo(data: CometEntryData): InfoFields {
-	return {
-		distance: `Perihelion: ${data.distance.toFixed(2)} AU | e: ${data.e}`,
-		period: data.period > 0 ? `${data.period} years` : "-",
-		radius: `${data.radius.toLocaleString()} km`,
-		moons: data.moons ? data.moons.length.toString() : "0",
-	};
-}
-
-export function formatPlanetInfo(data: BodyData, _isMoon: boolean): InfoFields {
-	return {
-		distance: data.distance > 0 ? `${data.distance} AU` : "Center",
-		period: data.period > 0 ? `${data.period} years` : "-",
-		radius: `${data.radius.toLocaleString()} km`,
-		moons: data.moons ? data.moons.length.toString() : "0",
-	};
-}
-
-export function formatAsteroidInfo(asteroid: AsteroidInfo, _beltName: string): InfoFields {
-	return {
-		distance: `${asteroid.au} AU`,
-		period: `${asteroid.period} years`,
-		radius: `~${asteroid.diameter} km dia.`,
-		moons: "0",
-	};
-}
 
 export function getZoomDistance(bodyType: string, isMoon: boolean): number {
 	if (isMoon) return ZOOM_DIST_MOON;
@@ -77,11 +33,7 @@ export function getZoomDistance(bodyType: string, isMoon: boolean): number {
 const flyEndTarget: THREE.Vector3 = new THREE.Vector3();
 const flyEndCam: THREE.Vector3 = new THREE.Vector3();
 const clickVec: THREE.Vector3 = new THREE.Vector3();
-const infoPositionEl: HTMLElement | null = document.getElementById("info-position");
-
 const INITIAL_CAM_DIR: THREE.Vector3 = new THREE.Vector3(0, ZOOM_BASE, 80).normalize();
-
-let lastInfoPosText = "";
 
 function animateCameraTo(entry: BodyEntry, zoomDist: number, overrideOffset?: THREE.Vector3): void {
 	const camOffset: THREE.Vector3 =
@@ -131,17 +83,6 @@ export function recenterOnStar(): void {
 	animateCameraTo(star, ZOOM_DIST_RECENTER, INITIAL_CAM_DIR);
 }
 
-function setInfoFields(fields: InfoFields): void {
-	const distanceEl = document.getElementById("info-distance");
-	if (distanceEl) distanceEl.textContent = fields.distance;
-	const periodEl = document.getElementById("info-period");
-	if (periodEl) periodEl.textContent = fields.period;
-	const radiusEl = document.getElementById("info-radius");
-	if (radiusEl) radiusEl.textContent = fields.radius;
-	const moonsEl = document.getElementById("info-moons");
-	if (moonsEl) moonsEl.textContent = fields.moons;
-}
-
 export function selectBody(entry: BodyEntry): void {
 	if (state.selectedBody) {
 		(state.selectedBody.selRing.material as THREE.MeshBasicMaterial).opacity = 0;
@@ -168,35 +109,6 @@ export function selectBody(entry: BodyEntry): void {
 	if (typeEl) {
 		typeEl.textContent = entry.data.type;
 	}
-	if (isShipEntry(entry)) {
-		const distanceEl = document.getElementById("info-distance");
-		if (distanceEl) {
-			distanceEl.textContent =
-				entry.shipState === "transferring"
-					? `${entry.orbitA.toFixed(2)} AU (transfer)`
-					: `${entry.data.distance} AU`;
-		}
-		const statusText: string =
-			entry.shipState === "transferring"
-				? `Transfer → ${entry.transferTarget}`
-				: `Orbiting ${entry.hostPlanetName}`;
-		const periodEl = document.getElementById("info-period");
-		if (periodEl) {
-			periodEl.textContent = statusText;
-		}
-		const radiusEl = document.getElementById("info-radius");
-		if (radiusEl) {
-			radiusEl.textContent = "-";
-		}
-		const moonsEl = document.getElementById("info-moons");
-		if (moonsEl) {
-			moonsEl.textContent = "-";
-		}
-	} else if (isCometEntry(entry)) {
-		setInfoFields(formatCometInfo(entry.data));
-	} else {
-		setInfoFields(formatPlanetInfo(entry.data, entry.isMoon));
-	}
 
 	document.querySelectorAll(".body-list-item").forEach((el) => {
 		el.classList.remove("selected");
@@ -212,9 +124,9 @@ export function selectBody(entry: BodyEntry): void {
 	const transferRow: HTMLElement | null = document.getElementById("info-transfer");
 	const engineRow: HTMLElement | null = document.getElementById("info-ship-engine");
 	const fuelRow: HTMLElement | null = document.getElementById("info-ship-fuel");
-	const deltaVRow: HTMLElement | null = document.getElementById("info-ship-deltav");
 	const crewRow: HTMLElement | null = document.getElementById("info-crew-row");
 	const moraleRow: HTMLElement | null = document.getElementById("info-morale-row");
+	const leaveRow: HTMLElement | null = document.getElementById("info-leave-row");
 	const hullRow: HTMLElement | null = document.getElementById("info-hull-row");
 	const suppliesRow: HTMLElement | null = document.getElementById("info-supplies-row");
 	const actionRow: HTMLElement | null = document.getElementById("info-action-row");
@@ -225,9 +137,9 @@ export function selectBody(entry: BodyEntry): void {
 		transferRow?.classList.remove("hidden");
 		engineRow?.classList.remove("hidden");
 		fuelRow?.classList.remove("hidden");
-		deltaVRow?.classList.remove("hidden");
 		crewRow?.classList.remove("hidden");
 		moraleRow?.classList.remove("hidden");
+		leaveRow?.classList.remove("hidden");
 		hullRow?.classList.remove("hidden");
 		suppliesRow?.classList.remove("hidden");
 		actionRow?.classList.remove("hidden");
@@ -252,14 +164,6 @@ export function selectBody(entry: BodyEntry): void {
 		const fuelValueEl = document.getElementById("ship-fuel-value");
 		if (fuelValueEl) {
 			fuelValueEl.textContent = `${(entry.fuelKg / 1000).toFixed(2)}t / ${(entry.fuelCapacityKg / 1000).toFixed(2)}t (${fuelPct}%)`;
-		}
-
-		// Delta-v budget
-		const veKmS: number = engine ? exhaustVelocity(engine.ispS) / 1000 : 0;
-		const dvBudget: number = rocketDeltaV(veKmS, entry.dryMassKg + entry.fuelKg, entry.dryMassKg);
-		const deltaVValueEl = document.getElementById("ship-deltav-value");
-		if (deltaVValueEl) {
-			deltaVValueEl.textContent = `${dvBudget.toFixed(2)} km/s`;
 		}
 
 		// Transfer dropdown with delta-v costs
@@ -304,6 +208,13 @@ export function selectBody(entry: BodyEntry): void {
 			moraleValueEl.style.color = moralePct > 70 ? "#4a6a4a" : moralePct > 40 ? "#aaaa44" : "#aa4444";
 		}
 
+		// Days since leave
+		const leaveValueEl = document.getElementById("info-leave-value");
+		if (leaveValueEl) {
+			const daysSinceLeave = Math.round(state.simTime - entry.crew.lastShoreLeave);
+			leaveValueEl.textContent = `${daysSinceLeave}d`;
+		}
+
 		// Hull integrity
 		const hullValueEl = document.getElementById("info-hull-value");
 		if (hullValueEl) {
@@ -343,9 +254,9 @@ export function selectBody(entry: BodyEntry): void {
 		transferRow?.classList.add("hidden");
 		engineRow?.classList.add("hidden");
 		fuelRow?.classList.add("hidden");
-		deltaVRow?.classList.add("hidden");
 		crewRow?.classList.add("hidden");
 		moraleRow?.classList.add("hidden");
+		leaveRow?.classList.add("hidden");
 		hullRow?.classList.add("hidden");
 		suppliesRow?.classList.add("hidden");
 		actionRow?.classList.add("hidden");
@@ -456,8 +367,6 @@ export function selectAsteroid(hit: {
 	if (typeEl) {
 		typeEl.textContent = `Asteroid (${belt.name})`;
 	}
-	setInfoFields(formatAsteroidInfo(asteroid, belt.name));
-	if (infoPositionEl) infoPositionEl.textContent = "-";
 }
 
 export function updateFollow(): void {
@@ -530,18 +439,9 @@ function updateShipStatus(entry: ShipEntry): void {
 	}
 }
 
-export function updateInfoPosition(): void {
-	if (state.selectedBody) {
-		const pos: THREE.Vector3 = state.selectedBody.mesh.position;
-		const text = `${pos.x.toFixed(1)}, ${pos.z.toFixed(1)}`;
-		if (infoPositionEl && text !== lastInfoPosText) {
-			infoPositionEl.textContent = text;
-			lastInfoPosText = text;
-		}
-		// Live-update ship status every frame
-		if (isShipEntry(state.selectedBody)) {
-			updateShipStatus(state.selectedBody);
-		}
+export function updateSelectedBody(): void {
+	if (state.selectedBody && isShipEntry(state.selectedBody)) {
+		updateShipStatus(state.selectedBody);
 	}
 }
 
