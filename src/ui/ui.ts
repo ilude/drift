@@ -363,8 +363,6 @@ export function updateHUD(camDist: number): void {
 				activityEl.textContent = "Ship: Shore Leave";
 			} else if (ship.action.type === "overhaul" && ship.action.startTime > 0) {
 				activityEl.textContent = "Ship: Overhaul";
-			} else if (ship.shipState === "departing") {
-				activityEl.textContent = `Ship: Departing ${ship.hostPlanetName}`;
 			} else {
 				activityEl.textContent = `Ship: Orbiting ${ship.hostPlanetName}`;
 			}

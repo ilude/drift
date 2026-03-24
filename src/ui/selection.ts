@@ -179,9 +179,7 @@ export function selectBody(entry: BodyEntry): void {
 		const statusText: string =
 			entry.shipState === "transferring"
 				? `Transfer → ${entry.transferTarget}`
-				: entry.shipState === "departing"
-					? `Departing ${entry.hostPlanetName}...`
-					: `Orbiting ${entry.hostPlanetName}`;
+				: `Orbiting ${entry.hostPlanetName}`;
 		const periodEl = document.getElementById("info-period");
 		if (periodEl) {
 			periodEl.textContent = statusText;
@@ -327,8 +325,6 @@ export function selectBody(entry: BodyEntry): void {
 			const action = entry.action;
 			if (entry.shipState === "transferring") {
 				actionText = `In transit to ${entry.transferTarget}`;
-			} else if (entry.shipState === "departing") {
-				actionText = `Departing ${entry.hostPlanetName}`;
 			} else if (action.type === "survey-nearest") {
 				const elapsed = Math.floor(action.progress * action.duration);
 				actionText = `Surveying ${action.target ?? "?"} (${elapsed}d/${action.duration}d)`;
@@ -516,8 +512,6 @@ function updateShipStatus(entry: ShipEntry): void {
 		const action = entry.action;
 		if (entry.shipState === "transferring") {
 			text = `In transit to ${entry.transferTarget}`;
-		} else if (entry.shipState === "departing") {
-			text = `Departing ${entry.hostPlanetName}`;
 		} else if (action.type === "survey-nearest" && action.startTime > 0) {
 			const elapsed = Math.floor(action.progress * action.duration);
 			text = `Surveying ${action.target ?? "?"} (${elapsed}d/${action.duration}d)`;
