@@ -52,13 +52,7 @@
 	},
 	"overrides": [
 		{
-			"includes": ["serve.js"],
-			"javascript": {
-				"globals": ["Bun", "Response", "URL", "console"]
-			}
-		},
-		{
-			"includes": ["dist/**"],
+			"includes": ["dist/**", "coverage/**"],
 			"linter": {
 				"enabled": false
 			},

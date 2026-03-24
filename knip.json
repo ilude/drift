@@ -1,0 +1,3 @@
+{
+	"entry": ["src/__tests__/*.test.ts"]
+}
