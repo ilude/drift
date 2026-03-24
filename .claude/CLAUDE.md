@@ -20,6 +20,8 @@ public/                                  (static assets: favicon, images, etc.)
 src/
   style.css                              (app styles, imported by main.ts)
   core/       state.ts, utils.ts,        (app state, RNG helpers)
+              entities.ts,               (unified O(1) entity resolution)
+              intents.ts,                (ship intent broadcast for coordination)
               commands.ts,               (command tree evaluation, ship simulation)
               notifications.ts           (notification system with coalescing)
   math/       orbit.ts, visual.ts,       (pure math, no app imports)
@@ -43,7 +45,9 @@ core/utils.ts, math/orbit.ts, math/visual.ts  (pure math, no app imports)
         |
     core/state.ts  (imports nothing)
         |
-  core/commands.ts, core/notifications.ts, data/resources.ts
+    core/entities.ts  (imports: state.ts, types.ts, math/orbit.ts)
+        |
+  core/intents.ts, core/commands.ts, core/notifications.ts, data/resources.ts
         |
   rendering/scene.ts, rendering/textures.ts, rendering/bodies.ts
         |
@@ -55,8 +59,10 @@ core/utils.ts, math/orbit.ts, math/visual.ts  (pure math, no app imports)
 ```
 
 **Key modules:**
-- `src/types.ts` — Shared interfaces: BodyEntry, ShipEntry, CommandEntry, AppState, CategoryVisibility
-- `src/core/state.ts` — Single centralized state object, save/restore to localStorage
+- `src/types.ts` — Shared interfaces: BodyEntry, ShipEntry, ShipIntent, CommandEntry, AppState, ResolvedEntity
+- `src/core/state.ts` — Single centralized state object, save/restore to localStorage (SAVE_VERSION 4, plural ships)
+- `src/core/entities.ts` — Unified O(1) entity resolution: resolveEntity, findBody, findPlanet, findShip, findStar, findAsteroidEntity. Backed by Maps rebuilt via rebuildEntityMaps(). Lives in core/ so commands.ts can import it.
+- `src/core/intents.ts` — Ship intent broadcast for multi-ship coordination: publishIntent, clearIntent, getClaimedTargets. Ships broadcast current activity, others skip claimed targets.
 - `src/core/commands.ts` — Command tree evaluation (pure logic, no rendering imports), ship simulation tick
 - `src/core/notifications.ts` — Notification system with coalescing, smart pause, FIFO cap (200 entries)
 - `src/math/orbit.ts` — Kepler solver (meanToTrue), orbital mechanics primitives
@@ -82,8 +88,10 @@ core/utils.ts, math/orbit.ts, math/visual.ts  (pure math, no app imports)
 - **Scratch objects:** Hot-loop functions (inclinedPosition, orbitToWorld) reuse output objects to avoid GC pressure.
 - **World coordinates:** sqrt-compressed mapping: `rWorld = sqrt(rAU) * DIST_SCALE`. Ship transfers use Hermite splines in world space to avoid coordinate distortion.
 - **LOD:** 3-tier sphere geometry (8/24/48 segments), rings/clouds gated at 15px screen radius.
+- **Multi-ship:** Game supports multiple named ships created via `createShip(config: ShipConfig)`. Ships coordinate via intent broadcast — `selectNextSurveyTarget` skips bodies claimed by other ships. HUD shows selected ship status or fleet aggregate. Save/restore matches ships by name.
+- **Entity resolution:** All entity-by-name lookups go through `core/entities.ts`. Never use `state.bodyMeshes.find()` or `findBodyEntry()` directly — use `findBody()`, `resolveEntity()`, etc. Maps rebuilt via `rebuildEntityMaps()` after body/asteroid creation.
 - **Ship state machine:** orbiting → transferring → orbiting. Transfer uses cubic Hermite with station-keeping capture blend (t^4). Ships use brachistochrone physics (default 0.1g engine) for transfer timing.
-- **Ship command tree:** Priority-ordered list of conditional commands (fuel-below, morale-below, hull-below, supplies-below, always). Evaluated between actions. `immediateCommand` overrides the tree for one-shot manual orders.
+- **Ship command tree:** Priority-ordered list of conditional commands (fuel-below, morale-below, hull-below, supplies-below, always). Evaluated between actions. `immediateCommand` is one-shot — cleared at the top of `dispatchCommand()` on any dispatch.
 - **Ship simulation:** `tickShipSimulation()` runs per-frame: morale decay (1.5 exponent past 180-day deployment limit), maintenance age, malfunction checks (every 30 days during transfers), fuel drain (station-keeping rates), gradual recovery during actions (refuel: 20%/day, overhaul: +2.5% hull+supplies/day +0.5 morale/day, shore leave: +2.5 morale/day +0.25% hull/day from repair crew). All recovery rates scaled by `depotQuality` and per-system hardness multipliers.
 - **Survey system:** Multi-level surveys (1-3) revealing progressively rarer resources. Duration scales with body type and crew/hull condition. `surveyMultiplier` state setting for difficulty tuning.
 - **Rate modifier pattern:** Every rate-based game system uses two orthogonal scaling axes:
@@ -98,10 +106,10 @@ core/utils.ts, math/orbit.ts, math/visual.ts  (pure math, no app imports)
 
 ## Testing
 
-392 tests across 16 files using Vitest + jsdom. Tests cover:
+417 tests across 18 files using Vitest + jsdom. Tests cover:
 - Orbital math (orbit.test.ts)
 - Visual scaling (visual.test.ts)
-- Date/time formatting (state.test.ts)
+- Date/time formatting & save/restore (state.test.ts)
 - Transfer mechanics (transfer.test.ts)
 - System generation (system-generator.test.ts)
 - UI helpers (ui.test.ts, ui-helpers.test.ts)
@@ -109,9 +117,11 @@ core/utils.ts, math/orbit.ts, math/visual.ts  (pure math, no app imports)
 - Ship physics (ship-physics.test.ts)
 - Ship transfers (ship-transfer.test.ts)
 - RNG (utils.test.ts)
-- Command tree & ship simulation (commands.test.ts)
+- Command tree, ship simulation & intent-aware survey (commands.test.ts)
 - Notifications (notifications.test.ts)
 - Resources & deposits (resources.test.ts)
 - Body creation & selection (bodies.test.ts, selection.test.ts)
+- Entity resolution & maps (entities.test.ts)
+- Ship intent broadcast (intents.test.ts)
 
 All tests must pass before committing. Run `bun run test` to verify.
