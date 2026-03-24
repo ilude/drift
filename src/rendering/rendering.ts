@@ -18,6 +18,7 @@ import {
 	completeTransfer,
 	findAsteroid,
 	SHIP_LOCAL_ORBIT,
+	stationKeepingOffset,
 	transferPosition,
 	updateTransferPath,
 } from "./ship-transfer";
@@ -113,9 +114,7 @@ export function updatePositions(dt: number, camDist: number): void {
 					if (hit) host = asteroidProxy(hit.asteroid, hit.beltEntry);
 				}
 				if (host) {
-					// Offset scales with host's visual size so ship doesn't clip inside large bodies
-					const hostSize = host.mesh.userData?.baseSize ?? 0.02;
-					const offset = Math.max(SHIP_LOCAL_ORBIT * 0.5, hostSize * 1.5);
+					const offset = stationKeepingOffset(host);
 					const ox = Math.cos(entry.angle) * offset;
 					const oz = Math.sin(entry.angle) * offset;
 					entry.mesh.position.set(
@@ -144,6 +143,16 @@ export function updatePositions(dt: number, camDist: number): void {
 
 				if (isTransferComplete(elapsed, entry.transferTimeDays) || distToTarget <= SHIP_LOCAL_ORBIT) {
 					const entryAngle = tgt ? Math.atan2(p.z - tgt.mesh.position.z, p.x - tgt.mesh.position.x) : 0;
+					// Pre-snap ship to station-keeping position before completing transfer
+					// to eliminate visual discontinuity between spline endpoint and orbit position
+					if (tgt) {
+						const offset = stationKeepingOffset(tgt);
+						entry.mesh.position.set(
+							tgt.mesh.position.x + Math.cos(entryAngle) * offset,
+							tgt.mesh.position.y,
+							tgt.mesh.position.z + Math.sin(entryAngle) * offset,
+						);
+					}
 					completeTransfer(entry, entryAngle);
 					return;
 				}

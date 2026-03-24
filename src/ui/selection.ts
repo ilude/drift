@@ -19,6 +19,33 @@ import type { AsteroidBeltData, AsteroidInfo, BodyEntry, FlyToState } from "../t
 import { isCometEntry, isShipEntry, isSurveyable } from "../types";
 import { renderCommandTree } from "./commands";
 
+/** Format a ship's current action as display text. Single source of truth for action display. */
+function formatShipAction(entry: import("../types").ShipEntry): string {
+	if (entry.shipState === "transferring") {
+		return `In transit to ${entry.transferTarget}`;
+	}
+	const action = entry.action;
+	if (action.type === "survey-nearest" && action.startTime > 0) {
+		const elapsed = Math.floor(action.progress * action.duration);
+		return `Surveying ${action.target ?? "?"} (${elapsed}d/${action.duration}d)`;
+	}
+	if (action.type === "survey-nearest") {
+		return `En route to ${action.target ?? "?"}`;
+	}
+	if (action.type === "shore-leave" && action.startTime > 0) {
+		const elapsed = Math.floor(action.progress * action.duration);
+		return `Shore Leave (${elapsed}d/${action.duration}d)`;
+	}
+	if (action.type === "overhaul" && action.startTime > 0) {
+		const elapsed = Math.floor(action.progress * action.duration);
+		return `Overhaul (${elapsed}d/${action.duration}d)`;
+	}
+	if (action.type === "refuel") {
+		return "Refueling...";
+	}
+	return "Idle";
+}
+
 const ZOOM_DIST_RECENTER: number = ZOOM_BASE / 0.25;
 const ZOOM_DIST_STAR: number = 75;
 const ZOOM_DIST_PLANET: number = 38;
@@ -233,23 +260,7 @@ export function selectBody(entry: BodyEntry): void {
 		// Action
 		const actionValueEl = document.getElementById("info-action-value");
 		if (actionValueEl) {
-			let actionText = "Idle";
-			const action = entry.action;
-			if (entry.shipState === "transferring") {
-				actionText = `In transit to ${entry.transferTarget}`;
-			} else if (action.type === "survey-nearest") {
-				const elapsed = Math.floor(action.progress * action.duration);
-				actionText = `Surveying ${action.target ?? "?"} (${elapsed}d/${action.duration}d)`;
-			} else if (action.type === "shore-leave") {
-				const elapsed = Math.floor(action.progress * action.duration);
-				actionText = `Shore Leave (${elapsed}d/${action.duration}d)`;
-			} else if (action.type === "overhaul") {
-				const elapsed = Math.floor(action.progress * action.duration);
-				actionText = `Overhaul (${elapsed}d/${action.duration}d)`;
-			} else if (action.type === "refuel") {
-				actionText = "Refueling...";
-			}
-			actionValueEl.textContent = actionText;
+			actionValueEl.textContent = formatShipAction(entry);
 		}
 	} else {
 		transferRow?.classList.add("hidden");
@@ -425,25 +436,7 @@ function updateShipStatus(entry: ShipEntry): void {
 	// Action (live)
 	const actionEl = document.getElementById("info-action-value");
 	if (actionEl) {
-		let text = "Idle";
-		const action = entry.action;
-		if (entry.shipState === "transferring") {
-			text = `In transit to ${entry.transferTarget}`;
-		} else if (action.type === "survey-nearest" && action.startTime > 0) {
-			const elapsed = Math.floor(action.progress * action.duration);
-			text = `Surveying ${action.target ?? "?"} (${elapsed}d/${action.duration}d)`;
-		} else if (action.type === "shore-leave" && action.startTime > 0) {
-			const elapsed = Math.floor(action.progress * action.duration);
-			text = `Shore Leave (${elapsed}d/${action.duration}d)`;
-		} else if (action.type === "overhaul" && action.startTime > 0) {
-			const elapsed = Math.floor(action.progress * action.duration);
-			text = `Overhaul (${elapsed}d/${action.duration}d)`;
-		} else if (action.type === "refuel") {
-			text = "Refueling...";
-		} else if (action.type === "survey-nearest") {
-			text = `En route to ${action.target ?? "?"}`;
-		}
-		actionEl.textContent = text;
+		actionEl.textContent = formatShipAction(entry);
 	}
 }
 

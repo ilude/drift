@@ -11,7 +11,6 @@ import type {
 	ShipEntry,
 	Vector3Like,
 } from "../types";
-import { isCometEntry } from "../types";
 import {
 	createLabel,
 	createTrail,
@@ -26,6 +25,13 @@ import { scene } from "./scene";
 const SHIP_SIZE: number = 0.02;
 export const SHIP_LOCAL_ORBIT: number = 1.5; // world-space radius around host planet
 export const SHIP_LOCAL_SPEED: number = (Math.PI * 2) / 365; // slow station-keeping drift (~1 rotation/year, visual only)
+
+/** Compute station-keeping offset for a ship around a host body.
+ *  Scales with host visual size so ship doesn't clip inside large bodies. */
+export function stationKeepingOffset(host: { mesh: { userData?: { baseSize?: number } } }): number {
+	const hostSize = host.mesh.userData?.baseSize ?? 0.02;
+	return Math.max(SHIP_LOCAL_ORBIT * 0.5, hostSize * 1.5);
+}
 const SHIP_TAIL_LENGTH: number = 20;
 const shipTailMat: THREE.LineBasicMaterial = new THREE.LineBasicMaterial({
 	color: "#999999",
@@ -488,34 +494,26 @@ export function completeTransfer(entry: ShipEntry, entryAngle = 0): void {
 		entry.orbitA = entry.data.distance;
 		entry.angle = entryAngle;
 
-		// Comets: station-keep (position tracking handled by render loop)
-		// Planets/moons: snap to local orbit
-		if (!isCometEntry(target)) {
-			entry.mesh.position.set(
-				target.mesh.position.x + Math.cos(entry.angle) * SHIP_LOCAL_ORBIT,
-				0,
-				target.mesh.position.z + Math.sin(entry.angle) * SHIP_LOCAL_ORBIT,
-			);
-		} else {
-			const offset = SHIP_LOCAL_ORBIT * 0.5;
-			entry.mesh.position.set(
-				target.mesh.position.x + Math.cos(entry.angle) * offset,
-				target.mesh.position.y,
-				target.mesh.position.z + Math.sin(entry.angle) * offset,
-			);
-		}
+		// Snap to station-keeping orbit using the same offset as the render loop
+		const offset = stationKeepingOffset(target);
+		entry.mesh.position.set(
+			target.mesh.position.x + Math.cos(entry.angle) * offset,
+			target.mesh.position.y,
+			target.mesh.position.z + Math.sin(entry.angle) * offset,
+		);
 	} else {
 		// Check if target is an asteroid
 		const hit = findAsteroid(transferTarget);
 		if (hit) {
 			const proxy = asteroidProxy(hit.asteroid, hit.beltEntry);
+			const offset = stationKeepingOffset(proxy);
 			entry.data.distance = hit.asteroid.au;
 			entry.orbitA = hit.asteroid.au;
 			entry.angle = entryAngle;
 			entry.mesh.position.set(
-				proxy.mesh.position.x + Math.cos(entry.angle) * SHIP_LOCAL_ORBIT,
+				proxy.mesh.position.x + Math.cos(entry.angle) * offset,
 				0,
-				proxy.mesh.position.z + Math.sin(entry.angle) * SHIP_LOCAL_ORBIT,
+				proxy.mesh.position.z + Math.sin(entry.angle) * offset,
 			);
 		} else {
 			entry.angle = 0;
