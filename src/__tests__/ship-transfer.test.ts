@@ -311,3 +311,99 @@ describe("distanceKmBetween", () => {
 		expect(distanceKmBetween(a, b)).toBeCloseTo(Math.SQRT2 * AU_TO_KM, -3);
 	});
 });
+
+// ──────────────────────────────────────────────
+// NaN safety — incomplete BodyEntry objects
+// ──────────────────────────────────────────────
+import { stationKeepingOffset } from "../rendering/ship-transfer";
+
+/** Minimal asteroid-like proxy: worst case with most BodyEntry fields missing. */
+function minimalProxy(x: number, z: number, speed: number): BodyEntry {
+	return {
+		mesh: { position: { x, y: 0, z } },
+		data: { name: "Proxy", distance: 2.5, type: "Asteroid" },
+		speed,
+		isMoon: false,
+		isShip: false,
+		isComet: false,
+		parentMesh: null,
+	} as unknown as BodyEntry;
+}
+
+describe("NaN safety — incomplete BodyEntry objects", () => {
+	it("predictTargetWorld with minimal proxy produces no NaN", () => {
+		const proxy = minimalProxy(10, 5, orbitSpeed(3));
+		const result = predictTargetWorld(proxy, 100);
+		expect(Number.isNaN(result.x)).toBe(false);
+		expect(Number.isNaN(result.z)).toBe(false);
+	});
+
+	it("predictTargetWorld with zero-speed proxy produces no NaN", () => {
+		const proxy = minimalProxy(10, 5, 0);
+		const result = predictTargetWorld(proxy, 100);
+		expect(Number.isNaN(result.x)).toBe(false);
+		expect(Number.isNaN(result.z)).toBe(false);
+	});
+
+	it("computeHermiteKnots with minimal proxy produces no NaN in any knot value", () => {
+		const proxy = minimalProxy(10, 5, orbitSpeed(3));
+		const knots = computeHermiteKnots(0, 0, proxy, 100);
+		expect(Number.isNaN(knots.p0x)).toBe(false);
+		expect(Number.isNaN(knots.p0z)).toBe(false);
+		expect(Number.isNaN(knots.t0x)).toBe(false);
+		expect(Number.isNaN(knots.t0z)).toBe(false);
+		expect(Number.isNaN(knots.p1x)).toBe(false);
+		expect(Number.isNaN(knots.p1z)).toBe(false);
+		expect(Number.isNaN(knots.t1x)).toBe(false);
+		expect(Number.isNaN(knots.t1z)).toBe(false);
+	});
+
+	it("hermiteEval with knots from minimal proxy produces no NaN", () => {
+		const proxy = minimalProxy(10, 5, orbitSpeed(3));
+		const knots = computeHermiteKnots(0, 0, proxy, 100);
+		for (const t of [0, 0.25, 0.5, 0.75, 1]) {
+			const result = hermiteEval(
+				knots.p0x,
+				knots.p0z,
+				knots.t0x,
+				knots.t0z,
+				knots.p1x,
+				knots.p1z,
+				knots.t1x,
+				knots.t1z,
+				t,
+			);
+			expect(Number.isNaN(result.x)).toBe(false);
+			expect(Number.isNaN(result.z)).toBe(false);
+		}
+	});
+
+	it("distanceKmBetween with minimal proxies produces no NaN", () => {
+		const a = minimalProxy(10, 5, orbitSpeed(3));
+		const b = minimalProxy(-20, 15, orbitSpeed(5));
+		const dist = distanceKmBetween(a, b);
+		expect(Number.isNaN(dist)).toBe(false);
+		expect(dist).toBeGreaterThan(0);
+	});
+
+	it("stationKeepingOffset with minimal proxy (no mesh.userData) produces no NaN", () => {
+		const proxy = minimalProxy(10, 5, 0);
+		const offset = stationKeepingOffset(proxy);
+		expect(Number.isNaN(offset)).toBe(false);
+		expect(offset).toBeGreaterThan(0);
+	});
+
+	it("computeHermiteKnots with coincident departure and target produces no NaN", () => {
+		// Edge case: ship departs from exactly where the target is
+		const proxy = minimalProxy(0, 0, 0);
+		const knots = computeHermiteKnots(0, 0, proxy, 0);
+		expect(Number.isNaN(knots.p0x)).toBe(false);
+		expect(Number.isNaN(knots.p0z)).toBe(false);
+		expect(Number.isNaN(knots.t0x)).toBe(false);
+		expect(Number.isNaN(knots.t0z)).toBe(false);
+		expect(Number.isNaN(knots.p1x)).toBe(false);
+		expect(Number.isNaN(knots.p1z)).toBe(false);
+		expect(Number.isNaN(knots.t1x)).toBe(false);
+		expect(Number.isNaN(knots.t1z)).toBe(false);
+	});
+});

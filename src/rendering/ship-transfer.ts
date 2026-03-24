@@ -278,6 +278,7 @@ export function createShip(config: ShipConfig): ShipEntry | undefined {
 		moons: [] as BodyEntry[],
 		isMoon: false,
 		isShip: true as const,
+		isComet: false as const,
 		screenSize: SHIP_SIZE,
 		baseSize: SHIP_SIZE,
 		realisticSize: SHIP_SIZE,
