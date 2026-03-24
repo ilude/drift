@@ -64,7 +64,7 @@ core/utils.ts, math/orbit.ts, math/visual.ts  (pure math, no app imports)
 - `src/rendering/rendering.ts` — Position updates, ship transfer dispatch, action completion
 - `src/rendering/bodies.ts` — Body/ship creation, survey state initialization
 - `src/rendering/ship-transfer.ts` — Hermite spline transfers, capture blend, station-keeping approach
-- `src/math/transfer.ts` — Transfer math (Lambert solver retained for reference, Hermite used in practice)
+- `src/math/transfer.ts` — Transfer math helpers: Hohmann, game transfer timing, coordinate-independent utilities
 - `src/data/system-generator.ts` — Procedural star system generation from seeds
 - `src/data/resources.ts` — Resource catalog (27 entries), seeded deposit generation per body
 - `src/ui/commands.ts` — Command tree editor UI (reorder, toggle, add/remove orders)
@@ -82,7 +82,7 @@ core/utils.ts, math/orbit.ts, math/visual.ts  (pure math, no app imports)
 - **Scratch objects:** Hot-loop functions (inclinedPosition, orbitToWorld) reuse output objects to avoid GC pressure.
 - **World coordinates:** sqrt-compressed mapping: `rWorld = sqrt(rAU) * DIST_SCALE`. Ship transfers use Hermite splines in world space to avoid coordinate distortion.
 - **LOD:** 3-tier sphere geometry (8/24/48 segments), rings/clouds gated at 15px screen radius.
-- **Ship state machine:** orbiting → departing → transferring → orbiting. Departure uses angle-crossing detector; transfer uses cubic Hermite with station-keeping capture blend (t^4). Ships use brachistochrone physics (default 0.1g engine) for transfer timing.
+- **Ship state machine:** orbiting → transferring → orbiting. Transfer uses cubic Hermite with station-keeping capture blend (t^4). Ships use brachistochrone physics (default 0.1g engine) for transfer timing.
 - **Ship command tree:** Priority-ordered list of conditional commands (fuel-below, morale-below, hull-below, supplies-below, always). Evaluated between actions. `immediateCommand` overrides the tree for one-shot manual orders.
 - **Ship simulation:** `tickShipSimulation()` runs per-frame: morale decay (1.5 exponent past 180-day deployment limit), maintenance age, malfunction checks (every 30 days during transfers), fuel drain (station-keeping rates), gradual recovery during actions (refuel: 20%/day, overhaul: +20 hull+supplies/day, shore leave: +5 morale/day).
 - **Survey system:** Multi-level surveys (1-3) revealing progressively rarer resources. Duration scales with body type and crew/hull condition. `surveyMultiplier` state setting for difficulty tuning.
