@@ -135,6 +135,7 @@ export function saveState(): void {
 		fuelKg: ship.fuelKg,
 		engineId: ship.engineId,
 		crew: { ...ship.crew },
+		commander: { ...ship.commander },
 		maintenance: { ...ship.maintenance },
 		commandTree: { entries: [...ship.commandTree.entries] },
 		...(ship.shipState === "transferring"
@@ -214,6 +215,7 @@ export function restoreShipState(savedData: SavedStateData | null): void {
 		if (savedShip.crew) shipEntry.crew = savedShip.crew;
 		if (savedShip.maintenance) shipEntry.maintenance = savedShip.maintenance;
 		if (savedShip.commandTree) shipEntry.commandTree = savedShip.commandTree;
+		if (savedShip.commander) shipEntry.commander = savedShip.commander;
 		if (savedShip.shipState === "transferring" && savedShip.transferTarget) {
 			shipEntry.shipState = "transferring";
 			shipEntry.transferTarget = savedShip.transferTarget;

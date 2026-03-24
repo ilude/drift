@@ -1,8 +1,13 @@
 import "./style.css";
 import * as THREE from "three";
 import {
+	checkPreemptiveService,
 	evaluateCommandTree,
 	getUnsurvevedMoonsOfHost,
+	HULL_REPAIR_PER_DAY,
+	incrementExperience,
+	learnFromEmergencyReturn,
+	SUPPLY_RESTOCK_PER_DAY,
 	selectNextSurveyTarget,
 	tickShipSimulation,
 } from "./core/commands";
@@ -529,6 +534,7 @@ function dispatchCommand(ship: ShipEntry, result: CommandResult): void {
 			if (earth && earth.data.name !== ship.hostPlanetName) {
 				if (initiateTransfer(ship, earth)) {
 					ship.action = mkAction("refuel", "refuel");
+					learnFromEmergencyReturn(ship);
 				} else {
 					// Can't reach colony -- stranded, clear action to avoid stuck state
 					addNotification("low-fuel", `Ship stranded at ${ship.hostPlanetName} -- insufficient fuel`);
@@ -550,6 +556,7 @@ function dispatchCommand(ship: ShipEntry, result: CommandResult): void {
 			if (colony && colony.data.name !== ship.hostPlanetName) {
 				if (initiateTransfer(ship, colony)) {
 					ship.action = mkAction("shore-leave", "shore-leave");
+					learnFromEmergencyReturn(ship);
 				} else {
 					addNotification(
 						"low-fuel",
@@ -572,6 +579,7 @@ function dispatchCommand(ship: ShipEntry, result: CommandResult): void {
 			if (yard && yard.data.name !== ship.hostPlanetName) {
 				if (initiateTransfer(ship, yard)) {
 					ship.action = mkAction("overhaul", "overhaul");
+					learnFromEmergencyReturn(ship);
 				} else {
 					addNotification(
 						"low-fuel",
@@ -604,6 +612,7 @@ function dispatchCommand(ship: ShipEntry, result: CommandResult): void {
 
 function completeAction(ship: ShipEntry): void {
 	gameLog(`[completeAction] ${ship.data.name}: ${ship.action.type} completed`);
+	incrementExperience(ship);
 	const actionType = ship.action.type;
 	if (actionType === "survey-nearest") {
 		completeSurvey(ship);
@@ -634,7 +643,10 @@ function completeAction(ship: ShipEntry): void {
 
 	// Re-evaluate command tree for next action
 	const result = evaluateCommandTree(ship);
-	if (result) dispatchCommand(ship, result);
+	if (result) {
+		const override = checkPreemptiveService(ship, result);
+		dispatchCommand(ship, override ?? result);
+	}
 }
 
 /** Called each frame for every ship. Handles simulation + action timers. */
@@ -661,7 +673,10 @@ function tickShip(ship: ShipEntry, simDt: number): void {
 	if (ship.shipState === "orbiting" && !ship.action.type && state.simTime.days > 0.1) {
 		gameLog(`[tickShip] ${ship.data.name}: idle, re-evaluating command tree`);
 		const result = evaluateCommandTree(ship);
-		if (result) dispatchCommand(ship, result);
+		if (result) {
+			const override = checkPreemptiveService(ship, result);
+			dispatchCommand(ship, override ?? result);
+		}
 	}
 }
 
@@ -717,8 +732,13 @@ export function onTransferComplete(ship: ShipEntry): void {
 		ship.action.duration = 30;
 		ship.action.progress = 0;
 	} else if (actionType === "overhaul") {
+		const hullDeficit = 100 - ship.maintenance.hullIntegrity;
+		const supplyDeficit = ship.maintenance.maxSupplies - ship.maintenance.supplies;
+		const dq = state.depotQuality;
+		const hullDays = hullDeficit / ((HULL_REPAIR_PER_DAY * dq) / state.repairMultiplier);
+		const supplyDays = supplyDeficit / ((SUPPLY_RESTOCK_PER_DAY * dq) / state.supplyMultiplier);
 		ship.action.startTime = state.simTime.days;
-		ship.action.duration = 5;
+		ship.action.duration = Math.max(1, Math.ceil(Math.max(hullDays, supplyDays)));
 		ship.action.progress = 0;
 	} else {
 		// No pending action -- evaluate command tree

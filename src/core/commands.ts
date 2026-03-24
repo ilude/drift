@@ -77,10 +77,80 @@ function isAtColony(ship: ShipEntry): boolean {
 // Gradual recovery rates (per day)
 const MORALE_RECOVERY_PER_DAY = 2.5; // +2.5 morale/day during shore leave (~28 days from 30% to full)
 const REFUEL_RATE_PER_DAY = 0.2; // 20% of capacity/day
-const HULL_REPAIR_PER_DAY = 2.5; // +2.5% hull/day during overhaul (~40 days from 0% to full)
-const SUPPLY_RESTOCK_PER_DAY = 2.5; // +2.5 supplies/day during overhaul
+export const HULL_REPAIR_PER_DAY = 2.5; // +2.5% hull/day during overhaul (~40 days from 0% to full)
+export const SUPPLY_RESTOCK_PER_DAY = 2.5; // +2.5 supplies/day during overhaul
 const SHORE_LEAVE_REPAIR_PER_DAY = 0.25; // +0.25% hull/day from repair crew during shore leave
 const OVERHAUL_MORALE_PER_DAY = 0.5; // +0.5 morale/day during overhaul ("working from home", ~140 days from 30% to full)
+
+// Commander judgment constants
+const PREEMPTIVE_BUFFER = 0.3;
+const MALFUNCTION_LEARNING_RATE = 0.08;
+const EMERGENCY_RETURN_LEARNING_RATE = 0.05;
+const JUDGMENT_CAP = 0.9;
+
+function checkConditionWithThreshold(
+	type: Exclude<CommandCondition["type"], "always">,
+	threshold: number,
+	ship: ShipEntry,
+): boolean {
+	switch (type) {
+		case "fuel-below":
+			return (ship.fuelKg / ship.fuelCapacityKg) * 100 < threshold;
+		case "morale-below":
+			return ship.crew.morale < threshold;
+		case "hull-below":
+			return ship.maintenance.hullIntegrity < threshold;
+		case "supplies-below":
+			return (ship.maintenance.supplies / ship.maintenance.maxSupplies) * 100 < threshold;
+	}
+}
+
+export function checkPreemptiveService(
+	ship: ShipEntry,
+	pendingResult: CommandResult,
+): CommandResult | null {
+	// Only intercept departure actions
+	if (pendingResult.action !== "survey" && pendingResult.action !== "transfer") {
+		return null;
+	}
+	// Only applies when at a colony (where servicing is possible)
+	if (ship.shipState !== "orbiting" || !COLONY_NAMES.has(ship.hostPlanetName)) {
+		return null;
+	}
+
+	const j = ship.commander.judgment;
+
+	for (const entry of ship.commandTree.entries) {
+		if (!entry.enabled) continue;
+		const cond = entry.condition;
+		if (cond.type === "always") continue;
+
+		// Raise threshold based on commander judgment
+		const effective = cond.threshold + (100 - cond.threshold) * j * PREEMPTIVE_BUFFER;
+		if (checkConditionWithThreshold(cond.type, effective, ship)) {
+			return commandToResult(entry.command, entry.target);
+		}
+	}
+	return null;
+}
+
+export function learnFromMalfunction(ship: ShipEntry): void {
+	ship.commander.judgment = Math.min(
+		JUDGMENT_CAP,
+		ship.commander.judgment + MALFUNCTION_LEARNING_RATE * (1 - ship.commander.judgment),
+	);
+}
+
+export function learnFromEmergencyReturn(ship: ShipEntry): void {
+	ship.commander.judgment = Math.min(
+		JUDGMENT_CAP,
+		ship.commander.judgment + EMERGENCY_RETURN_LEARNING_RATE * (1 - ship.commander.judgment),
+	);
+}
+
+export function incrementExperience(ship: ShipEntry): void {
+	ship.commander.experience++;
+}
 
 export function tickShipSimulation(ship: ShipEntry, simDt: number, simTime: number): void {
 	const atColony = isAtColony(ship);
@@ -194,6 +264,7 @@ export function tickShipSimulation(ship: ShipEntry, simDt: number, simTime: numb
 				const damage = ship.maintenance.supplies <= 0 ? 15 : 5 + Math.floor(rng() * 11);
 				ship.maintenance.hullIntegrity = Math.max(0, ship.maintenance.hullIntegrity - damage);
 				ship.maintenance.supplies = Math.max(0, ship.maintenance.supplies - damage);
+				learnFromMalfunction(ship);
 			}
 		}
 	}

@@ -177,6 +177,11 @@ export interface ShipCrew {
 	deploymentLimit: number;
 }
 
+export interface Commander {
+	judgment: number;
+	experience: number;
+}
+
 export interface ShipMaintenance {
 	age: number;
 	supplies: number;
@@ -325,6 +330,7 @@ export interface ShipEntry extends BaseEntry {
 	commandTree: CommandTree;
 	immediateCommand: CommandEntry | null;
 	crew: ShipCrew;
+	commander: Commander;
 	maintenance: ShipMaintenance;
 	action: ShipAction;
 	// Station-keeping: track a non-planet body (comet, moon) instead of orbiting host
@@ -520,6 +526,7 @@ export interface SavedShipData {
 	fuelKg: number;
 	engineId: string;
 	crew: ShipCrew;
+	commander?: Commander;
 	maintenance: ShipMaintenance;
 	commandTree: CommandTree;
 	// Transfer state (optional — only present if ship was transferring)

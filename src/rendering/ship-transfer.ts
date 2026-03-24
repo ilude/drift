@@ -417,6 +417,7 @@ export function createShip(config: ShipConfig): ShipEntry | undefined {
 		},
 		immediateCommand: null,
 		crew: { count: 50, morale: 100, lastShoreLeave: 0, deploymentLimit: 180 },
+		commander: { judgment: 0.3, experience: 0 },
 		maintenance: { age: 0, supplies: 100, maxSupplies: 100, hullIntegrity: 100 },
 		action: { type: null, commandId: null, startTime: 0, duration: 0, progress: 0 },
 		stationTarget: null,
@@ -652,9 +653,13 @@ export function initiateTransfer(
 		return false;
 	}
 
-	// Store fuel cost -- consumed gradually during transfer, not upfront
+	// Store fuel cost -- consumed gradually during transfer, not upfront.
+	// TN engines have extreme Isp, making rocket-equation fuel negligible.
+	// Enforce a minimum burn: 1% of capacity per transfer day (thruster wear,
+	// active maneuvering, mid-course corrections) so transfers have real cost.
 	const gameDays = result.transferDays ?? 0;
-	entry.transferFuelTotal = result.fuelUsedKg ?? 0;
+	const minBurn = 0.01 * entry.fuelCapacityKg * gameDays;
+	entry.transferFuelTotal = Math.max(result.fuelUsedKg ?? 0, minBurn);
 
 	const knots = computeHermiteKnots(
 		entry.mesh.position.x,
