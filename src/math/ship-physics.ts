@@ -118,7 +118,7 @@ export function hohmannTransferDays(r1AU: number, r2AU: number, starMassSolar: n
  * @param accelMS2 - sustained acceleration in m/s²
  * @returns transfer time in days
  */
-export function brachistochroneTimeKm(distKm: number, accelMS2: number): number {
+function brachistochroneTimeKm(distKm: number, accelMS2: number): number {
 	const d = distKm * 1000; // meters
 	const T = 2 * Math.sqrt(d / accelMS2); // seconds
 	return T / 86400; // days
@@ -130,7 +130,7 @@ export function brachistochroneTimeKm(distKm: number, accelMS2: number): number 
  * @param accelMS2 - sustained acceleration in m/s²
  * @returns delta-v in km/s
  */
-export function brachistochroneDeltaVKm(distKm: number, accelMS2: number): number {
+function brachistochroneDeltaVKm(distKm: number, accelMS2: number): number {
 	const d = distKm * 1000; // meters
 	const dv = 2 * Math.sqrt(d * accelMS2); // m/s
 	return dv / 1000; // km/s

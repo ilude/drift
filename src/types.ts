@@ -1,13 +1,6 @@
 import type * as THREE from "three";
 import type { GameClock } from "./core/game-clock";
 
-// --- Scratch object return types ---
-
-export interface Vector2Like {
-	x: number;
-	z: number;
-}
-
 export interface Vector3Like {
 	x: number;
 	y: number;
@@ -559,15 +552,6 @@ export interface SavedStateData {
 	ships: SavedShipData[];
 }
 
-// --- Lambert solver result ---
-
-export interface LambertResult {
-	v1x: number;
-	v1z: number;
-	v2x: number;
-	v2z: number;
-}
-
 // --- Hohmann transfer result ---
 
 export interface HohmannResult {
@@ -600,14 +584,3 @@ export interface SpectralType {
 	lumMin: number;
 	lumMax: number;
 }
-
-// --- Weighted entry ---
-
-export interface WeightedEntry<T = unknown> {
-	weight: number;
-	[key: string]: T | number;
-}
-
-// --- RNG type ---
-
-export type RngFn = () => number;

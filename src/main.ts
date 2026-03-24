@@ -1,12 +1,9 @@
 import "./style.css";
 import * as THREE from "three";
+import { commanderDecide, incrementExperience, learnFromEmergencyReturn } from "./core/commander";
 import {
-	checkPreemptiveService,
-	evaluateCommandTree,
 	getUnsurvevedMoonsOfHost,
 	HULL_REPAIR_PER_DAY,
-	incrementExperience,
-	learnFromEmergencyReturn,
 	SUPPLY_RESTOCK_PER_DAY,
 	selectNextSurveyTarget,
 	tickShipSimulation,
@@ -641,12 +638,9 @@ function completeAction(ship: ShipEntry): void {
 		);
 	}
 
-	// Re-evaluate command tree for next action
-	const result = evaluateCommandTree(ship);
-	if (result) {
-		const override = checkPreemptiveService(ship, result);
-		dispatchCommand(ship, override ?? result);
-	}
+	// Commander evaluates standing orders + applies judgment for next action
+	const decision = commanderDecide(ship);
+	if (decision) dispatchCommand(ship, decision);
 }
 
 /** Called each frame for every ship. Handles simulation + action timers. */
@@ -671,12 +665,9 @@ function tickShip(ship: ShipEntry, simDt: number): void {
 	// Auto-evaluate command tree when idle and orbiting (kicks off autonomous behavior)
 	// Skip until positions have been computed (simTime > 0.1 ensures at least a few frames)
 	if (ship.shipState === "orbiting" && !ship.action.type && state.simTime.days > 0.1) {
-		gameLog(`[tickShip] ${ship.data.name}: idle, re-evaluating command tree`);
-		const result = evaluateCommandTree(ship);
-		if (result) {
-			const override = checkPreemptiveService(ship, result);
-			dispatchCommand(ship, override ?? result);
-		}
+		gameLog(`[tickShip] ${ship.data.name}: idle, commander deciding`);
+		const decision = commanderDecide(ship);
+		if (decision) dispatchCommand(ship, decision);
 	}
 }
 
@@ -704,8 +695,8 @@ export function onTransferComplete(ship: ShipEntry): void {
 			(resolved?.asteroidHit && resolved.asteroidHit.asteroid.survey.surveyLevel > 0);
 		if (alreadySurveyed) {
 			ship.action = noAction();
-			const result = evaluateCommandTree(ship);
-			if (result) dispatchCommand(ship, result);
+			const decision = commanderDecide(ship);
+			if (decision) dispatchCommand(ship, decision);
 			return;
 		}
 
@@ -741,9 +732,9 @@ export function onTransferComplete(ship: ShipEntry): void {
 		ship.action.duration = Math.max(1, Math.ceil(Math.max(hullDays, supplyDays)));
 		ship.action.progress = 0;
 	} else {
-		// No pending action -- evaluate command tree
-		const result = evaluateCommandTree(ship);
-		if (result) dispatchCommand(ship, result);
+		// No pending action -- commander decides
+		const decision = commanderDecide(ship);
+		if (decision) dispatchCommand(ship, decision);
 	}
 }
 

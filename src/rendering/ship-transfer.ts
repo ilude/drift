@@ -32,7 +32,7 @@ import { scene } from "./scene";
 
 const SHIP_SIZE: number = 0.02;
 export const SHIP_LOCAL_ORBIT: number = 1.5; // world-space radius around host planet
-export const SHIP_LOCAL_SPEED: number = (Math.PI * 2) / 365; // slow station-keeping drift (~1 rotation/year, visual only)
+const SHIP_LOCAL_SPEED: number = (Math.PI * 2) / 365; // slow station-keeping drift (~1 rotation/year, visual only)
 
 /** Compute station-keeping offset for a ship around a host body.
  *  Scales with host visual size so ship doesn't clip inside large bodies. */
@@ -256,7 +256,7 @@ export function computeHermiteKnots(
 	};
 }
 
-export interface ShipConfig {
+interface ShipConfig {
 	name: string;
 	hostPlanetName: string;
 	engineId?: string;

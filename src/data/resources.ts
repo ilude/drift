@@ -11,7 +11,7 @@ function nameHash(str: string): number {
 	return h;
 }
 
-export interface ResourceDef {
+interface ResourceDef {
 	readonly id: string;
 	readonly name: string;
 	readonly category: ResourceCategory;

@@ -81,14 +81,14 @@ export function orbitToWorld(
 
 // Shared geometry/materials for identical bodies
 // LOD tiers: [low, medium, high] segment counts
-export const LOD_SEGS: number[] = [8, 24, 48];
+const LOD_SEGS: number[] = [8, 24, 48];
 const STAR_LOD_SEGS: number[] = [32, 48, 64];
 const MOON_SIZE: number = BODY_MIN_SIZE * 0.6;
 const COMET_SIZE: number = BODY_MIN_SIZE * 0.7;
 export const SEL_RING_INNER: number = 1.3;
 export const SEL_RING_OUTER: number = 1.5;
 export const SEL_RING_SEGS: number = 24;
-export const TRAIL_MAX_POINTS: number = 400;
+const TRAIL_MAX_POINTS: number = 400;
 export const SHIP_TRAIL_MAX_POINTS: number = 80; // short tail, not full path
 const COMET_TRAIL_MAX_POINTS: number = 1200;
 // Fixed angular step per trail sample -- all comets share the same arc length (based on Tempel 1)
@@ -97,7 +97,7 @@ export const COMET_TRAIL_STEP_ARC: number = orbitSpeed(TEMPEL1_PERIOD) * 0.02;
 export const COMET_ORBIT_OPACITY: number = 0.03;
 export const COMET_ORBIT_SELECTED_OPACITY: number = 0.05;
 
-export const UNSURVEYED_ASTEROID_COLOR = [0.545, 0.439, 0.439] as const; // #8B7070 red-grey
+const UNSURVEYED_ASTEROID_COLOR = [0.545, 0.439, 0.439] as const; // #8B7070 red-grey
 export const SURVEYED_ASTEROID_COLOR = [0.439, 0.439, 0.533] as const; // #707088 blue-grey
 
 const sharedMoonGeoms: THREE.SphereGeometry[] = LOD_SEGS.map(
@@ -111,7 +111,7 @@ const sharedMoonOrbitMat: THREE.LineBasicMaterial = new THREE.LineBasicMaterial(
 	transparent: true,
 	opacity: 0.3,
 });
-export const sharedPlanetOrbitMat: THREE.LineBasicMaterial = new THREE.LineBasicMaterial({
+const sharedPlanetOrbitMat: THREE.LineBasicMaterial = new THREE.LineBasicMaterial({
 	color: "#1a3a1a",
 	transparent: true,
 	opacity: 0.3,
@@ -146,7 +146,7 @@ export function createLabel(name: string, color: string, isMoon: boolean): HTMLD
 	return div;
 }
 
-export function createOrbitRing(
+function createOrbitRing(
 	a: number,
 	e: number,
 	toScreen: (d: number) => number,
@@ -196,7 +196,7 @@ export function createTrail(color: string, maxPoints: number): TrailState {
 	};
 }
 
-export function createBody(data: BodyData, parentMesh: THREE.Mesh | null): PlanetEntry {
+function createBody(data: BodyData, parentMesh: THREE.Mesh | null): PlanetEntry {
 	const isStar = data.type === "Star";
 	const isMoon = !!parentMesh;
 

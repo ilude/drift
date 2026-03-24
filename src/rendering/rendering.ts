@@ -49,7 +49,6 @@ export {
 	COMET_ORBIT_SELECTED_OPACITY,
 	createAsteroidBelts,
 	createBodies,
-	createBody,
 	createComets,
 	orbitToWorld,
 	sharedResources,

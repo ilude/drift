@@ -1,19 +1,10 @@
 import * as THREE from "three";
-import { findBody, findStar } from "../core/entities";
+import { findStar } from "../core/entities";
 import { MAX_CLICK_DIST, state } from "../core/state";
 import { getResourceDef } from "../data/resources";
-import {
-	brachistochroneDeltaV,
-	brachistochroneTime,
-	ENGINE_TYPES,
-	G_ACCEL,
-} from "../math/ship-physics";
+import { ENGINE_TYPES } from "../math/ship-physics";
 import { easeOutCubic } from "../math/visual";
-import {
-	COMET_ORBIT_OPACITY,
-	COMET_ORBIT_SELECTED_OPACITY,
-	initiateTransfer,
-} from "../rendering/rendering";
+import { COMET_ORBIT_OPACITY, COMET_ORBIT_SELECTED_OPACITY } from "../rendering/rendering";
 import { camera, controls, renderer, ZOOM_BASE } from "../rendering/scene";
 import type { AsteroidBeltData, AsteroidInfo, BodyEntry, FlyToState } from "../types";
 import { isCometEntry, isShipEntry, isSurveyable } from "../types";
@@ -170,7 +161,6 @@ export function selectBody(entry: BodyEntry): void {
 	});
 
 	// Ship-specific UI
-	const transferRow: HTMLElement | null = document.getElementById("info-transfer");
 	const engineRow: HTMLElement | null = document.getElementById("info-ship-engine");
 	const fuelRow: HTMLElement | null = document.getElementById("info-ship-fuel");
 	const crewRow: HTMLElement | null = document.getElementById("info-crew-row");
@@ -184,7 +174,6 @@ export function selectBody(entry: BodyEntry): void {
 	const cmdContainer: HTMLElement | null = document.getElementById("command-tree-container");
 
 	if (isShipEntry(entry)) {
-		transferRow?.classList.remove("hidden");
 		engineRow?.classList.remove("hidden");
 		fuelRow?.classList.remove("hidden");
 		crewRow?.classList.remove("hidden");
@@ -215,34 +204,6 @@ export function selectBody(entry: BodyEntry): void {
 		const fuelValueEl = document.getElementById("ship-fuel-value");
 		if (fuelValueEl) {
 			fuelValueEl.textContent = `${(entry.fuelKg / 1000).toFixed(2)}t / ${(entry.fuelCapacityKg / 1000).toFixed(2)}t (${fuelPct}%)`;
-		}
-
-		// Transfer dropdown with delta-v costs
-		const select: HTMLSelectElement | null = document.getElementById(
-			"transfer-target",
-		) as HTMLSelectElement | null;
-		if (select) {
-			select.innerHTML = "";
-			const hostEntry = state.bodyMeshes.find(
-				(e) => e.data.name === entry.hostPlanetName && !e.isMoon && !isShipEntry(e),
-			);
-			const r1: number = hostEntry ? hostEntry.data.distance : entry.data.distance;
-			const accelMS2: number = engine ? engine.accelG * G_ACCEL : 0;
-			state.bodyMeshes
-				.filter((e) => e.data.type === "Planet" || e.data.type === "Dwarf Planet")
-				.forEach((e) => {
-					const opt: HTMLOptionElement = document.createElement("option");
-					opt.value = e.data.name;
-					if (e.data.distance !== r1 && accelMS2 > 0) {
-						const dv: number = brachistochroneDeltaV(r1, e.data.distance, accelMS2);
-						const days: number = brachistochroneTime(r1, e.data.distance, accelMS2);
-						const timeStr: string = days < 1 ? `${Math.round(days * 24)}h` : `${days.toFixed(1)}d`;
-						opt.textContent = `${e.data.name} (${Math.round(dv)} km/s, ${timeStr})`;
-					} else {
-						opt.textContent = `${e.data.name} (here)`;
-					}
-					select.appendChild(opt);
-				});
 		}
 
 		// Crew
@@ -292,7 +253,6 @@ export function selectBody(entry: BodyEntry): void {
 			durationValueEl.textContent = formatShipDuration(entry);
 		}
 	} else {
-		transferRow?.classList.add("hidden");
 		engineRow?.classList.add("hidden");
 		fuelRow?.classList.add("hidden");
 		crewRow?.classList.add("hidden");
@@ -385,7 +345,7 @@ export function selectBody(entry: BodyEntry): void {
 	}
 }
 
-export function selectAsteroid(hit: {
+function selectAsteroid(hit: {
 	belt: AsteroidBeltData;
 	asteroid: AsteroidInfo;
 	index: number;
@@ -566,17 +526,6 @@ export function setupClickHandlers(): void {
 	window.addEventListener("renderer-replaced", () => {
 		renderer.domElement.addEventListener("click", onCanvasClick);
 	});
-
-	const transferBtn = document.getElementById("btn-transfer");
-	if (transferBtn) {
-		transferBtn.addEventListener("click", () => {
-			if (!state.selectedBody || !isShipEntry(state.selectedBody)) return;
-			const targetName: string =
-				(document.getElementById("transfer-target") as HTMLSelectElement | null)?.value ?? "";
-			const targetEntry = findBody(targetName);
-			if (targetEntry) initiateTransfer(state.selectedBody, targetEntry, true);
-		});
-	}
 
 	const closeBtn = document.getElementById("info-close");
 	if (closeBtn) {

@@ -1,6 +1,15 @@
 import { checkCondition } from "../core/commands";
+import { findBody } from "../core/entities";
 import { state } from "../core/state";
+import {
+	brachistochroneDeltaV,
+	brachistochroneTime,
+	ENGINE_TYPES,
+	G_ACCEL,
+} from "../math/ship-physics";
+import { initiateTransfer } from "../rendering/rendering";
 import type { CommandCondition, CommandEntry, CommandType, ShipEntry } from "../types";
+import { isShipEntry } from "../types";
 
 const COMMAND_NAMES: Record<CommandType, string> = {
 	"survey-nearest": "Survey nearest",
@@ -19,12 +28,6 @@ const CONDITION_LABELS: Record<string, string> = {
 	"supplies-below": "supplies",
 };
 
-function formatCondition(condition: CommandCondition): string {
-	if (condition.type === "always") return "ALWAYS";
-	const label = CONDITION_LABELS[condition.type] ?? condition.type;
-	return `IF ${label}<${condition.threshold}%`;
-}
-
 type ThresholdCondition = Extract<CommandCondition, { threshold: number }>;
 
 function isThresholdCondition(c: CommandCondition): c is ThresholdCondition {
@@ -39,6 +42,50 @@ const IMMEDIATE_ORDERS: Array<{ label: string; command: CommandType }> = [
 	{ label: "Overhaul", command: "overhaul" },
 	{ label: "Idle", command: "idle" },
 ];
+
+function buildTransferSubMenu(
+	ship: ShipEntry,
+	container: HTMLElement,
+	parentDropdown: HTMLDivElement,
+): HTMLDivElement {
+	const sub = document.createElement("div");
+	sub.className = "cmd-preset-list";
+
+	const engine = ENGINE_TYPES.find((e) => e.id === ship.engineId);
+	const hostEntry = state.bodyMeshes.find(
+		(e) => e.data.name === ship.hostPlanetName && !e.isMoon && !isShipEntry(e),
+	);
+	const r1 = hostEntry ? hostEntry.data.distance : ship.data.distance;
+	const accelMS2 = engine ? engine.accelG * G_ACCEL : 0;
+
+	const destinations = state.bodyMeshes.filter(
+		(e) => e.data.type === "Planet" || e.data.type === "Dwarf Planet",
+	);
+
+	for (const dest of destinations) {
+		const item = document.createElement("div");
+		item.className = "cmd-preset-item";
+
+		if (dest.data.distance !== r1 && accelMS2 > 0) {
+			const dv = brachistochroneDeltaV(r1, dest.data.distance, accelMS2);
+			const days = brachistochroneTime(r1, dest.data.distance, accelMS2);
+			const timeStr = days < 1 ? `${Math.round(days * 24)}h` : `${days.toFixed(1)}d`;
+			item.textContent = `${dest.data.name} (${Math.round(dv)} km/s, ${timeStr})`;
+		} else {
+			item.textContent = `${dest.data.name} (here)`;
+		}
+
+		item.addEventListener("click", () => {
+			const targetEntry = findBody(dest.data.name);
+			if (targetEntry) initiateTransfer(ship, targetEntry, true);
+			parentDropdown.remove();
+			renderCommandTree(ship, container);
+		});
+		sub.appendChild(item);
+	}
+
+	return sub;
+}
 
 function buildGiveOrderButton(ship: ShipEntry, container: HTMLElement): HTMLDivElement {
 	const wrapper = document.createElement("div");
@@ -62,6 +109,32 @@ function buildGiveOrderButton(ship: ShipEntry, container: HTMLElement): HTMLDivE
 		dropdown = document.createElement("div");
 		dropdown.className = "cmd-preset-list";
 
+		// Transfer to... option with sub-menu
+		const transferItem = document.createElement("div");
+		transferItem.className = "cmd-preset-item";
+		transferItem.textContent = "Transfer to... \u25b8";
+		transferItem.addEventListener("click", () => {
+			if (!dropdown) return;
+			dropdown.innerHTML = "";
+			const backItem = document.createElement("div");
+			backItem.className = "cmd-preset-item";
+			backItem.textContent = "\u25c2 Back";
+			backItem.addEventListener("click", () => {
+				// Re-open main dropdown
+				if (dropdown) {
+					dropdown.remove();
+					dropdown = null;
+				}
+				btn.click();
+			});
+			dropdown.appendChild(backItem);
+			const sub = buildTransferSubMenu(ship, container, dropdown);
+			while (sub.firstChild) {
+				dropdown.appendChild(sub.firstChild);
+			}
+		});
+		dropdown.appendChild(transferItem);
+
 		for (const opt of IMMEDIATE_ORDERS) {
 			const item = document.createElement("div");
 			item.className = "cmd-preset-item";
@@ -75,6 +148,10 @@ function buildGiveOrderButton(ship: ShipEntry, container: HTMLElement): HTMLDivE
 					origin: "ship",
 				};
 				state.renderNeeded = true;
+				if (dropdown) {
+					dropdown.remove();
+					dropdown = null;
+				}
 				renderCommandTree(ship, container);
 			});
 			dropdown.appendChild(item);
@@ -346,6 +423,3 @@ function buildPresetList(ship: ShipEntry, container: HTMLElement): HTMLDivElemen
 
 	return list;
 }
-
-// Re-export formatCondition for potential external use
-export { formatCondition };

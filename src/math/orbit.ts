@@ -7,10 +7,6 @@ export function scaleDist(au: number): number {
 	return Math.sqrt(au) * DIST_SCALE;
 }
 
-export function unscaleDist(worldDist: number): number {
-	return (worldDist / DIST_SCALE) ** 2;
-}
-
 export function keplerRadius(a: number, e: number, theta: number): number {
 	return (a * (1 - e * e)) / (1 + e * Math.cos(theta));
 }

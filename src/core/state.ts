@@ -11,7 +11,7 @@ import { GameClock } from "./game-clock";
 export const MAX_CLICK_DIST = 50;
 
 // Simulation epoch: January 20, 2038 (day after Unix Y2K38 overflow)
-export const SIM_EPOCH: Date = new Date(2038, 0, 20);
+const SIM_EPOCH: Date = new Date(2038, 0, 20);
 
 export function simTimeToDate(simTime: number): Date {
 	const ms = simTime * 86400000;
