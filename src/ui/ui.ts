@@ -208,6 +208,18 @@ export function updateLabels(camDist: number): void {
 	labelFrameCounter = (labelFrameCounter + 1) % 2;
 	const shouldUpdateTransforms = labelFrameCounter === 0;
 
+	// Build map of body names to orbiting ships (for grouping under body labels)
+	const orbitingShipsAtBody = new Map<string, ShipEntry[]>();
+	for (const entry of state.bodyMeshes) {
+		if (isShipEntry(entry) && entry.shipState === "orbiting") {
+			const host = entry.hostPlanetName;
+			if (!orbitingShipsAtBody.has(host)) {
+				orbitingShipsAtBody.set(host, []);
+			}
+			orbitingShipsAtBody.get(host)?.push(entry);
+		}
+	}
+
 	state.bodyMeshes.forEach((entry) => {
 		if (entry.isMoon && entry.parentMesh) {
 			entry.mesh.visible = moonsVisible;
@@ -269,9 +281,20 @@ export function updateLabels(camDist: number): void {
 			let suffix = "";
 			if (isSurveyable(entry) && entry.survey.surveyLevel > 0) suffix = " \u2713";
 			else if (surveyTargets.has(entry.data.name)) suffix = " *";
-			const expectedText = entry.data.name + suffix;
-			if (entry.labelDiv.textContent !== expectedText) {
-				entry.labelDiv.textContent = expectedText;
+			const bodyName = entry.data.name + suffix;
+
+			// Build label with body name and list of orbiting ships
+			const orbitingShips = orbitingShipsAtBody.get(entry.data.name) || [];
+			let labelHtml = `<div style="line-height:1.2">${bodyName}`;
+			if (orbitingShips.length > 0) {
+				for (const ship of orbitingShips) {
+					labelHtml += `<div style="font-size:9px; color:#7a9a7a; margin-top:2px">${ship.data.name}</div>`;
+				}
+			}
+			labelHtml += `</div>`;
+
+			if (entry.labelDiv.innerHTML !== labelHtml) {
+				entry.labelDiv.innerHTML = labelHtml;
 			}
 		}
 
@@ -398,31 +421,47 @@ export function updateHUD(camDist: number): void {
 	}
 
 	const activityEl = document.getElementById("ship-activity");
+	const durationEl = document.getElementById("ship-action-duration");
 	if (activityEl) {
 		const selectedShip =
 			state.selectedBody && isShipEntry(state.selectedBody) ? state.selectedBody : null;
 		if (selectedShip) {
 			const ship = selectedShip;
 			const name = ship.data.name;
-			let statusText: string;
+			let actionText: string;
+			let durationText = "";
 			if (ship.shipState === "transferring") {
-				statusText = `In transit to ${ship.transferTarget}`;
+				actionText = `${name}: In transit to ${ship.transferTarget}`;
 			} else if (ship.action.type === "survey-nearest" && ship.action.startTime > 0) {
 				const elapsed = Math.floor(state.simTime - ship.action.startTime);
 				const dur = Math.floor(ship.action.duration);
-				statusText = `Surveying ${ship.action.target ?? ship.hostPlanetName} (${elapsed}d/${dur}d)`;
+				actionText = `${name}: Surveying ${ship.action.target ?? ship.hostPlanetName}`;
+				durationText = `Duration: ${elapsed}d/${dur}d`;
+			} else if (ship.action.type === "refuel" && ship.action.startTime > 0) {
+				const elapsed = Math.floor(state.simTime - ship.action.startTime);
+				const dur = Math.floor(ship.action.duration);
+				actionText = `${name}: Refueling`;
+				durationText = `Duration: ${elapsed}d/${dur}d`;
 			} else if (ship.action.type === "shore-leave" && ship.action.startTime > 0) {
-				statusText = "Shore Leave";
+				const elapsed = Math.floor(state.simTime - ship.action.startTime);
+				const dur = Math.floor(ship.action.duration);
+				actionText = `${name}: Shore Leave`;
+				durationText = `Duration: ${elapsed}d/${dur}d`;
 			} else if (ship.action.type === "overhaul" && ship.action.startTime > 0) {
-				statusText = "Overhaul";
+				const elapsed = Math.floor(state.simTime - ship.action.startTime);
+				const dur = Math.floor(ship.action.duration);
+				actionText = `${name}: Overhaul`;
+				durationText = `Duration: ${elapsed}d/${dur}d`;
 			} else {
-				statusText = `Orbiting ${ship.hostPlanetName}`;
+				actionText = `${name}: Orbiting ${ship.hostPlanetName}`;
 			}
-			activityEl.textContent = `${name}: ${statusText}`;
+			activityEl.textContent = actionText;
+			if (durationEl) durationEl.textContent = durationText;
 		} else {
 			const ships = state.bodyMeshes.filter((e) => isShipEntry(e));
 			if (ships.length === 0) {
 				activityEl.textContent = "";
+				if (durationEl) durationEl.textContent = "";
 			} else {
 				const surveying = ships.filter(
 					(s) => isShipEntry(s) && s.action.type === "survey-nearest",
@@ -434,6 +473,7 @@ export function updateHUD(camDist: number): void {
 					(s) => isShipEntry(s) && (!s.action.type || s.action.type === "idle"),
 				).length;
 				activityEl.textContent = `${ships.length} ships: ${surveying} surveying, ${transferring} in transit, ${idle} idle`;
+				if (durationEl) durationEl.textContent = "";
 			}
 		}
 	}
