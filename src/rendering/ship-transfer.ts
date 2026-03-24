@@ -157,60 +157,6 @@ export function predictTargetWorld(
 	return _targetWorldOut;
 }
 
-const SHIP_PATH_LOOKAHEAD: number = 0.25; // show 25% of curve ahead
-const SHIP_TRANSFER_PTS: number = 128; // transfer curve sample points
-const SHIP_MAX_ARC_PTS: number = 48; // max orbit arc points
-const SHIP_PATH_BUFFER: number = SHIP_TRANSFER_PTS + SHIP_MAX_ARC_PTS + 1; // total buffer capacity
-
-function createTransferPath(): THREE.Line {
-	const positions = new Float32Array(SHIP_PATH_BUFFER * 3);
-	const colors = new Float32Array(SHIP_PATH_BUFFER * 4);
-	const geom = new THREE.BufferGeometry();
-	geom.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-	geom.setAttribute("color", new THREE.BufferAttribute(colors, 4));
-	const mat = new THREE.LineBasicMaterial({
-		transparent: true,
-		vertexColors: true,
-		opacity: 1.0,
-	});
-	const line = new THREE.Line(geom, mat);
-	line.frustumCulled = false;
-	scene.add(line);
-	return line;
-}
-
-export function updateTransferPath(entry: ShipEntry, elapsedDays: number): void {
-	if (!entry.transferPath) return;
-	entry.departFrameCount = (entry.departFrameCount || 0) + 1;
-	if (entry.departFrameCount % 4 !== 0) return;
-	const positions = entry.transferPath.geometry.attributes.position.array as Float32Array;
-	const colors = entry.transferPath.geometry.attributes.color.array as Float32Array;
-	const isSelected = state.selectedBody === entry;
-	const baseAlpha = isSelected ? 0.5 : 0.2;
-
-	const tCurrent = elapsedDays / entry.transferTimeDays;
-	const tEnd = Math.min(tCurrent + SHIP_PATH_LOOKAHEAD, 1.0);
-	const tRange = tEnd - tCurrent;
-
-	for (let i = 0; i <= SHIP_TRANSFER_PTS; i++) {
-		const frac = i / SHIP_TRANSFER_PTS;
-		const t = tCurrent + frac * tRange;
-		const p = transferPosition(entry, t);
-		const idx3 = i * 3;
-		positions[idx3] = p.x;
-		positions[idx3 + 1] = 0;
-		positions[idx3 + 2] = p.z;
-		const idx4 = i * 4;
-		colors[idx4] = 0.33;
-		colors[idx4 + 1] = 0.33;
-		colors[idx4 + 2] = 0.33;
-		colors[idx4 + 3] = baseAlpha * (1 - frac);
-	}
-	entry.transferPath.geometry.attributes.position.needsUpdate = true;
-	entry.transferPath.geometry.attributes.color.needsUpdate = true;
-	entry.transferPath.geometry.setDrawRange(0, SHIP_TRANSFER_PTS + 1);
-}
-
 export function computeHermiteKnots(
 	departX: number,
 	departZ: number,
@@ -242,109 +188,6 @@ export function computeHermiteKnots(
 		t1x: Math.cos(angle) * dist * 0.3,
 		t1z: Math.sin(angle) * dist * 0.3,
 	};
-}
-
-export function updateDepartureArc(entry: ShipEntry): void {
-	if (!entry.transferPath || !entry.pendingTransfer) return;
-	const host = findBodyEntry(entry.hostPlanetName);
-	if (!host) return;
-	const positions = entry.transferPath.geometry.attributes.position.array as Float32Array;
-	const colors = entry.transferPath.geometry.attributes.color.array as Float32Array;
-	const isSelected = state.selectedBody === entry;
-	const baseAlpha = isSelected ? 0.5 : 0.2;
-	const pt = entry.pendingTransfer;
-
-	// Recompute departure angle every 30 frames (~1x/sec at 30fps)
-	entry.departFrameCount = (entry.departFrameCount || 0) + 1;
-	if (entry.departFrameCount % 30 === 0) {
-		const targetEntry = findBodyEntry(pt.targetName);
-		if (targetEntry) {
-			const targetWorld = predictTargetWorld(targetEntry, pt.gameDays);
-			const toTargetDir = Math.atan2(
-				targetWorld.z - host.mesh.position.z,
-				targetWorld.x - host.mesh.position.x,
-			);
-			pt.optimalLocalAngle = toTargetDir - Math.PI / 2;
-		}
-	}
-
-	const TWO_PI = Math.PI * 2;
-	const curAngle = ((entry.angle % TWO_PI) + TWO_PI) % TWO_PI;
-	const tgtAngle = ((pt.optimalLocalAngle % TWO_PI) + TWO_PI) % TWO_PI;
-
-	// Skip full geometry rebuild if ship angle hasn't moved significantly
-	const prevAngle = entry.lastAngle ?? curAngle - 1;
-	if (Math.abs(curAngle - prevAngle) < 0.01) return;
-	entry.lastAngle = curAngle;
-
-	let sweep = tgtAngle - curAngle;
-	if (sweep < 0) sweep += TWO_PI;
-	if (sweep > TWO_PI) sweep -= TWO_PI;
-
-	const ARC_PTS = Math.max(4, Math.min(SHIP_MAX_ARC_PTS, Math.round(sweep * 8)));
-	let idx = 0;
-
-	// Part 1: orbit arc to departure point
-	for (let i = 0; i <= ARC_PTS; i++) {
-		const frac = i / ARC_PTS;
-		const a = curAngle + frac * sweep;
-		const idx3 = idx * 3;
-		positions[idx3] = host.mesh.position.x + Math.cos(a) * SHIP_LOCAL_ORBIT;
-		positions[idx3 + 1] = 0;
-		positions[idx3 + 2] = host.mesh.position.z + Math.sin(a) * SHIP_LOCAL_ORBIT;
-		const idx4 = idx * 4;
-		colors[idx4] = 0.33;
-		colors[idx4 + 1] = 0.33;
-		colors[idx4 + 2] = 0.33;
-		colors[idx4 + 3] = baseAlpha;
-		idx++;
-	}
-
-	// Part 2: Hermite spline from departure to predicted target
-	const targetEntry = findBodyEntry(pt.targetName);
-	if (targetEntry) {
-		const departX = host.mesh.position.x + Math.cos(pt.optimalLocalAngle) * SHIP_LOCAL_ORBIT;
-		const departZ = host.mesh.position.z + Math.sin(pt.optimalLocalAngle) * SHIP_LOCAL_ORBIT;
-		const knots = computeHermiteKnots(departX, departZ, targetEntry, pt.gameDays);
-
-		for (let i = 1; i <= SHIP_TRANSFER_PTS; i++) {
-			const frac = i / SHIP_TRANSFER_PTS;
-			const p = hermiteEval(
-				knots.p0x,
-				knots.p0z,
-				knots.t0x,
-				knots.t0z,
-				knots.p1x,
-				knots.p1z,
-				knots.t1x,
-				knots.t1z,
-				frac,
-			);
-			const idx3 = idx * 3;
-			positions[idx3] = p.x;
-			positions[idx3 + 1] = 0;
-			positions[idx3 + 2] = p.z;
-			const idx4 = idx * 4;
-			colors[idx4] = 0.33;
-			colors[idx4 + 1] = 0.33;
-			colors[idx4 + 2] = 0.33;
-			colors[idx4 + 3] = baseAlpha * (1 - frac * 0.7);
-			idx++;
-		}
-	}
-
-	entry.transferPath.geometry.attributes.position.needsUpdate = true;
-	entry.transferPath.geometry.attributes.color.needsUpdate = true;
-	entry.transferPath.geometry.setDrawRange(0, idx);
-}
-
-function removeTransferPath(entry: ShipEntry): void {
-	if (entry.transferPath) {
-		scene.remove(entry.transferPath);
-		entry.transferPath.geometry.dispose();
-		(entry.transferPath.material as THREE.Material).dispose();
-		entry.transferPath = null;
-	}
 }
 
 export interface ShipConfig {
@@ -527,7 +370,12 @@ export function setOnTransferComplete(hook: (ship: ShipEntry) => void): void {
 }
 
 export function completeTransfer(entry: ShipEntry, entryAngle = 0): void {
-	removeTransferPath(entry);
+	// Clear the transfer trail
+	entry.trail.count = 0;
+	entry.trail.head = 0;
+	entry.trail.sampleAccum = 0;
+	entry.trail.line.geometry.setDrawRange(0, 0);
+
 	const transferTarget = entry.transferTarget ?? "";
 
 	// Find the target body — could be a planet, moon, or comet
@@ -603,16 +451,11 @@ function commitTransfer(
 	entry.pendingTransfer = null;
 	entry.stationTarget = null;
 
-	removeTransferPath(entry);
-	entry.transferPath = createTransferPath();
-
-	// Pre-fill tail buffer with current position to avoid line-to-origin artifact
-	for (let i = 0; i < SHIP_TAIL_LENGTH; i++) {
-		entry.tailPositions[i * 3] = entry.mesh.position.x;
-		entry.tailPositions[i * 3 + 1] = 0;
-		entry.tailPositions[i * 3 + 2] = entry.mesh.position.z;
-	}
-	entry.tailCount = 0;
+	// Clear the trail for a fresh start
+	entry.trail.count = 0;
+	entry.trail.head = 0;
+	entry.trail.sampleAccum = 0;
+	entry.trail.line.geometry.setDrawRange(0, 0);
 }
 
 export function beginTransfer(entry: ShipEntry): void {

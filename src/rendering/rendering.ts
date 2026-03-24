@@ -20,7 +20,6 @@ import {
 	SHIP_LOCAL_ORBIT,
 	stationKeepingOffset,
 	transferPosition,
-	updateTransferPath,
 } from "./ship-transfer";
 
 const TWO_PI = Math.PI * 2;
@@ -157,23 +156,6 @@ export function updatePositions(dt: number, camDist: number): void {
 					return;
 				}
 			}
-
-			if (entry.transferPath) {
-				if (entry.shipState === "transferring") {
-					const elapsed = state.simTime - entry.transferStartTime;
-					updateTransferPath(entry, elapsed);
-					entry.transferPath.visible = true;
-				} else {
-					entry.transferPath.visible = false;
-				}
-			}
-
-			// Velocity tail: hidden during transfer (path preview covers it)
-			if (entry.tailLine) {
-				entry.tailLine.visible = false;
-				entry.tailCount = 0;
-				entry.tailLine.geometry.setDrawRange(0, 0);
-			}
 		} else if (isCometEntry(entry)) {
 			const { a, e, incRad, nodeRad, periRad } = entry.data;
 			entry.angle += entry.speed * simDt;
@@ -219,6 +201,14 @@ export function updatePositions(dt: number, camDist: number): void {
 		const catKey = (entry.isMoon ? "Moon" : entry.data.type) as CategoryKey;
 		if (!state.categoryVisibility[catKey].trails) return;
 
+		const isTransferringShip = isShipEntry(entry) && entry.shipState === "transferring";
+
+		// Ships: trail visible only during transfers
+		if (isShipEntry(entry)) {
+			entry.trail.line.visible = entry.shipState === "transferring";
+			if (entry.shipState !== "transferring") return;
+		}
+
 		const t = entry.trail;
 
 		// Always keep the last-drawn vertex glued to the current mesh position
@@ -232,13 +222,31 @@ export function updatePositions(dt: number, camDist: number): void {
 			t.line.geometry.attributes.position.needsUpdate = true;
 		}
 
+		// Transferring ships: distance-based sampling in world space.
 		// Comets: accumulate angular distance and sample when threshold reached.
 		// Threshold scales up with zoom-out so trails grow longer, but never
 		// drops below COMET_TRAIL_STEP_ARC so trails never shrink when zooming in.
 		// Non-comets: accumulate sim time with fixed interval.
 		const isComet = isCometEntry(entry);
-		t.sampleAccum += isComet ? Math.abs(entry.speed * simDt) : simDt;
-		const sampleThreshold = isComet ? COMET_TRAIL_STEP_ARC * Math.max(1, camDist / ZOOM_BASE) : 0.02;
+		const SHIP_TRANSFER_TRAIL_STEP = 0.3; // world-space distance between trail samples
+		if (isTransferringShip) {
+			// Distance-based sampling: accumulate world-space distance traveled
+			const prevIdx = ((t.head - 1 + t.maxPoints) % t.maxPoints) * 3;
+			const prevX = t.count > 0 ? t.positions[prevIdx] : entry.mesh.position.x;
+			const prevZ = t.count > 0 ? t.positions[prevIdx + 2] : entry.mesh.position.z;
+			const dx = entry.mesh.position.x - prevX;
+			const dz = entry.mesh.position.z - prevZ;
+			t.sampleAccum += Math.hypot(dx, dz);
+		} else if (isComet) {
+			t.sampleAccum += Math.abs(entry.speed * simDt);
+		} else {
+			t.sampleAccum += simDt;
+		}
+		const sampleThreshold = isTransferringShip
+			? SHIP_TRANSFER_TRAIL_STEP
+			: isComet
+				? COMET_TRAIL_STEP_ARC * Math.max(1, camDist / ZOOM_BASE)
+				: 0.02;
 		let trailDirty = false;
 		while (t.sampleAccum > sampleThreshold) {
 			t.sampleAccum -= sampleThreshold;
