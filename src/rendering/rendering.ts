@@ -1,5 +1,5 @@
 import type * as THREE from "three";
-import { state } from "../core/state";
+import { gameLog, state } from "../core/state";
 import {
 	inclinedPosition,
 	keplerRadius,
@@ -17,6 +17,8 @@ import {
 	asteroidProxy,
 	completeTransfer,
 	findAsteroid,
+	hermiteDerivative,
+	refreshTransferPath,
 	SHIP_LOCAL_ORBIT,
 	stationKeepingOffset,
 	transferPosition,
@@ -125,6 +127,8 @@ export function updatePositions(dt: number, camDist: number): void {
 			} else if (entry.shipState === "transferring") {
 				const elapsed = state.simTime.days - entry.transferStartTime;
 				const t = Math.min(elapsed / entry.transferTimeDays, 1);
+				// Smoothstep easing: symmetric acceleration/deceleration
+				const tEased = t * t * (3 - 2 * t);
 
 				// Look up target each frame for live tracking
 				let tgt = findBodyEntry(entry.transferTarget ?? "");
@@ -133,29 +137,142 @@ export function updatePositions(dt: number, camDist: number): void {
 					if (hit) tgt = asteroidProxy(hit.asteroid, hit.beltEntry);
 				}
 
-				// Continuously update spline arrival endpoint to track the
-				// target's actual position. This keeps the ship visually heading
-				// toward the target even when the initial prediction drifts.
+				// Re-spline from the ship's current evaluated position whenever
+				// the arrival endpoint has moved significantly. This prevents
+				// Hermite basis functions from retroactively shifting the ship's
+				// current position when P1 changes mid-transfer.
 				if (tgt) {
 					const offset = stationKeepingOffset(tgt);
 					const approachAngle = Math.atan2(
 						entry.mesh.position.z - tgt.mesh.position.z,
 						entry.mesh.position.x - tgt.mesh.position.x,
 					);
-					entry.p1x = tgt.mesh.position.x + Math.cos(approachAngle) * offset;
-					entry.p1z = tgt.mesh.position.z + Math.sin(approachAngle) * offset;
-					// Update arrival tangent to match new endpoint
-					const dx = entry.p1x - entry.p0x;
-					const dz = entry.p1z - entry.p0z;
-					const dist = Math.hypot(dx, dz);
-					const tAngle = Math.atan2(dz, dx);
-					entry.t1x = Math.cos(tAngle) * dist * 0.3;
-					entry.t1z = Math.sin(tAngle) * dist * 0.3;
+					const newP1x = tgt.mesh.position.x + Math.cos(approachAngle) * offset;
+					const newP1z = tgt.mesh.position.z + Math.sin(approachAngle) * offset;
+					const endpointDelta = Math.hypot(newP1x - entry.p1x, newP1z - entry.p1z);
+
+					// Only re-spline in the first 80% of transfer (let capture blend handle the rest)
+					// and only when endpoint drift is significant relative to remaining distance
+					const remainingDist = Math.hypot(
+						newP1x - entry.mesh.position.x,
+						newP1z - entry.mesh.position.z,
+					);
+					const shouldRespline = t < 0.8 && endpointDelta > Math.max(0.5, remainingDist * 0.1);
+
+					if (shouldRespline) {
+						gameLog(
+							`[re-spline] ${entry.data.name}: delta=${endpointDelta.toFixed(3)} t=${t.toFixed(4)} remaining=${(entry.transferTimeDays - elapsed).toFixed(1)}d fuel=${entry.fuelKg.toFixed(0)}kg fuelBudget=${entry.transferFuelTotal.toFixed(0)}kg`,
+						);
+						// Evaluate current position and velocity on the old spline
+						const curPos = transferPosition(entry, tEased);
+						const curDeriv = hermiteDerivative(
+							entry.p0x,
+							entry.p0z,
+							entry.t0x,
+							entry.t0z,
+							entry.p1x,
+							entry.p1z,
+							entry.t1x,
+							entry.t1z,
+							tEased,
+						);
+
+						// Build new spline from current position to updated target
+						const remainingDays = Math.max(entry.transferTimeDays - elapsed, 0.01);
+						const dx = newP1x - curPos.x;
+						const dz = newP1z - curPos.z;
+						const dist = Math.hypot(dx, dz);
+						const tAngle = Math.atan2(dz, dx);
+
+						entry.p0x = curPos.x;
+						entry.p0z = curPos.z;
+						// Scale derivative from old spline's [0,1] space to new remaining days
+						const scale = remainingDays / Math.max(entry.transferTimeDays, 0.01);
+						entry.t0x = curDeriv.x * scale;
+						entry.t0z = curDeriv.z * scale;
+						entry.p1x = newP1x;
+						entry.p1z = newP1z;
+						entry.t1x = Math.cos(tAngle) * dist * 0.4;
+						entry.t1z = Math.sin(tAngle) * dist * 0.4;
+						entry.transferStartTime = state.simTime.days;
+						// Scale fuel budget proportionally so burn rate stays correct
+						if (entry.transferTimeDays > 0) {
+							entry.transferFuelTotal *= remainingDays / entry.transferTimeDays;
+						}
+						entry.transferTimeDays = remainingDays;
+					} else if (tgt) {
+						// Light endpoint update without re-splining: just track the target
+						// position so the spline endpoint stays current
+						entry.p1x = newP1x;
+						entry.p1z = newP1z;
+					}
 				}
 
-				// Evaluate Hermite spline with live-tracked endpoint
-				const p = transferPosition(entry, t);
-				entry.mesh.position.set(p.x, 0, p.z);
+				// Evaluate Hermite spline with eased t and live-tracked endpoint.
+				// Re-read elapsed after potential re-spline (transferStartTime may have changed).
+				const elapsedNow = state.simTime.days - entry.transferStartTime;
+				const tNow = Math.min(elapsedNow / entry.transferTimeDays, 1);
+				const tEasedNow = tNow * tNow * (3 - 2 * tNow);
+				const p = transferPosition(entry, tEasedNow);
+
+				// Capture blend: smoothly steer toward station-keeping orbit in final 15%
+				let finalX = p.x;
+				let finalZ = p.z;
+				if (tNow > 0.85 && tgt) {
+					const blendRaw = (tNow - 0.85) / 0.15;
+					const blend = blendRaw * blendRaw * (3 - 2 * blendRaw);
+					const capOffset = stationKeepingOffset(tgt);
+					const capAngle = Math.atan2(p.z - tgt.mesh.position.z, p.x - tgt.mesh.position.x);
+					const capX = tgt.mesh.position.x + Math.cos(capAngle) * capOffset;
+					const capZ = tgt.mesh.position.z + Math.sin(capAngle) * capOffset;
+					finalX = p.x + blend * (capX - p.x);
+					finalZ = p.z + blend * (capZ - p.z);
+				}
+				entry.mesh.position.set(finalX, 0, finalZ);
+
+				// Sub-step trail: at high warp the ship may cover many trail-step distances
+				// in a single frame. Inject intermediate Hermite-sampled points so the trail
+				// looks continuous instead of showing large gaps between frame positions.
+				if (entry.trail.count > 0 && entry.transferTimeDays > 0) {
+					const tStep = simDt / entry.transferTimeDays;
+					if (tStep > 1 / 30) {
+						const tPrev = Math.max(0, tNow - tStep);
+						const nSteps = Math.ceil(tStep * 30);
+						const tr = entry.trail;
+						for (let s = 1; s <= nSteps; s++) {
+							const tInterp = tPrev + (tNow - tPrev) * (s / nSteps);
+							const tInterpEased = tInterp * tInterp * (3 - 2 * tInterp);
+							const ip = transferPosition(entry, tInterpEased);
+							const h3 = tr.head * 3;
+							tr.positions[h3] = ip.x;
+							tr.positions[h3 + 1] = 0;
+							tr.positions[h3 + 2] = ip.z;
+							tr.colors[h3] = tr.baseColor.r;
+							tr.colors[h3 + 1] = tr.baseColor.g;
+							tr.colors[h3 + 2] = tr.baseColor.b;
+							tr.head = (tr.head + 1) % tr.maxPoints;
+							if (tr.count < tr.maxPoints) tr.count++;
+						}
+						// Reset accumulator so normal distance-based sampling restarts cleanly
+						tr.sampleAccum = 0;
+						// Rebuild indices and apply fade
+						buildTrailIndices(tr.head, tr.count, tr.maxPoints, tr.indices);
+						for (let j = 0; j < tr.count; j++) {
+							const fade = tr.count > 1 ? j / (tr.count - 1) : 1;
+							const idx = tr.indices[j] * 3;
+							tr.colors[idx] = tr.baseColor.r * fade;
+							tr.colors[idx + 1] = tr.baseColor.g * fade;
+							tr.colors[idx + 2] = tr.baseColor.b * fade;
+						}
+						tr.line.geometry.attributes.position.needsUpdate = true;
+						tr.line.geometry.attributes.color.needsUpdate = true;
+						(tr.line.geometry.index as import("three").BufferAttribute).needsUpdate = true;
+						tr.line.geometry.setDrawRange(0, tr.count);
+					}
+				}
+
+				// Update transfer path preview geometry each frame
+				refreshTransferPath(entry);
 
 				// Complete when time is up or within station-keeping distance
 				const distToTarget = tgt
@@ -165,7 +282,20 @@ export function updatePositions(dt: number, camDist: number): void {
 						)
 					: Number.POSITIVE_INFINITY;
 
-				if (isTransferComplete(elapsed, entry.transferTimeDays) || distToTarget <= SHIP_LOCAL_ORBIT) {
+				// Log completion check every ~30 frames (once per second at 30fps)
+				if (Math.floor(state.simTime.days * 30) % 30 === 0) {
+					gameLog(
+						`[transfer] ${entry.data.name}: tNow=${tNow.toFixed(4)} elapsed=${elapsedNow.toFixed(2)}d/${entry.transferTimeDays.toFixed(2)}d dist=${distToTarget.toFixed(3)} fuel=${entry.fuelKg.toFixed(0)}kg stationOrbit=${SHIP_LOCAL_ORBIT}`,
+					);
+				}
+
+				if (
+					isTransferComplete(elapsedNow, entry.transferTimeDays) ||
+					distToTarget <= SHIP_LOCAL_ORBIT
+				) {
+					gameLog(
+						`[transfer-complete] ${entry.data.name}: reason=${isTransferComplete(elapsedNow, entry.transferTimeDays) ? "time" : "distance"} dist=${distToTarget.toFixed(3)} t=${tNow.toFixed(4)} fuel=${entry.fuelKg.toFixed(0)}kg`,
+					);
 					const entryAngle = tgt
 						? Math.atan2(
 								entry.mesh.position.z - tgt.mesh.position.z,

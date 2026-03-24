@@ -70,6 +70,30 @@ export function hermiteEval(
 	return _hermiteOut;
 }
 
+const _hermiteDerivOut: Vector3Like = { x: 0, y: 0, z: 0 };
+
+/** Compute the tangent (derivative) of the cubic Hermite spline at parameter t. */
+export function hermiteDerivative(
+	p0x: number,
+	p0z: number,
+	t0x: number,
+	t0z: number,
+	p1x: number,
+	p1z: number,
+	t1x: number,
+	t1z: number,
+	t: number,
+): Vector3Like {
+	// Derivatives of Hermite basis functions
+	const dh00 = 6 * t * t - 6 * t;
+	const dh10 = 3 * t * t - 4 * t + 1;
+	const dh01 = -6 * t * t + 6 * t;
+	const dh11 = 3 * t * t - 2 * t;
+	_hermiteDerivOut.x = dh00 * p0x + dh10 * t0x + dh01 * p1x + dh11 * t1x;
+	_hermiteDerivOut.z = dh00 * p0z + dh10 * t0z + dh01 * p1z + dh11 * t1z;
+	return _hermiteDerivOut;
+}
+
 export function transferPosition(entry: ShipEntry, t: number): Vector3Like {
 	return hermiteEval(
 		entry.p0x,
@@ -190,12 +214,12 @@ export function computeHermiteKnots(
 	return {
 		p0x: departX,
 		p0z: departZ,
-		t0x: Math.cos(angle) * dist * 0.5,
-		t0z: Math.sin(angle) * dist * 0.5,
+		t0x: Math.cos(angle) * dist * 0.4,
+		t0z: Math.sin(angle) * dist * 0.4,
 		p1x: targetWorld.x,
 		p1z: targetWorld.z,
-		t1x: Math.cos(angle) * dist * 0.3,
-		t1z: Math.sin(angle) * dist * 0.3,
+		t1x: Math.cos(angle) * dist * 0.4,
+		t1z: Math.sin(angle) * dist * 0.4,
 	};
 }
 
@@ -297,6 +321,8 @@ export function createShip(config: ShipConfig): ShipEntry | undefined {
 		transferTarget: null,
 		transferStartTime: 0,
 		transferTimeDays: 0,
+		transferDisplayStart: 0,
+		transferDisplayDays: 0,
 		transferFuelTotal: 0,
 		p0x: 0,
 		p0z: 0,
@@ -390,6 +416,9 @@ export function setOnTransferComplete(hook: (ship: ShipEntry) => void): void {
 }
 
 export function completeTransfer(entry: ShipEntry, entryAngle = 0): void {
+	// Dispose transfer path preview
+	disposeTransferPath(entry);
+
 	// Clear the transfer trail
 	entry.trail.count = 0;
 	entry.trail.head = 0;
@@ -448,6 +477,55 @@ export function completeTransfer(entry: ShipEntry, entryAngle = 0): void {
 	if (onTransferCompleteHook) onTransferCompleteHook(entry);
 }
 
+const PATH_SEGMENTS = 64;
+const PATH_POINTS = PATH_SEGMENTS + 1;
+
+function buildPathPositions(entry: ShipEntry, out: Float32Array): void {
+	for (let i = 0; i < PATH_POINTS; i++) {
+		const t = i / PATH_SEGMENTS;
+		const p = hermiteEval(
+			entry.p0x,
+			entry.p0z,
+			entry.t0x,
+			entry.t0z,
+			entry.p1x,
+			entry.p1z,
+			entry.t1x,
+			entry.t1z,
+			t,
+		);
+		out[i * 3] = p.x;
+		out[i * 3 + 1] = 0;
+		out[i * 3 + 2] = p.z;
+	}
+}
+
+function buildPathGeometry(entry: ShipEntry): THREE.BufferGeometry {
+	const positions = new Float32Array(PATH_POINTS * 3);
+	buildPathPositions(entry, positions);
+	const geom = new THREE.BufferGeometry();
+	geom.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+	return geom;
+}
+
+/** Re-sample the Hermite spline into the existing transferPath geometry (called each frame). */
+export function refreshTransferPath(entry: ShipEntry): void {
+	if (!entry.transferPath) return;
+	const attr = entry.transferPath.geometry.attributes.position as THREE.BufferAttribute;
+	buildPathPositions(entry, attr.array as Float32Array);
+	attr.needsUpdate = true;
+	entry.transferPath.computeLineDistances();
+}
+
+function disposeTransferPath(entry: ShipEntry): void {
+	if (entry.transferPath) {
+		scene.remove(entry.transferPath);
+		entry.transferPath.geometry.dispose();
+		(entry.transferPath.material as THREE.Material).dispose();
+		entry.transferPath = null;
+	}
+}
+
 /** Shared logic: write spline knots, set transfer state, create path, prefill tail. */
 function commitTransfer(
 	entry: ShipEntry,
@@ -455,6 +533,9 @@ function commitTransfer(
 	gameDays: number,
 	targetName: string,
 ): void {
+	// Dispose any existing path before creating a new one (re-spline case)
+	disposeTransferPath(entry);
+
 	entry.p0x = knots.p0x;
 	entry.p0z = knots.p0z;
 	entry.t0x = knots.t0x;
@@ -466,6 +547,11 @@ function commitTransfer(
 
 	entry.transferStartTime = state.simTime.days;
 	entry.transferTimeDays = gameDays;
+	// Preserve original timing for UI display (not reset by re-spline)
+	if (entry.shipState !== "transferring") {
+		entry.transferDisplayStart = state.simTime.days;
+		entry.transferDisplayDays = gameDays;
+	}
 	entry.transferTarget = targetName;
 	entry.shipState = "transferring";
 	entry.pendingTransfer = null;
@@ -476,6 +562,20 @@ function commitTransfer(
 	entry.trail.head = 0;
 	entry.trail.sampleAccum = 0;
 	entry.trail.line.geometry.setDrawRange(0, 0);
+
+	// Create transfer path preview line
+	const geom = buildPathGeometry(entry);
+	const mat = new THREE.LineDashedMaterial({
+		color: entry.data.color,
+		dashSize: 0.3,
+		gapSize: 0.15,
+		transparent: true,
+		opacity: 0.4,
+	});
+	const line = new THREE.Line(geom, mat);
+	line.computeLineDistances();
+	scene.add(line);
+	entry.transferPath = line;
 }
 
 export function beginTransfer(entry: ShipEntry): void {

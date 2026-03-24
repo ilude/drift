@@ -65,7 +65,7 @@ export function speedLabel(timeSpeed: number): string {
 
 export const MASTER_SEED: number = 42;
 const SAVE_KEY = "solar-sim-state";
-const SAVE_VERSION = 4;
+const SAVE_VERSION = 5;
 
 export const state: AppState = {
 	bodyMeshes: [],
@@ -121,6 +121,8 @@ export const state: AppState = {
 		"mission-complete": true,
 		malfunction: true,
 		"ship-destroyed": true,
+		"transfer-complete": true,
+		"action-complete": false,
 	},
 	firstSurveyCompleted: false,
 };
@@ -139,6 +141,23 @@ export function saveState(): void {
 		crew: { ...ship.crew },
 		maintenance: { ...ship.maintenance },
 		commandTree: { entries: [...ship.commandTree.entries] },
+		...(ship.shipState === "transferring"
+			? {
+					shipState: ship.shipState,
+					transferTarget: ship.transferTarget ?? undefined,
+					transferStartTime: ship.transferStartTime,
+					transferTimeDays: ship.transferTimeDays,
+					transferFuelTotal: ship.transferFuelTotal,
+					p0x: ship.p0x,
+					p0z: ship.p0z,
+					t0x: ship.t0x,
+					t0z: ship.t0z,
+					p1x: ship.p1x,
+					p1z: ship.p1z,
+					t1x: ship.t1x,
+					t1z: ship.t1z,
+				}
+			: {}),
 	}));
 
 	const data: SavedStateData = {
@@ -174,6 +193,10 @@ export function loadSavedState(): SavedStateData | null {
 				],
 			} as SavedStateData;
 		}
+		if (data.version === 4) {
+			// v4 → v5: transfer fields added as optional; no structural change needed
+			data.version = 5;
+		}
 		if (data.version !== SAVE_VERSION) return null;
 		return data;
 	} catch (_) {
@@ -191,5 +214,20 @@ export function restoreShipState(savedData: SavedStateData | null): void {
 		if (savedShip.crew) shipEntry.crew = savedShip.crew;
 		if (savedShip.maintenance) shipEntry.maintenance = savedShip.maintenance;
 		if (savedShip.commandTree) shipEntry.commandTree = savedShip.commandTree;
+		if (savedShip.shipState === "transferring" && savedShip.transferTarget) {
+			shipEntry.shipState = "transferring";
+			shipEntry.transferTarget = savedShip.transferTarget;
+			shipEntry.transferStartTime = savedShip.transferStartTime ?? 0;
+			shipEntry.transferTimeDays = savedShip.transferTimeDays ?? 0;
+			shipEntry.transferFuelTotal = savedShip.transferFuelTotal ?? 0;
+			shipEntry.p0x = savedShip.p0x ?? 0;
+			shipEntry.p0z = savedShip.p0z ?? 0;
+			shipEntry.t0x = savedShip.t0x ?? 0;
+			shipEntry.t0z = savedShip.t0z ?? 0;
+			shipEntry.p1x = savedShip.p1x ?? 0;
+			shipEntry.p1z = savedShip.p1z ?? 0;
+			shipEntry.t1x = savedShip.t1x ?? 0;
+			shipEntry.t1z = savedShip.t1z ?? 0;
+		}
 	}
 }

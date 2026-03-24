@@ -202,7 +202,9 @@ export type NotificationType =
 	| "maintenance-needed"
 	| "mission-complete"
 	| "malfunction"
-	| "ship-destroyed";
+	| "ship-destroyed"
+	| "transfer-complete"
+	| "action-complete";
 
 export interface GameNotification {
 	id: number;
@@ -292,6 +294,9 @@ export interface ShipEntry extends BaseEntry {
 	transferTarget: string | null;
 	transferStartTime: number;
 	transferTimeDays: number;
+	// Original transfer timing (not reset by re-spline, used for UI display)
+	transferDisplayStart: number;
+	transferDisplayDays: number;
 	transferFuelTotal: number;
 	p0x: number;
 	p0z: number;
@@ -451,6 +456,8 @@ export interface NotificationPauseConfig {
 	"mission-complete": boolean;
 	malfunction: boolean;
 	"ship-destroyed": boolean;
+	"transfer-complete": boolean;
+	"action-complete": boolean;
 }
 
 export interface AppState {
@@ -512,6 +519,21 @@ export interface SavedShipData {
 	crew: ShipCrew;
 	maintenance: ShipMaintenance;
 	commandTree: CommandTree;
+	// Transfer state (optional — only present if ship was transferring)
+	shipState?: ShipState;
+	transferTarget?: string;
+	transferStartTime?: number;
+	transferTimeDays?: number;
+	transferFuelTotal?: number;
+	// Hermite spline knots
+	p0x?: number;
+	p0z?: number;
+	t0x?: number;
+	t0z?: number;
+	p1x?: number;
+	p1z?: number;
+	t1x?: number;
+	t1z?: number;
 }
 
 export interface SavedStateData {

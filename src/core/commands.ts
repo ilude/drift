@@ -139,14 +139,23 @@ export function tickShipSimulation(ship: ShipEntry, simDt: number, simTime: numb
 	if (atColony) {
 		const dayNow = Math.floor(simTime);
 		const dayPrev = Math.floor(simTime - simDt);
-		if (dayNow > dayPrev) {
-			const fuelPerShuttle = ship.fuelCapacityKg * 0.25;
-			ship.fuelKg = Math.min(ship.fuelCapacityKg, ship.fuelKg + fuelPerShuttle);
-			const supplyPerShuttle = Math.ceil(ship.maintenance.maxSupplies * 0.25);
-			ship.maintenance.supplies = Math.min(
-				ship.maintenance.maxSupplies,
-				ship.maintenance.supplies + supplyPerShuttle,
-			);
+		// Cap at 30 iterations to prevent runaway loops at extreme time warp
+		const daysCrossed = Math.min(dayNow - dayPrev, 30);
+		if (daysCrossed >= dayNow - dayPrev && daysCrossed > 0) {
+			// Normal case: deliver for each day boundary crossed
+			for (let day = dayPrev + 1; day <= dayNow; day++) {
+				const fuelPerShuttle = ship.fuelCapacityKg * 0.25;
+				ship.fuelKg = Math.min(ship.fuelCapacityKg, ship.fuelKg + fuelPerShuttle);
+				const supplyPerShuttle = Math.ceil(ship.maintenance.maxSupplies * 0.25);
+				ship.maintenance.supplies = Math.min(
+					ship.maintenance.maxSupplies,
+					ship.maintenance.supplies + supplyPerShuttle,
+				);
+			}
+		} else if (daysCrossed > 0) {
+			// Capped case: fill to capacity directly
+			ship.fuelKg = ship.fuelCapacityKg;
+			ship.maintenance.supplies = ship.maintenance.maxSupplies;
 		}
 	}
 
@@ -172,10 +181,14 @@ export function tickShipSimulation(ship: ShipEntry, simDt: number, simTime: numb
 	if (ship.shipState === "transferring") {
 		const checkIndex = Math.floor(ship.maintenance.age / MALFUNCTION_INTERVAL);
 		const prevCheckIndex = Math.floor((ship.maintenance.age - simDt) / MALFUNCTION_INTERVAL);
-		if (checkIndex > prevCheckIndex) {
-			const rng = seededRandom(Math.floor(ship.maintenance.age));
+		// Fire once per 30-day interval crossed, even if multiple intervals skipped at high warp
+		let currentCheck = prevCheckIndex;
+		while (currentCheck < checkIndex) {
+			currentCheck++;
+			const intervalAge = currentCheck * MALFUNCTION_INTERVAL;
+			const rng = seededRandom(Math.floor(intervalAge));
 			const integrity = Math.max(1, ship.maintenance.hullIntegrity);
-			const failChance = (ship.maintenance.age / (365 * 5)) * (100 / integrity);
+			const failChance = (intervalAge / (365 * 5)) * (100 / integrity);
 			const roll = rng();
 			if (roll < failChance) {
 				const damage = ship.maintenance.supplies <= 0 ? 15 : 5 + Math.floor(rng() * 11);
