@@ -1,13 +1,16 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
-	checkCondition,
 	checkPreemptiveService,
-	computeMorale,
-	evaluateCommandTree,
-	getUnsurvevedMoonsOfHost,
+	commanderDecide,
 	incrementExperience,
 	learnFromEmergencyReturn,
 	learnFromMalfunction,
+} from "../core/commander";
+import {
+	checkCondition,
+	computeMorale,
+	evaluateCommandTree,
+	getUnsurvevedMoonsOfHost,
 	selectNextSurveyTarget,
 	tickShipSimulation,
 } from "../core/commands";
@@ -868,6 +871,239 @@ describe("commander learning", () => {
 		const ship = mockShip({ commander: { judgment: 0.3, experience: 5 } });
 		incrementExperience(ship);
 		expect(ship.commander.experience).toBe(6);
+	});
+});
+
+// --- Commander defers maintenance (tested through commanderDecide) ---
+
+describe("commander defers maintenance", () => {
+	function mockUnsurveyed(name: string): BodyEntry {
+		return {
+			data: { name, type: "Dwarf Planet", distance: 2.77 },
+			isMoon: false,
+			survey: { surveyLevel: 0, deposits: [] },
+		} as unknown as BodyEntry;
+	}
+
+	function mockSurveyed(name: string): BodyEntry {
+		return {
+			data: { name, type: "Planet", distance: 1.0 },
+			isMoon: false,
+			survey: { surveyLevel: 1, deposits: [] },
+		} as unknown as BodyEntry;
+	}
+
+	beforeEach(() => {
+		state.bodyMeshes = [];
+	});
+
+	it("does not defer at a colony (just do the maintenance)", () => {
+		const ship = mockShip({
+			hostPlanetName: "Earth",
+			commander: { judgment: 0.9, experience: 10 },
+			maintenance: { age: 100, supplies: 50, maxSupplies: 100, hullIntegrity: 25 },
+			commandTree: {
+				entries: [
+					mockEntry("hull-check", "overhaul", {
+						condition: { type: "hull-below", threshold: 30 },
+					}),
+				],
+			},
+		});
+		state.bodyMeshes = [mockUnsurveyed("Earth")] as BodyEntry[];
+		rebuildEntityMaps();
+		expect(commanderDecide(ship)).toEqual({ action: "overhaul" });
+	});
+
+	it("does not defer when host is already surveyed", () => {
+		const ship = mockShip({
+			hostPlanetName: "Mars",
+			commander: { judgment: 0.9, experience: 10 },
+			maintenance: { age: 100, supplies: 50, maxSupplies: 100, hullIntegrity: 25 },
+			commandTree: {
+				entries: [
+					mockEntry("hull-check", "overhaul", {
+						condition: { type: "hull-below", threshold: 30 },
+					}),
+				],
+			},
+		});
+		state.bodyMeshes = [mockSurveyed("Mars")] as BodyEntry[];
+		rebuildEntityMaps();
+		expect(commanderDecide(ship)).toEqual({ action: "overhaul" });
+	});
+
+	it("does not defer when commander judgment is too low", () => {
+		const ship = mockShip({
+			hostPlanetName: "Ceres",
+			commander: { judgment: 0.15, experience: 0 },
+			maintenance: { age: 100, supplies: 50, maxSupplies: 100, hullIntegrity: 25 },
+			commandTree: {
+				entries: [
+					mockEntry("hull-check", "overhaul", {
+						condition: { type: "hull-below", threshold: 30 },
+					}),
+				],
+			},
+		});
+		state.bodyMeshes = [mockUnsurveyed("Ceres")] as BodyEntry[];
+		rebuildEntityMaps();
+		expect(commanderDecide(ship)).toEqual({ action: "overhaul" });
+	});
+
+	it("high judgment commander defers overhaul at unsurveyed body", () => {
+		// Hull 25%, threshold 30%, judgment 0.8
+		// personalFloor = 10 + (30 - 10) * (1 - 0.8) = 10 + 4 = 14
+		// 25 > 14 → safe to defer → survey instead
+		const ship = mockShip({
+			hostPlanetName: "Ceres",
+			commander: { judgment: 0.8, experience: 20 },
+			maintenance: { age: 100, supplies: 50, maxSupplies: 100, hullIntegrity: 25 },
+			commandTree: {
+				entries: [
+					mockEntry("hull-check", "overhaul", {
+						condition: { type: "hull-below", threshold: 30 },
+					}),
+				],
+			},
+		});
+		state.bodyMeshes = [mockUnsurveyed("Ceres")] as BodyEntry[];
+		rebuildEntityMaps();
+		expect(commanderDecide(ship)).toEqual({ action: "survey" });
+	});
+
+	it("does not defer when hull is below commander's personal floor", () => {
+		// Hull 12%, threshold 30%, judgment 0.5
+		// personalFloor = 10 + (30 - 10) * (1 - 0.5) = 10 + 10 = 20
+		// 12 < 20 → too risky → overhaul
+		const ship = mockShip({
+			hostPlanetName: "Ceres",
+			commander: { judgment: 0.5, experience: 10 },
+			maintenance: { age: 200, supplies: 50, maxSupplies: 100, hullIntegrity: 12 },
+			commandTree: {
+				entries: [
+					mockEntry("hull-check", "overhaul", {
+						condition: { type: "hull-below", threshold: 30 },
+					}),
+				],
+			},
+		});
+		state.bodyMeshes = [mockUnsurveyed("Ceres")] as BodyEntry[];
+		rebuildEntityMaps();
+		expect(commanderDecide(ship)).toEqual({ action: "overhaul" });
+	});
+
+	it("defers refuel when fuel is above personal floor", () => {
+		// Fuel 15%, threshold 20%, judgment 0.9
+		// personalFloor = 5 + (20 - 5) * (1 - 0.9) = 5 + 1.5 = 6.5
+		// 15 > 6.5 → safe to defer → survey instead
+		const ship = mockShip({
+			hostPlanetName: "Ceres",
+			fuelKg: 7500,
+			fuelCapacityKg: 50000,
+			commander: { judgment: 0.9, experience: 30 },
+			commandTree: {
+				entries: [
+					mockEntry("fuel-check", "refuel", {
+						condition: { type: "fuel-below", threshold: 20 },
+					}),
+				],
+			},
+		});
+		state.bodyMeshes = [mockUnsurveyed("Ceres")] as BodyEntry[];
+		rebuildEntityMaps();
+		expect(commanderDecide(ship)).toEqual({ action: "survey" });
+	});
+
+	it("does not defer when below critical fuel threshold", () => {
+		// Fuel 3%, threshold 20%, judgment 0.9
+		// personalFloor = 5 + (20 - 5) * (1 - 0.9) = 6.5
+		// 3 < 6.5 → too risky → refuel
+		const ship = mockShip({
+			hostPlanetName: "Ceres",
+			fuelKg: 1500,
+			fuelCapacityKg: 50000,
+			commander: { judgment: 0.9, experience: 30 },
+			commandTree: {
+				entries: [
+					mockEntry("fuel-check", "refuel", {
+						condition: { type: "fuel-below", threshold: 20 },
+					}),
+				],
+			},
+		});
+		state.bodyMeshes = [mockUnsurveyed("Ceres")] as BodyEntry[];
+		rebuildEntityMaps();
+		expect(commanderDecide(ship)).toEqual({ action: "refuel" });
+	});
+});
+
+// --- commanderDecide ---
+
+describe("commanderDecide", () => {
+	beforeEach(() => {
+		state.bodyMeshes = [];
+	});
+
+	it("returns null when command tree is empty", () => {
+		const ship = mockShip({ commandTree: { entries: [] } });
+		expect(commanderDecide(ship)).toBeNull();
+	});
+
+	it("returns command tree result when no judgment override applies", () => {
+		const ship = mockShip({
+			hostPlanetName: "Mars",
+			commandTree: {
+				entries: [mockEntry("survey", "survey-nearest")],
+			},
+		});
+		expect(commanderDecide(ship)).toEqual({ action: "survey" });
+	});
+
+	it("integrates preemptive service at colony", () => {
+		// At colony, morale 50%, threshold 40%, judgment 0.8 → preemptive service fires
+		const ship = mockShip({
+			hostPlanetName: "Earth",
+			commander: { judgment: 0.8, experience: 20 },
+			crew: { count: 50, morale: 50, lastShoreLeave: 0, deploymentLimit: 180 },
+			commandTree: {
+				entries: [
+					mockEntry("morale-check", "shore-leave", {
+						condition: { type: "morale-below", threshold: 40 },
+					}),
+					mockEntry("survey", "survey-nearest"),
+				],
+			},
+		});
+		const result = commanderDecide(ship);
+		expect(result).toEqual({ action: "shore-leave" });
+	});
+
+	it("integrates defer maintenance in the field", () => {
+		const ceres = {
+			data: { name: "Ceres", type: "Dwarf Planet", distance: 2.77 },
+			isMoon: false,
+			survey: { surveyLevel: 0, deposits: [] },
+		} as unknown as BodyEntry;
+		state.bodyMeshes = [ceres] as BodyEntry[];
+		rebuildEntityMaps();
+
+		// Hull 25%, threshold 30%, judgment 0.8 → defers overhaul to survey
+		const ship = mockShip({
+			hostPlanetName: "Ceres",
+			commander: { judgment: 0.8, experience: 20 },
+			maintenance: { age: 100, supplies: 50, maxSupplies: 100, hullIntegrity: 25 },
+			commandTree: {
+				entries: [
+					mockEntry("hull-check", "overhaul", {
+						condition: { type: "hull-below", threshold: 30 },
+					}),
+					mockEntry("survey", "survey-nearest"),
+				],
+			},
+		});
+		const result = commanderDecide(ship);
+		expect(result).toEqual({ action: "survey" });
 	});
 });
 
