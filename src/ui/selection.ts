@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { MAX_CLICK_DIST, state } from "../core/state";
+import { getResourceDef } from "../data/resources";
 import {
 	brachistochroneDeltaV,
 	brachistochroneTime,
@@ -24,7 +25,8 @@ import type {
 	FlyToState,
 	PlanetEntry,
 } from "../types";
-import { isCometEntry, isShipEntry } from "../types";
+import { isCometEntry, isShipEntry, isSurveyable } from "../types";
+import { renderCommandTree } from "./commands";
 
 const ZOOM_DIST_RECENTER: number = ZOOM_BASE / 0.25;
 const ZOOM_DIST_STAR: number = 75;
@@ -177,9 +179,7 @@ export function selectBody(entry: BodyEntry): void {
 		const statusText: string =
 			entry.shipState === "transferring"
 				? `Transfer → ${entry.transferTarget}`
-				: entry.shipState === "departing"
-					? `Departing ${entry.hostPlanetName}...`
-					: `Orbiting ${entry.hostPlanetName}`;
+				: `Orbiting ${entry.hostPlanetName}`;
 		const periodEl = document.getElementById("info-period");
 		if (periodEl) {
 			periodEl.textContent = statusText;
@@ -213,11 +213,31 @@ export function selectBody(entry: BodyEntry): void {
 	const engineRow: HTMLElement | null = document.getElementById("info-ship-engine");
 	const fuelRow: HTMLElement | null = document.getElementById("info-ship-fuel");
 	const deltaVRow: HTMLElement | null = document.getElementById("info-ship-deltav");
+	const crewRow: HTMLElement | null = document.getElementById("info-crew-row");
+	const moraleRow: HTMLElement | null = document.getElementById("info-morale-row");
+	const hullRow: HTMLElement | null = document.getElementById("info-hull-row");
+	const suppliesRow: HTMLElement | null = document.getElementById("info-supplies-row");
+	const actionRow: HTMLElement | null = document.getElementById("info-action-row");
+	const resourcesSection: HTMLElement | null = document.getElementById("info-resources-section");
+	const cmdContainer: HTMLElement | null = document.getElementById("command-tree-container");
+
 	if (isShipEntry(entry)) {
 		transferRow?.classList.remove("hidden");
 		engineRow?.classList.remove("hidden");
 		fuelRow?.classList.remove("hidden");
 		deltaVRow?.classList.remove("hidden");
+		crewRow?.classList.remove("hidden");
+		moraleRow?.classList.remove("hidden");
+		hullRow?.classList.remove("hidden");
+		suppliesRow?.classList.remove("hidden");
+		actionRow?.classList.remove("hidden");
+		resourcesSection?.classList.add("hidden");
+
+		// Render command tree editor
+		if (cmdContainer) {
+			cmdContainer.classList.remove("hidden");
+			renderCommandTree(entry, cmdContainer);
+		}
 
 		// Engine info
 		const engine = ENGINE_TYPES.find((e) => e.id === entry.engineId);
@@ -269,11 +289,146 @@ export function selectBody(entry: BodyEntry): void {
 					select.appendChild(opt);
 				});
 		}
+
+		// Crew
+		const crewValueEl = document.getElementById("info-crew-value");
+		if (crewValueEl) {
+			crewValueEl.textContent = `${entry.crew.count} crew`;
+		}
+
+		// Morale
+		const moraleValueEl = document.getElementById("info-morale-value");
+		if (moraleValueEl) {
+			const moralePct = Math.round(entry.crew.morale);
+			moraleValueEl.textContent = `${moralePct}%`;
+			moraleValueEl.style.color = moralePct > 70 ? "#4a6a4a" : moralePct > 40 ? "#aaaa44" : "#aa4444";
+		}
+
+		// Hull integrity
+		const hullValueEl = document.getElementById("info-hull-value");
+		if (hullValueEl) {
+			const hullPct = Math.round(entry.maintenance.hullIntegrity);
+			hullValueEl.textContent = `${hullPct}%`;
+			hullValueEl.style.color = hullPct > 70 ? "#4a6a4a" : hullPct > 40 ? "#aaaa44" : "#aa4444";
+		}
+
+		// Supplies
+		const suppliesValueEl = document.getElementById("info-supplies-value");
+		if (suppliesValueEl) {
+			suppliesValueEl.textContent = `${entry.maintenance.supplies} / ${entry.maintenance.maxSupplies} MSP`;
+		}
+
+		// Action
+		const actionValueEl = document.getElementById("info-action-value");
+		if (actionValueEl) {
+			let actionText = "Idle";
+			const action = entry.action;
+			if (entry.shipState === "transferring") {
+				actionText = `In transit to ${entry.transferTarget}`;
+			} else if (action.type === "survey-nearest") {
+				const elapsed = Math.floor(action.progress * action.duration);
+				actionText = `Surveying ${action.target ?? "?"} (${elapsed}d/${action.duration}d)`;
+			} else if (action.type === "shore-leave") {
+				const elapsed = Math.floor(action.progress * action.duration);
+				actionText = `Shore Leave (${elapsed}d/${action.duration}d)`;
+			} else if (action.type === "overhaul") {
+				const elapsed = Math.floor(action.progress * action.duration);
+				actionText = `Overhaul (${elapsed}d/${action.duration}d)`;
+			} else if (action.type === "refuel") {
+				actionText = "Refueling...";
+			}
+			actionValueEl.textContent = actionText;
+		}
 	} else {
 		transferRow?.classList.add("hidden");
 		engineRow?.classList.add("hidden");
 		fuelRow?.classList.add("hidden");
 		deltaVRow?.classList.add("hidden");
+		crewRow?.classList.add("hidden");
+		moraleRow?.classList.add("hidden");
+		hullRow?.classList.add("hidden");
+		suppliesRow?.classList.add("hidden");
+		actionRow?.classList.add("hidden");
+		cmdContainer?.classList.add("hidden");
+
+		// Resource viewer for surveyed bodies
+		if (isSurveyable(entry) && entry.survey.surveyLevel > 0) {
+			resourcesSection?.classList.remove("hidden");
+
+			const surveyStatusEl = document.getElementById("info-survey-status");
+			if (surveyStatusEl) {
+				surveyStatusEl.textContent = `Surveyed (Lv.${entry.survey.surveyLevel})`;
+			}
+
+			const resourcesList = document.getElementById("info-resources-list");
+			if (resourcesList) {
+				resourcesList.innerHTML = "";
+
+				const categoryColors: Record<string, string> = {
+					metal: "#aaccaa",
+					volatile: "#88aacc",
+					industrial: "#ccaa88",
+					radioactive: "#cc8888",
+					umbral: "#aa88cc",
+				};
+
+				const visibleDeposits = entry.survey.deposits
+					.filter((d) => d.minSurveyLevel <= entry.survey.surveyLevel)
+					.slice()
+					.sort((a, b) => b.quantity - a.quantity);
+
+				for (const deposit of visibleDeposits) {
+					const def = getResourceDef(deposit.resourceId);
+					if (!def) continue;
+
+					const row = document.createElement("div");
+					row.style.cssText = "display:flex;gap:6px;align-items:baseline;font-size:11px;padding:1px 0;";
+
+					const symbolEl = document.createElement("span");
+					symbolEl.textContent = def.symbol;
+					symbolEl.style.cssText = `color:${categoryColors[def.category] ?? "#aaaaaa"};font-weight:bold;min-width:28px;`;
+
+					const nameEl = document.createElement("span");
+					nameEl.textContent = def.name;
+					nameEl.style.cssText =
+						"flex:1;color:#cccccc;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+
+					const qtyEl = document.createElement("span");
+					qtyEl.textContent = `${deposit.quantity.toLocaleString()}t`;
+					qtyEl.style.cssText = "color:#aaaaaa;white-space:nowrap;";
+
+					// ASCII accessibility bar: 5 chars, e.g. [====.]
+					const filled = Math.round(deposit.accessibility * 5);
+					const bar = `[${"=".repeat(filled)}${".".repeat(5 - filled)}]`;
+					const barEl = document.createElement("span");
+					barEl.textContent = bar;
+					barEl.style.cssText = "color:#888888;font-family:monospace;white-space:nowrap;";
+
+					row.appendChild(symbolEl);
+					row.appendChild(nameEl);
+					row.appendChild(qtyEl);
+					row.appendChild(barEl);
+					resourcesList.appendChild(row);
+				}
+
+				// Mining value score
+				const score = entry.survey.deposits
+					.filter((d) => d.minSurveyLevel <= entry.survey.surveyLevel)
+					.reduce((sum, d) => sum + d.quantity * d.accessibility, 0);
+				const scoreLabel =
+					score > 100000 ? "High" : score > 10000 ? "Medium" : score > 0 ? "Low" : "None";
+				const scoreColor =
+					score > 100000 ? "#4a6a4a" : score > 10000 ? "#aaaa44" : score > 0 ? "#888888" : "#666666";
+
+				const scoreRow = document.createElement("div");
+				scoreRow.style.cssText =
+					"padding:4px 0 2px;font-size:11px;border-top:1px solid #333;margin-top:2px;";
+				scoreRow.innerHTML = `Mining Value: <span style="color:${scoreColor}">${scoreLabel}</span>`;
+				resourcesList.appendChild(scoreRow);
+			}
+		} else {
+			resourcesSection?.classList.add("hidden");
+		}
 	}
 }
 
@@ -319,6 +474,62 @@ export function updateFollow(): void {
 	camera.position.z += dz;
 }
 
+function updateShipStatus(entry: ShipEntry): void {
+	// Morale (live)
+	const moraleEl = document.getElementById("info-morale-value");
+	if (moraleEl) {
+		const m = Math.round(entry.crew.morale);
+		moraleEl.textContent = `${m}%`;
+		moraleEl.style.color = m > 70 ? "#4a6a4a" : m > 40 ? "#aaaa44" : "#aa4444";
+	}
+
+	// Hull (live)
+	const hullEl = document.getElementById("info-hull-value");
+	if (hullEl) {
+		const h = Math.round(entry.maintenance.hullIntegrity);
+		hullEl.textContent = `${h}%`;
+		hullEl.style.color = h > 70 ? "#4a6a4a" : h > 40 ? "#aaaa44" : "#aa4444";
+	}
+
+	// Supplies (live)
+	const suppliesEl = document.getElementById("info-supplies-value");
+	if (suppliesEl) {
+		suppliesEl.textContent = `${entry.maintenance.supplies} / ${entry.maintenance.maxSupplies} MSP`;
+	}
+
+	// Fuel (live)
+	const fuelEl = document.getElementById("ship-fuel-value");
+	if (fuelEl) {
+		const pct =
+			entry.fuelCapacityKg > 0 ? Math.round((entry.fuelKg / entry.fuelCapacityKg) * 100) : 0;
+		fuelEl.textContent = `${(entry.fuelKg / 1000).toFixed(2)}t / ${(entry.fuelCapacityKg / 1000).toFixed(2)}t (${pct}%)`;
+	}
+
+	// Action (live)
+	const actionEl = document.getElementById("info-action-value");
+	if (actionEl) {
+		let text = "Idle";
+		const action = entry.action;
+		if (entry.shipState === "transferring") {
+			text = `In transit to ${entry.transferTarget}`;
+		} else if (action.type === "survey-nearest" && action.startTime > 0) {
+			const elapsed = Math.floor(action.progress * action.duration);
+			text = `Surveying ${action.target ?? "?"} (${elapsed}d/${action.duration}d)`;
+		} else if (action.type === "shore-leave" && action.startTime > 0) {
+			const elapsed = Math.floor(action.progress * action.duration);
+			text = `Shore Leave (${elapsed}d/${action.duration}d)`;
+		} else if (action.type === "overhaul" && action.startTime > 0) {
+			const elapsed = Math.floor(action.progress * action.duration);
+			text = `Overhaul (${elapsed}d/${action.duration}d)`;
+		} else if (action.type === "refuel") {
+			text = "Refueling...";
+		} else if (action.type === "survey-nearest") {
+			text = `En route to ${action.target ?? "?"}`;
+		}
+		actionEl.textContent = text;
+	}
+}
+
 export function updateInfoPosition(): void {
 	if (state.selectedBody) {
 		const pos: THREE.Vector3 = state.selectedBody.mesh.position;
@@ -326,6 +537,10 @@ export function updateInfoPosition(): void {
 		if (infoPositionEl && text !== lastInfoPosText) {
 			infoPositionEl.textContent = text;
 			lastInfoPosText = text;
+		}
+		// Live-update ship status every frame
+		if (isShipEntry(state.selectedBody)) {
+			updateShipStatus(state.selectedBody);
 		}
 	}
 }

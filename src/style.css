@@ -512,3 +512,119 @@ body {
 ::-webkit-scrollbar-thumb:hover {
 	background: #3a4a3a;
 }
+
+/* Command tree editor */
+.cmd-tree {
+	margin: 4px 0;
+}
+.cmd-row {
+	display: flex;
+	align-items: center;
+	gap: 2px;
+	padding: 2px 0;
+	font-size: 10px;
+	font-family: "Courier New", monospace;
+	color: #99aa99;
+}
+.cmd-btn {
+	background: none;
+	border: 1px solid #2a3a2a;
+	color: #6a8a6a;
+	cursor: pointer;
+	padding: 0 3px;
+	font-size: 9px;
+	font-family: "Courier New", monospace;
+	line-height: 14px;
+}
+.cmd-btn:hover {
+	border-color: #4a6a4a;
+	color: #aaccaa;
+}
+.cmd-btn:disabled {
+	opacity: 0.3;
+	cursor: default;
+}
+.cmd-condition {
+	color: #888a66;
+}
+.cmd-command {
+	color: #6a8a6a;
+}
+.cmd-toggle {
+	cursor: pointer;
+}
+.cmd-toggle-on {
+	color: #6a8a6a;
+}
+.cmd-toggle-off {
+	color: #3a4a3a;
+}
+.cmd-add-btn {
+	background: none;
+	border: 1px solid #2a3a2a;
+	color: #6a8a6a;
+	cursor: pointer;
+	padding: 2px 6px;
+	font-size: 10px;
+	font-family: "Courier New", monospace;
+	margin-top: 4px;
+	width: 100%;
+}
+.cmd-add-btn:hover {
+	border-color: #4a6a4a;
+	color: #aaccaa;
+}
+.cmd-preset-list {
+	background: #0d0d14;
+	border: 1px solid #2a3a2a;
+	padding: 2px;
+	margin-top: 2px;
+}
+.cmd-preset-item {
+	padding: 2px 4px;
+	cursor: pointer;
+	font-size: 10px;
+	color: #6a8a6a;
+}
+.cmd-preset-item:hover {
+	background: #1a2a1a;
+	color: #aaccaa;
+}
+
+/* Notification styles */
+.notif-dropdown {
+	background: #0d0d14;
+	border: 1px solid #2a3a2a;
+	font-family: "Courier New", monospace;
+	font-size: 10px;
+}
+.notif-entry {
+	padding: 4px 6px;
+	border-bottom: 1px solid #1a2a1a;
+	cursor: pointer;
+	color: #6a8a6a;
+}
+.notif-entry:hover {
+	background: #1a2a1a;
+}
+.notif-entry-read {
+	opacity: 0.5;
+}
+.notif-time {
+	color: #4a5a4a;
+	margin-right: 4px;
+}
+.notif-icon {
+	margin-right: 4px;
+}
+.notif-mark-all {
+	padding: 3px 6px;
+	color: #4a6a4a;
+	cursor: pointer;
+	text-align: right;
+	font-size: 9px;
+	border-bottom: 1px solid #2a3a2a;
+}
+.notif-mark-all:hover {
+	color: #aaccaa;
+}

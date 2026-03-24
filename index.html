@@ -15,10 +15,13 @@
         <span style="flex:1"></span>
         <button type="button" class="header-btn" id="btn-pause">||</button>
         <span class="header-clickable" id="speed-selector-btn">1 Day ▾</span>
+        <span id="notif-badge" class="header-btn" style="display:none; color:#cc8844;">0</span>
         <span class="header-sep">|</span>
         <span id="time-display">2038-01-20</span>
         <span id="perf-display" class="hidden"></span>
     </div>
+
+    <div id="notif-dropdown" class="panel hidden" style="position:fixed; z-index:20; max-height:300px; overflow-y:auto; width:280px;"></div>
 
     <div id="speed-selector-dropdown" class="panel hidden">
         <div class="panel-header">Time Scale</div>
@@ -69,6 +72,33 @@
             <div id="info-transfer-status" class="info-row hidden">
                 <span class="info-label"></span><span id="transfer-status-value"></span>
             </div>
+            <div id="info-crew-row" class="info-row hidden">
+                <span class="info-label">Crew</span>
+                <span id="info-crew-value"></span>
+            </div>
+            <div id="info-morale-row" class="info-row hidden">
+                <span class="info-label">Morale</span>
+                <span id="info-morale-value"></span>
+            </div>
+            <div id="info-hull-row" class="info-row hidden">
+                <span class="info-label">Hull</span>
+                <span id="info-hull-value"></span>
+            </div>
+            <div id="info-supplies-row" class="info-row hidden">
+                <span class="info-label">Supplies</span>
+                <span id="info-supplies-value"></span>
+            </div>
+            <div id="info-action-row" class="info-row hidden">
+                <span class="info-label">Action</span>
+                <span id="info-action-value"></span>
+            </div>
+            <div id="info-resources-section" class="hidden">
+                <div class="info-row">
+                    <span class="info-label" id="info-survey-status"></span>
+                </div>
+                <div id="info-resources-list"></div>
+            </div>
+            <div id="command-tree-container" class="hidden"></div>
         </div>
     </div>
 
@@ -84,6 +114,7 @@
 
     <div id="status-bar">
         <span style="flex:1"></span>
+        <span id="ship-activity" style="color:#6a8a6a; font-size:11px;"></span>
         <span id="zoom-display">Zoom: 1.00x</span>
     </div>
 

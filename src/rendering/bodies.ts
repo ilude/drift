@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { state } from "../core/state";
 import { seededRandom } from "../core/utils";
+import { estimateMass } from "../data/system-generator";
 import {
 	inclinedPosition,
 	keplerRadius,
@@ -115,6 +116,11 @@ export function findPlanetEntry(name: string): PlanetEntry | undefined {
 	return state.bodyMeshes.find((e) => e.data.name === name && !e.isMoon && !isShipEntry(e)) as
 		| PlanetEntry
 		| undefined;
+}
+
+/** Find any body by name (planet, moon, comet — anything except ships). */
+export function findBodyEntry(name: string): BodyEntry | undefined {
+	return state.bodyMeshes.find((e) => e.data.name === name && !isShipEntry(e));
 }
 
 const sharedMoonGeoms: THREE.SphereGeometry[] = LOD_SEGS.map(
@@ -352,7 +358,7 @@ export function createBody(data: BodyData, parentMesh: THREE.Mesh | null): Plane
 		parentMesh,
 		moons: [],
 		isMoon,
-		...(isStar ? {} : { survey: { surveyed: false } }),
+		...(isStar ? {} : { survey: { surveyLevel: 0, deposits: [] } }),
 		screenSize: size,
 		baseSize: size,
 		realisticSize: isMoon || !data.radius ? size : realisticSize(data.radius),
@@ -454,6 +460,7 @@ export function createComets(): void {
 				incRad,
 				nodeRad,
 				periRad,
+				mass: comet.mass,
 			} as CometEntryData,
 			mesh,
 			selRing,
@@ -467,7 +474,7 @@ export function createComets(): void {
 			moons: [] as BodyEntry[],
 			isMoon: false,
 			isComet: true as const,
-			survey: { surveyed: false },
+			survey: { surveyLevel: 0, deposits: [] },
 			screenSize: size,
 			geomLevels: sharedCometGeoms,
 			lodLevel: 0,
@@ -583,7 +590,8 @@ export function createAsteroidBelts(): AsteroidBeltEntry[] {
 				au: Math.round(au * 1000) / 1000,
 				period: Math.round(period * 100) / 100,
 				diameter,
-				survey: { surveyed: false },
+				mass: estimateMass(diameter / 2, 3000),
+				survey: { surveyLevel: 0, deposits: [] },
 			});
 		}
 

@@ -29,6 +29,7 @@ interface RawPlanetEntry {
 	e: number;
 	period: number;
 	radius: number;
+	mass: number;
 	color: string;
 	moons: MoonData[];
 	_radiusEarths: number;
@@ -200,6 +201,14 @@ const ROMAN: string[] = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX",
 
 const EARTH_RADIUS_KM: number = 6371;
 const SOLAR_RADIUS_KM: number = 695700;
+const SOLAR_MASS_KG: number = 1.989e30;
+
+// Density assumptions (kg/m³): rocky: 5000, subNeptune: 3000, iceGiant: 1600, gasGiant: 1300
+// dwarf planet: 2000, moon: 3000, comet: 500
+export function estimateMass(radiusKm: number, densityKgM3: number): number {
+	const radiusM = radiusKm * 1000;
+	return (4 / 3) * Math.PI * radiusM ** 3 * densityKgM3;
+}
 
 // --- Naming ---
 
@@ -230,6 +239,7 @@ function generateStar(rng: () => number, name: string): StarResult {
 			e: 0,
 			period: 0,
 			radius: Math.round(radius * SOLAR_RADIUS_KM),
+			mass: mass * SOLAR_MASS_KG,
 			color: spec.color,
 			emissive: true,
 			moons: [],
@@ -279,6 +289,7 @@ function generateBinaryConfig(
 		e: 0,
 		period: secPeriod,
 		radius: Math.round(secRadius * SOLAR_RADIUS_KM),
+		mass: secondaryMass * SOLAR_MASS_KG,
 		color: secSpec.color,
 		emissive: true,
 		moons: [],
@@ -359,6 +370,13 @@ function generatePlanets(
 	return planets;
 }
 
+const PLANET_DENSITY: Record<PlanetCategory, number> = {
+	rocky: 5000,
+	subNeptune: 3000,
+	iceGiant: 1600,
+	gasGiant: 1300,
+};
+
 function makePlanetEntry(
 	rng: () => number,
 	distAU: number,
@@ -377,6 +395,7 @@ function makePlanetEntry(
 		e: ecc,
 		period: Math.round(period * 1000) / 1000,
 		radius: radiusKm,
+		mass: estimateMass(radiusKm, PLANET_DENSITY[cat]),
 		color,
 		moons: [],
 		_radiusEarths: radiusEarths,
@@ -583,6 +602,7 @@ function generateMoons(
 			e: Math.round(rngFloat(rng, 0.0, 0.05) * 1000) / 1000,
 			period: Math.round(period * 100000) / 100000,
 			radius: moonRadiusKm,
+			mass: estimateMass(moonRadiusKm, 3000),
 			color: rngPick(rng, MOON_COLORS),
 		});
 	}
@@ -717,6 +737,7 @@ function generateComets(
 			node: rngFloat(rng, 0, 360),
 			peri: rngFloat(rng, 0, 360),
 			color: rngPick(rng, COMET_COLORS),
+			mass: estimateMass(rng() * 5 + 1, 500),
 		});
 	}
 
@@ -757,6 +778,8 @@ export function generateSystem(seed: number): SystemData {
 				? "Dwarf Planet"
 				: "Planet";
 		const moons = generateMoons(rng, name, p._radiusEarths, p._category);
+		// Dwarf planets and detached objects use lower density (icy bodies)
+		const mass = p._isDwarf || p._isDetached ? estimateMass(p.radius, 2000) : p.mass;
 
 		bodies.push({
 			name,
@@ -765,6 +788,7 @@ export function generateSystem(seed: number): SystemData {
 			e: p.e,
 			period: p.period,
 			radius: p.radius,
+			mass,
 			color: p.color,
 			moons,
 		});

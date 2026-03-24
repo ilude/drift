@@ -204,16 +204,16 @@ describe("ENGINE_TYPES", () => {
 		});
 	});
 
-	it("accelG values are 1, 10, 50, 200", () => {
+	it("accelG values are 0.1, 10, 50, 200", () => {
 		const accels = ENGINE_TYPES.map((e) => e.accelG);
-		expect(accels).toEqual([1, 10, 50, 200]);
+		expect(accels).toEqual([0.1, 10, 50, 200]);
 	});
 });
 
 // --- Transfer feasibility with brachistochrone ---
 
 describe("checkTransfer", () => {
-	it("Earth to Mars with conventional TN (1g): feasible, under 5 days", () => {
+	it("Earth to Mars with conventional TN (0.1g): feasible, under 10 days", () => {
 		const ship = {
 			fuelKg: 500_000,
 			dryMassKg: 5_000,
@@ -221,8 +221,8 @@ describe("checkTransfer", () => {
 		};
 		const result = checkTransfer(1.0, 1.524, 1.0, ship);
 		expect(result.feasible).toBe(true);
-		expect(result.transferDays).toBeLessThan(5);
-		expect(result.deltaVRequired).toBeCloseTo(1755, -2);
+		expect(result.transferDays).toBeLessThan(10);
+		expect(result.deltaVRequired).toBeCloseTo(555, -2);
 	});
 
 	it("Earth to Neptune with extreme TN: feasible, under 5 days", () => {

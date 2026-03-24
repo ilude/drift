@@ -11,11 +11,10 @@ vi.mock("../rendering/scene", () => ({
 }));
 
 import {
-	applyCaptureBlend,
 	computeHermiteKnots,
+	distanceKmBetween,
 	hermiteEval,
 	predictTargetWorld,
-	SHIP_LOCAL_ORBIT,
 } from "../rendering/ship-transfer";
 import type { PlanetEntry } from "../types";
 
@@ -75,63 +74,14 @@ describe("hermiteEval", () => {
 });
 
 // ──────────────────────────────────────────────
-// applyCaptureBlend
-// ──────────────────────────────────────────────
-describe("applyCaptureBlend", () => {
-	it("returns 'blending' when tgtEntry is undefined", () => {
-		const p = { x: 0, y: 0, z: 0 };
-		expect(applyCaptureBlend(p, undefined, 0.5)).toBe("blending");
-	});
-
-	it("returns 'complete' when already within SHIP_LOCAL_ORBIT", () => {
-		const planet = makePlanetEntry(10, 0, 1.0);
-		// Place p exactly at planet center — dist = 0 < SHIP_LOCAL_ORBIT
-		const p = { x: 10, y: 0, z: 0 };
-		expect(applyCaptureBlend(p, planet, 1.0)).toBe("complete");
-	});
-
-	it("returns 'blending' when outside orbit radius", () => {
-		const planet = makePlanetEntry(0, 0, 1.0);
-		const p = { x: 100, y: 0, z: 0 };
-		expect(applyCaptureBlend(p, planet, 0.5)).toBe("blending");
-	});
-
-	it("blend at t=0 leaves position essentially unchanged (blend ≈ 0)", () => {
-		const planet = makePlanetEntry(0, 0, 1.0);
-		const p = { x: 100, y: 0, z: 0 };
-		const xBefore = p.x;
-		applyCaptureBlend(p, planet, 0);
-		// t^4 = 0, no movement expected
-		expect(p.x).toBeCloseTo(xBefore);
-	});
-
-	it("blend at t=1 pulls position toward orbit radius", () => {
-		const planet = makePlanetEntry(0, 0, 1.0);
-		const p = { x: 100, y: 0, z: 0 };
-		applyCaptureBlend(p, planet, 1.0);
-		// After full blend, p should be at SHIP_LOCAL_ORBIT along x-axis
-		expect(p.x).toBeCloseTo(SHIP_LOCAL_ORBIT);
-		expect(p.z).toBeCloseTo(0);
-	});
-
-	it("mutates p in place", () => {
-		const planet = makePlanetEntry(0, 0, 1.0);
-		const p = { x: 50, y: 0, z: 0 };
-		const originalRef = p;
-		applyCaptureBlend(p, planet, 0.8);
-		expect(p).toBe(originalRef);
-	});
-});
-
-// ──────────────────────────────────────────────
 // predictTargetWorld
 // ──────────────────────────────────────────────
 describe("predictTargetWorld", () => {
-	it("zero days returns current position (circular orbit approximation)", () => {
+	it("zero days returns current position", () => {
 		const planet = makePlanetEntry(100, 0, 1.0, 0.01);
 		const result = predictTargetWorld(planet, 0);
-		// Angle is atan2(0, 100) = 0; scaleDist(1.0) * cos(0) = scaleDist(1.0)
-		expect(result.x).toBeGreaterThan(0);
+		// Uses mesh position directly: currentR = 100, angle = 0
+		expect(result.x).toBeCloseTo(100);
 		expect(result.z).toBeCloseTo(0);
 	});
 
@@ -164,53 +114,91 @@ describe("predictTargetWorld", () => {
 describe("computeHermiteKnots", () => {
 	it("departure point matches given depart coordinates", () => {
 		const planet = makePlanetEntry(100, 0, 1.0);
-		const knots = computeHermiteKnots(10, 5, 0, planet, 0);
+		const knots = computeHermiteKnots(10, 5, planet, 0);
 		expect(knots.p0x).toBeCloseTo(10);
 		expect(knots.p0z).toBeCloseTo(5);
 	});
 
 	it("arrival point matches predicted target world position", () => {
-		// Planet at (100, 0) with speed=0 so it won't move
 		const planet = makePlanetEntry(100, 0, 1.0, 0);
-		const knots = computeHermiteKnots(0, 0, 0, planet, 0);
-		// predictTargetWorld(planet, 0) with speed=0 → atan2(0,100)=0, r = scaleDist(1.0)
-		const expectedX = Math.sqrt(1.0) * 200; // DIST_SCALE=200
-		expect(knots.p1x).toBeCloseTo(expectedX, 2);
+		const knots = computeHermiteKnots(0, 0, planet, 0);
+		expect(knots.p1x).toBeCloseTo(100, 2);
 		expect(knots.p1z).toBeCloseTo(0, 2);
 	});
 
-	it("departure tangent is rotated 90° from departAngle (CCW perpendicular)", () => {
+	it("departure tangent points directly toward target", () => {
 		const planet = makePlanetEntry(100, 0, 1.0, 0);
-		const angle = Math.PI / 4; // 45°
-		const knots = computeHermiteKnots(0, 0, angle, planet, 0);
-		const tangentDir = angle + Math.PI / 2;
-		// The tangent direction should point in tangentDir; check unit vector matches
+		const knots = computeHermiteKnots(0, 0, planet, 0);
+		// Both tangents should point along +x (direct line to target)
 		const mag = Math.hypot(knots.t0x, knots.t0z);
 		expect(mag).toBeGreaterThan(0);
-		expect(knots.t0x / mag).toBeCloseTo(Math.cos(tangentDir), 5);
-		expect(knots.t0z / mag).toBeCloseTo(Math.sin(tangentDir), 5);
+		expect(knots.t0x / mag).toBeCloseTo(1, 3);
+		expect(knots.t0z / mag).toBeCloseTo(0, 3);
 	});
 
-	it("arrival tangent is perpendicular to radial direction (CCW orbit)", () => {
-		// Planet along +x axis; radial direction is 0°, tangent should be 90° (CCW)
+	it("arrival tangent points along approach direction", () => {
 		const planet = makePlanetEntry(100, 0, 1.0, 0);
-		const knots = computeHermiteKnots(0, 0, 0, planet, 0);
-		// targetAngle = atan2(0, predictedX) = 0; targetTangentDir = π/2
+		const knots = computeHermiteKnots(0, 0, planet, 0);
 		const mag = Math.hypot(knots.t1x, knots.t1z);
 		expect(mag).toBeGreaterThan(0);
-		const ux = knots.t1x / mag;
-		const uz = knots.t1z / mag;
-		expect(ux).toBeCloseTo(Math.cos(Math.PI / 2), 5);
-		expect(uz).toBeCloseTo(Math.sin(Math.PI / 2), 5);
+		expect(knots.t1x / mag).toBeCloseTo(1, 3);
+		expect(knots.t1z / mag).toBeCloseTo(0, 3);
 	});
 
 	it("tangent magnitudes are proportional to travel distance", () => {
 		const nearPlanet = makePlanetEntry(10, 0, 0.1, 0);
 		const farPlanet = makePlanetEntry(200, 0, 4.0, 0);
-		const kNear = computeHermiteKnots(0, 0, 0, nearPlanet, 0);
-		const kFar = computeHermiteKnots(0, 0, 0, farPlanet, 0);
+		const kNear = computeHermiteKnots(0, 0, nearPlanet, 0);
+		const kFar = computeHermiteKnots(0, 0, farPlanet, 0);
 		const nearMag = Math.hypot(kNear.t0x, kNear.t0z);
 		const farMag = Math.hypot(kFar.t0x, kFar.t0z);
 		expect(farMag).toBeGreaterThan(nearMag);
+	});
+});
+
+// ──────────────────────────────────────────────
+// distanceKmBetween
+// ──────────────────────────────────────────────
+describe("distanceKmBetween", () => {
+	const AU_TO_KM = 149_597_870.7;
+
+	// Helper: place a body at a given AU radius and angle (radians) in the XZ plane.
+	// DIST_SCALE = 200 (from math/orbit.ts), world coord = sqrt(au) * DIST_SCALE
+	const DIST_SCALE = 200;
+	function makeBodyAtAngle(auRadius: number, angleRad: number, isMoon = false) {
+		const worldR = Math.sqrt(auRadius) * DIST_SCALE;
+		return {
+			mesh: { position: { x: Math.cos(angleRad) * worldR, y: 0, z: Math.sin(angleRad) * worldR } },
+			data: { name: "Test", distance: auRadius },
+			isMoon,
+		} as unknown as Parameters<typeof distanceKmBetween>[0];
+	}
+
+	it("same position returns zero distance", () => {
+		const a = makeBodyAtAngle(1.0, 0);
+		const b = makeBodyAtAngle(1.0, 0);
+		expect(distanceKmBetween(a, b)).toBeCloseTo(0);
+	});
+
+	it("opposite sides of star at same radius returns 2x the radius", () => {
+		// Two bodies at 1 AU on opposite sides: chord = 2 AU
+		const a = makeBodyAtAngle(1.0, 0);
+		const b = makeBodyAtAngle(1.0, Math.PI);
+		expect(distanceKmBetween(a, b)).toBeCloseTo(2.0 * AU_TO_KM, -3);
+	});
+
+	it("is greater than radial difference for bodies on opposite sides", () => {
+		// 1 AU and 1.5 AU on opposite sides: real dist ≈ 2.5 AU, old formula gave 0.5 AU
+		const a = makeBodyAtAngle(1.0, 0);
+		const b = makeBodyAtAngle(1.5, Math.PI);
+		const dist = distanceKmBetween(a, b);
+		const radialDiff = Math.abs(1.5 - 1.0) * AU_TO_KM;
+		expect(dist).toBeGreaterThan(radialDiff * 4); // should be ~2.5x larger, not 0.5 AU
+	});
+
+	it("90 degrees apart at same radius returns sqrt(2) times the radius", () => {
+		const a = makeBodyAtAngle(1.0, 0);
+		const b = makeBodyAtAngle(1.0, Math.PI / 2);
+		expect(distanceKmBetween(a, b)).toBeCloseTo(Math.SQRT2 * AU_TO_KM, -3);
 	});
 });

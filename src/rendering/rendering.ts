@@ -11,16 +11,12 @@ import { isTransferComplete } from "../math/transfer";
 import { moonOrbitScale } from "../math/visual";
 import type { CategoryKey, PlanetEntry } from "../types";
 import { isCometEntry, isShipEntry } from "../types";
-import { COMET_TRAIL_STEP_ARC, findPlanetEntry, orbitToWorld } from "./bodies";
+import { COMET_TRAIL_STEP_ARC, findBodyEntry, orbitToWorld } from "./bodies";
 import { ZOOM_BASE } from "./scene";
 import {
-	applyCaptureBlend,
-	beginTransfer,
 	completeTransfer,
-	predictTargetWorld,
 	SHIP_LOCAL_ORBIT,
 	transferPosition,
-	updateDepartureArc,
 	updateTransferPath,
 } from "./ship-transfer";
 
@@ -181,70 +177,40 @@ export function updatePositions(dt: number, camDist: number): void {
 		}
 
 		if (isShipEntry(entry)) {
-			if (entry.shipState === "orbiting" || entry.shipState === "departing") {
-				entry.lastAngle = entry.angle;
+			if (entry.shipState === "orbiting") {
+				// Station-keeping: hold position near host body with slow visual drift
 				entry.angle += entry.speed * simDt;
-
-				// Local orbit around host planet
-				const host = findPlanetEntry(entry.hostPlanetName);
+				const host = findBodyEntry(entry.hostPlanetName);
 				if (host) {
-					const lx = Math.cos(entry.angle) * SHIP_LOCAL_ORBIT;
-					const lz = Math.sin(entry.angle) * SHIP_LOCAL_ORBIT;
-					entry.mesh.position.set(host.mesh.position.x + lx, 0, host.mesh.position.z + lz);
-
-					// Check if we've crossed the optimal departure angle (frame-safe crossing detector)
-					if (entry.shipState === "departing" && entry.pendingTransfer) {
-						const crossed = hasAngleCrossed(
-							entry.lastAngle ?? entry.angle,
-							entry.angle,
-							entry.pendingTransfer.optimalLocalAngle,
-						);
-						if (crossed) beginTransfer(entry);
-					}
+					// Offset scales with host's visual size so ship doesn't clip inside large bodies
+					const hostSize = host.mesh.userData.baseSize ?? 0.02;
+					const offset = Math.max(SHIP_LOCAL_ORBIT * 0.5, hostSize * 1.5);
+					const ox = Math.cos(entry.angle) * offset;
+					const oz = Math.sin(entry.angle) * offset;
+					entry.mesh.position.set(
+						host.mesh.position.x + ox,
+						host.mesh.position.y,
+						host.mesh.position.z + oz,
+					);
 				}
 			} else if (entry.shipState === "transferring") {
 				const elapsed = state.simTime - entry.transferStartTime;
-				if (isTransferComplete(elapsed, entry.transferTimeDays)) {
-					completeTransfer(entry);
-				} else {
-					const t = elapsed / entry.transferTimeDays;
+				const t = Math.min(elapsed / entry.transferTimeDays, 1);
 
-					// Update target prediction every 15 frames (while blend is small)
-					if (t < 0.7) {
-						entry.transferRecalcCounter++;
-						if (entry.transferRecalcCounter >= 15) {
-							entry.transferRecalcCounter = 0;
-							const tgt = findPlanetEntry(entry.transferTarget ?? "");
-							if (tgt) {
-								const remainingDays = entry.transferTimeDays - elapsed;
-								const targetWorld = predictTargetWorld(tgt, remainingDays);
-								entry.p1x = targetWorld.x;
-								entry.p1z = targetWorld.z;
-								const dist = Math.hypot(entry.p1x - entry.p0x, entry.p1z - entry.p0z);
-								const targetAngle = Math.atan2(targetWorld.z, targetWorld.x);
-								const targetTangentDir = targetAngle + Math.PI / 2;
-								entry.t1x = Math.cos(targetTangentDir) * dist * 0.3;
-								entry.t1z = Math.sin(targetTangentDir) * dist * 0.3;
-							}
-						}
-					}
+				// Evaluate frozen Hermite spline — no mid-flight recalculation
+				const p = transferPosition(entry, t);
+				entry.mesh.position.set(p.x, 0, p.z);
 
-					// Evaluate Hermite spline position
-					const p = transferPosition(entry, t);
+				// Complete when time is up or ship is within station-keeping distance
+				const tgt = findBodyEntry(entry.transferTarget ?? "");
+				const distToTarget = tgt
+					? Math.hypot(p.x - tgt.mesh.position.x, p.z - tgt.mesh.position.z)
+					: Number.POSITIVE_INFINITY;
 
-					// Blend toward target's local orbit over the full transfer
-					const tgt = findPlanetEntry(entry.transferTarget ?? "");
-					const captureResult = applyCaptureBlend(p, tgt, t);
-
-					if (captureResult === "complete") {
-						const dx = p.x - (tgt as PlanetEntry).mesh.position.x;
-						const dz = p.z - (tgt as PlanetEntry).mesh.position.z;
-						entry.blendTarget = { entryAngle: Math.atan2(dz, dx) };
-						completeTransfer(entry);
-						return;
-					}
-
-					entry.mesh.position.set(p.x, 0, p.z);
+				if (isTransferComplete(elapsed, entry.transferTimeDays) || distToTarget <= SHIP_LOCAL_ORBIT) {
+					const entryAngle = tgt ? Math.atan2(p.z - tgt.mesh.position.z, p.x - tgt.mesh.position.x) : 0;
+					completeTransfer(entry, entryAngle);
+					return;
 				}
 			}
 
@@ -252,9 +218,6 @@ export function updatePositions(dt: number, camDist: number): void {
 				if (entry.shipState === "transferring") {
 					const elapsed = state.simTime - entry.transferStartTime;
 					updateTransferPath(entry, elapsed);
-					entry.transferPath.visible = true;
-				} else if (entry.shipState === "departing" && entry.pendingTransfer) {
-					updateDepartureArc(entry);
 					entry.transferPath.visible = true;
 				} else {
 					entry.transferPath.visible = false;

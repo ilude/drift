@@ -169,13 +169,14 @@ describe("initiateTransfer", () => {
 		return ship;
 	}
 
-	it("deducts fuel on successful transfer", () => {
+	it("stores fuel cost for gradual consumption during transfer", () => {
 		const ship = setupSystem();
-		const fuelBefore = ship.fuelKg;
 		const mars = state.bodyMeshes.find((e) => e.data.name === "Mars");
 		expect(mars).toBeDefined();
 		initiateTransfer(ship, mars as unknown as PlanetEntry);
-		expect(ship.fuelKg).toBeLessThan(fuelBefore);
+		// Fuel is NOT deducted upfront — stored for per-frame consumption
+		expect(ship.transferFuelTotal).toBeGreaterThan(0);
+		expect(ship.shipState).toBe("transferring");
 	});
 
 	it("rejects transfer when fuel is insufficient", () => {
@@ -187,14 +188,16 @@ describe("initiateTransfer", () => {
 		expect(ship.shipState).toBe("orbiting");
 	});
 
-	it("uses brachistochrone transfer time (~2 days for Earth-Mars at 1g)", () => {
+	it("uses brachistochrone transfer time (~6 days for Earth-Mars at 0.1g)", () => {
 		const ship = setupSystem();
 		const mars = state.bodyMeshes.find((e) => e.data.name === "Mars");
 		expect(mars).toBeDefined();
 		initiateTransfer(ship, mars as unknown as PlanetEntry);
-		// Brachistochrone at 1g: ~2 days Earth->Mars
-		expect(ship.pendingTransfer?.gameDays).toBeLessThan(5);
-		expect(ship.pendingTransfer?.gameDays).toBeGreaterThan(1);
+		// Ship goes directly to transferring (no departing state)
+		expect(ship.shipState).toBe("transferring");
+		// Brachistochrone at 0.1g: ~6 days Earth->Mars
+		expect(ship.transferTimeDays).toBeLessThan(15);
+		expect(ship.transferTimeDays).toBeGreaterThan(2);
 	});
 });
 

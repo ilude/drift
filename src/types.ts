@@ -13,10 +13,27 @@ export interface Vector3Like {
 	z: number;
 }
 
+// --- Resource types ---
+
+export type ResourceCategory = "metal" | "volatile" | "industrial" | "radioactive" | "umbral";
+
+export interface ResourceDeposit {
+	resourceId: string;
+	quantity: number;
+	accessibility: number;
+	mined: number;
+	minSurveyLevel: number;
+}
+
+export interface SystemResourceBudget {
+	richness: number;
+}
+
 // --- Survey / resource state ---
 
 export interface SurveyState {
-	surveyed: boolean;
+	surveyLevel: number;
+	deposits: ResourceDeposit[];
 }
 
 export interface Surveyable {
@@ -31,6 +48,7 @@ export interface MoonData {
 	e: number;
 	period: number;
 	radius: number;
+	mass: number;
 	color: string;
 }
 
@@ -49,6 +67,7 @@ export interface BodyData {
 	e: number;
 	period: number;
 	radius: number;
+	mass: number;
 	color: string;
 	emissive?: boolean;
 	moons: MoonData[];
@@ -69,6 +88,7 @@ export interface CometData {
 	node: number;
 	peri: number;
 	color: string;
+	mass: number;
 }
 
 export interface CometEntryData {
@@ -85,6 +105,7 @@ export interface CometEntryData {
 	incRad: number;
 	nodeRad: number;
 	periRad: number;
+	mass: number;
 }
 
 export interface ShipEntryData {
@@ -98,7 +119,88 @@ export interface ShipEntryData {
 }
 
 export type PlanetCategory = "rocky" | "subNeptune" | "iceGiant" | "gasGiant";
-export type ShipState = "orbiting" | "departing" | "transferring";
+export type ShipState = "orbiting" | "transferring";
+
+// --- Command priority tree ---
+
+export type CommandType =
+	| "survey-nearest"
+	| "transfer-to"
+	| "refuel"
+	| "shore-leave"
+	| "overhaul"
+	| "return-to-base"
+	| "idle";
+
+export type CommandCondition =
+	| { type: "always" }
+	| { type: "fuel-below"; threshold: number }
+	| { type: "morale-below"; threshold: number }
+	| { type: "hull-below"; threshold: number }
+	| { type: "supplies-below"; threshold: number };
+
+export interface CommandEntry {
+	id: string;
+	command: CommandType;
+	condition: CommandCondition;
+	target?: string;
+	enabled: boolean;
+	origin: "class" | "fleet" | "ship";
+}
+
+export interface CommandTree {
+	entries: CommandEntry[];
+}
+
+export interface CommandResult {
+	action: "transfer" | "survey" | "refuel" | "overhaul" | "shore-leave" | "idle";
+	target?: string;
+}
+
+// --- Ship sub-interfaces ---
+
+export interface ShipCrew {
+	count: number;
+	morale: number;
+	lastShoreLeave: number;
+	deploymentLimit: number;
+}
+
+export interface ShipMaintenance {
+	age: number;
+	supplies: number;
+	maxSupplies: number;
+	hullIntegrity: number;
+}
+
+export interface ShipAction {
+	type: CommandType | null;
+	commandId: string | null;
+	target?: string;
+	startTime: number;
+	duration: number;
+	progress: number;
+}
+
+// --- Notification types ---
+
+export type NotificationType =
+	| "survey-complete"
+	| "low-fuel"
+	| "low-morale"
+	| "maintenance-needed"
+	| "mission-complete"
+	| "malfunction"
+	| "ship-destroyed";
+
+export interface GameNotification {
+	id: number;
+	type: NotificationType;
+	message: string;
+	simTime: number;
+	bodyName?: string;
+	read: boolean;
+}
 
 // --- Trail state ---
 
@@ -179,6 +281,7 @@ export interface ShipEntry extends BaseEntry {
 	transferTarget: string | null;
 	transferStartTime: number;
 	transferTimeDays: number;
+	transferFuelTotal: number;
 	p0x: number;
 	p0z: number;
 	t0x: number;
@@ -188,7 +291,6 @@ export interface ShipEntry extends BaseEntry {
 	t1x: number;
 	t1z: number;
 	pendingTransfer: PendingTransfer | null;
-	transferRecalcCounter: number;
 	// Visual
 	transferPath: THREE.Line | null;
 	tailPositions: Float32Array;
@@ -198,9 +300,16 @@ export interface ShipEntry extends BaseEntry {
 	// Frame counters
 	lastAngle?: number;
 	departFrameCount?: number;
-	blendTarget?: { entryAngle: number } | null;
 	baseSize: number;
 	realisticSize: number;
+	// Command & autonomy
+	commandTree: CommandTree;
+	immediateCommand: CommandEntry | null;
+	crew: ShipCrew;
+	maintenance: ShipMaintenance;
+	action: ShipAction;
+	// Station-keeping: track a non-planet body (comet, moon) instead of orbiting host
+	stationTarget: string | null;
 }
 
 export type BodyEntry = PlanetEntry | CometEntry | ShipEntry;
@@ -268,6 +377,7 @@ export interface AsteroidInfo extends Surveyable {
 	au: number;
 	period: number;
 	diameter: number;
+	mass: number;
 }
 
 export interface AsteroidBeltEntry {
@@ -320,6 +430,16 @@ export type CategoryKey =
 
 // --- App state ---
 
+export interface NotificationPauseConfig {
+	"survey-complete": boolean;
+	"low-fuel": boolean;
+	"low-morale": boolean;
+	"maintenance-needed": boolean;
+	"mission-complete": boolean;
+	malfunction: boolean;
+	"ship-destroyed": boolean;
+}
+
 export interface AppState {
 	bodyMeshes: BodyEntry[];
 	asteroidBelts: AsteroidBeltEntry[];
@@ -338,6 +458,11 @@ export interface AppState {
 	debugStepFrames: number;
 	debugStepSpeed: number;
 	renderNeeded: boolean;
+	// Notifications
+	notifications: GameNotification[];
+	notificationPauseConfig: NotificationPauseConfig;
+	firstSurveyCompleted: boolean;
+	surveyMultiplier: number;
 }
 
 // --- System data ---
@@ -347,6 +472,7 @@ export interface SystemData {
 	bodies: BodyData[];
 	comets: CometData[];
 	asteroidBelts: AsteroidBeltData[];
+	resourceBudget?: SystemResourceBudget;
 }
 
 export interface DiscoveredSystem {
@@ -357,13 +483,21 @@ export interface DiscoveredSystem {
 
 // --- Saved state ---
 
+export interface SavedShipData {
+	fuelKg: number;
+	engineId: string;
+	crew: ShipCrew;
+	maintenance: ShipMaintenance;
+	commandTree: CommandTree;
+}
+
 export interface SavedStateData {
 	version: number;
 	simTime: number;
 	currentSystemKey: string;
 	randomClickCount: number;
 	discoveredSystems: Array<{ key: string; name: string; seed: number }>;
-	ship: { fuelKg: number; engineId: string } | null;
+	ship: SavedShipData | null;
 }
 
 // --- Lambert solver result ---
