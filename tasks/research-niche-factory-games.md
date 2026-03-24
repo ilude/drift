@@ -1,5 +1,7 @@
 # Niche Factory & Strategy Game Production Systems Research
 
+> **Status:** Reference material for future production system design. Not yet implemented. Key takeaway: node-graph production with automatic logistics is the target abstraction level.
+
 Reference material for Drift's production system design. Covers SpaceChem, Captains of Industry, Dyson Sphere Program, Shapez, Oxygen Not Included, Victoria 3, and Anno series.
 
 ## SpaceChem

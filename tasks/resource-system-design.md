@@ -1,6 +1,8 @@
 # Resource System Design Notes
 
-Working design document for Drift's resource/mining system. Not a plan — just decisions and ideas captured during discussion.
+> **Status:** Data model implemented (`src/data/resources.ts`, `src/types.ts`). Resource catalog (27 entries), deposit generation, and multi-level survey system are complete. Production chains, node-graph UI, and dual-use mechanics are future work.
+
+Working design document for Drift's resource/mining system.
 
 ## Key Design Decisions (confirmed)
 

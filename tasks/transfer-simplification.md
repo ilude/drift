@@ -1,6 +1,6 @@
-# Transfer System Simplification Plan
+# Transfer System Simplification Plan — COMPLETED
 
-Based on expert reviews from physics, animation, and moon-routing specialists.
+All 10 tasks across 5 waves completed and merged to main. Based on expert reviews from physics, animation, and moon-routing specialists.
 
 ## Dependency Graph
 
@@ -18,7 +18,7 @@ Wave 5:                  T10
 
 ## Wave 1 — Independent Bug Fixes (parallel, no dependencies)
 
-### T1: Fix `distanceKmBetween` to use world-space vector distance
+### T1: Fix `distanceKmBetween` to use world-space vector distance [DONE]
 **Files:** `src/rendering/ship-transfer.ts`, `src/__tests__/ship-transfer.test.ts`
 **Issues:** B1
 
@@ -30,7 +30,7 @@ to get AU: `au = (worldDist / DIST_SCALE)^2`. Pattern already exists in `bodyAUF
 
 Add test: two bodies at same orbital radius but opposite sides should have distance ~2x radius.
 
-### T2: Delete dead code — `departing` state + Lambert solver
+### T2: Delete dead code — `departing` state + Lambert solver [DONE]
 **Files:** `src/types.ts`, `src/ui/selection.ts`, `src/ui/ui.ts`, `src/math/transfer.ts`,
 `src/__tests__/transfer.test.ts`, `.claude/CLAUDE.md`
 **Issues:** S5, S7
@@ -41,7 +41,7 @@ Add test: two bodies at same orbital radius but opposite sides should have dista
    `auToWorld` from transfer.ts (only used in tests, not production)
 4. Update CLAUDE.md state machine description
 
-### T3: Guard `hostPlanetName` against moon names
+### T3: Guard `hostPlanetName` against moon names [DONE]
 **Files:** `src/rendering/ship-transfer.ts`, `src/__tests__/ship-transfer.test.ts`
 **Issues:** B3, M3
 
@@ -51,7 +51,7 @@ and use the parent's name for `hostPlanetName`.
 
 ## Wave 2 — Transfer Simplification (sequential, depends on Wave 1)
 
-### T4: Extract shared transfer-commit helper
+### T4: Extract shared transfer-commit helper [DONE]
 **Files:** `src/rendering/ship-transfer.ts`
 **Issues:** S6
 **Depends on:** T1, T2, T3
@@ -67,7 +67,7 @@ function commitTransfer(entry, knots, gameDays, targetName): void {
 
 Both callers use this helper. Ensures they stay in sync.
 
-### T5: Freeze spline + delete recalc + delete captureBlend + delete blendTarget
+### T5: Freeze spline + delete recalc + delete captureBlend + delete blendTarget [DONE]
 **Files:** `src/rendering/ship-transfer.ts`, `src/rendering/rendering.ts`,
 `src/types.ts`, `src/__tests__/ship-transfer.test.ts`, `src/__tests__/rendering.test.ts`
 **Issues:** S1, S2, S4
@@ -99,7 +99,7 @@ if (t >= 1.0 || distToTarget < SHIP_LOCAL_ORBIT) {
 
 Update tests: remove applyCaptureBlend tests, update completion logic tests.
 
-### T6: Simplify `computeHermiteKnots` tangent math
+### T6: Simplify `computeHermiteKnots` tangent math [DONE]
 **Files:** `src/rendering/ship-transfer.ts`, `src/__tests__/ship-transfer.test.ts`
 **Issues:** S3
 **Depends on:** T5
@@ -118,7 +118,7 @@ Update tangent-direction tests to match new simpler behavior.
 
 ## Wave 3 — Moon Survey Routing (parallel, depends on T3)
 
-### T7: Rewrite `selectNextSurveyTarget` to skip moons
+### T7: Rewrite `selectNextSurveyTarget` to skip moons [DONE]
 **Files:** `src/core/commands.ts`, `src/__tests__/commands.test.ts`
 **Issues:** B2, M1
 **Depends on:** T3
@@ -132,7 +132,7 @@ Add tests:
 - Planet with unsurveyed moons → returns planet name (not moon)
 - All moons surveyed → skips them, returns next planet
 
-### T8: Add local moon sweep logic
+### T8: Add local moon sweep logic [DONE]
 **Files:** `src/main.ts`, `src/core/commands.ts`, `src/__tests__/commands.test.ts`
 **Issues:** M2
 **Depends on:** T3, T7
@@ -150,7 +150,7 @@ Survey duration for moons uses the moon's body type and size, not the parent pla
 
 ## Wave 4 — Performance Polish (parallel, depends on Wave 2)
 
-### T9: Transfer path + departure arc performance
+### T9: Transfer path + departure arc performance [DONE]
 **Files:** `src/rendering/ship-transfer.ts`
 **Issues:** P1, P2, P3
 **Depends on:** T5
@@ -163,7 +163,7 @@ Survey duration for moons uses the moon's body type and size, not the parent pla
 
 ## Wave 5 — Validation
 
-### T10: Full test/lint/build verification
+### T10: Full test/lint/build verification [DONE]
 **Depends on:** T6, T8, T9
 
 - `bun run test` — all tests pass

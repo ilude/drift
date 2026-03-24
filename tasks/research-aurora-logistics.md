@@ -1,5 +1,7 @@
 # Aurora 4X: Ship Design, Logistics & Manufacturing Systems
 
+> **Status:** Reference material for future logistics, manufacturing, and shipyard systems. Ship maintenance/crew mechanics have been partially adapted into Drift's command tree system.
+
 Reference material for Drift's ship design, logistics, and production mechanics.
 
 ## Ship Design System

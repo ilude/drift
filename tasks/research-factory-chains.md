@@ -1,5 +1,7 @@
 # Factorio & Satisfactory Production Chain Research
 
+> **Status:** Reference material for future production chain and node-graph UI design. Not yet implemented.
+
 Reference material for Drift's production system design.
 
 ## Factorio

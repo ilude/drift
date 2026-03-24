@@ -1,6 +1,8 @@
 # Aurora 4X Resource & Survey Mechanics Reference
 
-Reference document for Drift's resource system design. Inspired by Aurora 4X but with original naming and mechanics.
+> **Status:** Reference material. Survey mechanics and resource distribution concepts have been adapted into Drift's survey system. Kept for future mining/production design.
+
+Inspired by Aurora 4X but with original naming and mechanics.
 
 ## Aurora's 11 Transnewtonian Minerals
 
