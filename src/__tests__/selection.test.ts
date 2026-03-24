@@ -6,12 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 import { GameClock } from "../core/game-clock";
 import { state } from "../core/state";
 import type { ShipEntry } from "../types";
-import {
-	formatShipAction,
-	formatShipDuration,
-	formatTransferStatus,
-	getZoomDistance,
-} from "../ui/selection";
+import { formatShipAction, formatShipDuration, getZoomDistance } from "../ui/selection";
 
 vi.mock("../rendering/scene", () => ({
 	scene: { add: vi.fn() },
@@ -81,11 +76,10 @@ describe("formatShipAction", () => {
 			transferDisplayStart: 100,
 			transferDisplayDays: 15,
 		});
-		// elapsed=10, remaining=ceil(15-10)=5
-		expect(formatShipAction(ship)).toBe("In transit to Mars (5d)");
+		expect(formatShipAction(ship)).toBe("In transit to Mars");
 	});
 
-	it("shows 0d remaining when transfer is past due", () => {
+	it("shows destination when transfer is past due", () => {
 		state.simTime = new GameClock(120);
 		const ship = mockShip({
 			shipState: "transferring",
@@ -95,7 +89,7 @@ describe("formatShipAction", () => {
 			transferDisplayStart: 100,
 			transferDisplayDays: 15,
 		});
-		expect(formatShipAction(ship)).toBe("In transit to Jupiter (0d)");
+		expect(formatShipAction(ship)).toBe("In transit to Jupiter");
 	});
 
 	it("shows Surveying when orbiting with survey in progress", () => {
@@ -132,7 +126,7 @@ describe("formatShipAction", () => {
 });
 
 describe("formatShipDuration", () => {
-	it("shows elapsed/total days during transfer", () => {
+	it("shows remaining/total days during transfer", () => {
 		state.simTime = new GameClock(107.9);
 		const ship = mockShip({
 			shipState: "transferring",
@@ -141,8 +135,21 @@ describe("formatShipDuration", () => {
 			transferDisplayStart: 100,
 			transferDisplayDays: 15,
 		});
-		// elapsed=floor(7.9)=7, total=floor(15)=15
+		// elapsed=7.9, remaining=15-7.9=7.1, total=15
 		expect(formatShipDuration(ship)).toBe("7d / 15d");
+	});
+
+	it("uses decimal format for sub-day transfers", () => {
+		state.simTime = new GameClock(100.3);
+		const ship = mockShip({
+			shipState: "transferring",
+			transferStartTime: 100,
+			transferTimeDays: 0.8,
+			transferDisplayStart: 100,
+			transferDisplayDays: 0.8,
+		});
+		// elapsed=0.3, remaining=0.5, total=0.8
+		expect(formatShipDuration(ship)).toBe("0.5d / 0.8d");
 	});
 
 	it("shows action progress when orbiting with active action", () => {
@@ -166,30 +173,6 @@ describe("formatShipDuration", () => {
 		state.simTime = new GameClock(50);
 		const ship = mockShip({ shipState: "orbiting" });
 		expect(formatShipDuration(ship)).toBe("");
-	});
-});
-
-describe("formatTransferStatus", () => {
-	const AU_KM = 149_597_871;
-
-	it("shows days for ETA >= 1 day", () => {
-		const result = formatTransferStatus(3.7, AU_KM * 0.72, 42100, 50000);
-		expect(result).toBe("ETA: 4d | 0.72 AU | Fuel: 42.1t / 50.0t (84%)");
-	});
-
-	it("shows hours for ETA < 1 day", () => {
-		const result = formatTransferStatus(0.5, AU_KM * 0.1, 10000, 20000);
-		expect(result).toBe("ETA: 12h | 0.10 AU | Fuel: 10.0t / 20.0t (50%)");
-	});
-
-	it("shows km for very short distances (< 0.01 AU)", () => {
-		const result = formatTransferStatus(2, 500000, 30000, 50000);
-		expect(result).toContain("500,000 km");
-	});
-
-	it("shows 0% fuel when fuelTotalKg is 0", () => {
-		const result = formatTransferStatus(1, AU_KM, 0, 0);
-		expect(result).toContain("(0%)");
 	});
 });
 

@@ -15,7 +15,6 @@ import {
 	initiateTransfer,
 } from "../rendering/rendering";
 import { camera, controls, renderer, ZOOM_BASE } from "../rendering/scene";
-import { distanceKmBetween } from "../rendering/ship-transfer";
 import type { AsteroidBeltData, AsteroidInfo, BodyEntry, FlyToState } from "../types";
 import { isCometEntry, isShipEntry, isSurveyable } from "../types";
 import { renderCommandTree } from "./commands";
@@ -23,9 +22,7 @@ import { renderCommandTree } from "./commands";
 /** Format a ship's current action as display text. Single source of truth for action display. */
 export function formatShipAction(entry: import("../types").ShipEntry): string {
 	if (entry.shipState === "transferring") {
-		const elapsed = state.simTime.days - entry.transferDisplayStart;
-		const remaining = Math.max(0, Math.ceil(entry.transferDisplayDays - elapsed));
-		return `In transit to ${entry.transferTarget} (${remaining}d)`;
+		return `In transit to ${entry.transferTarget}`;
 	}
 	const action = entry.action;
 	if (action.type === "survey-nearest" && action.startTime > 0) {
@@ -46,11 +43,16 @@ export function formatShipAction(entry: import("../types").ShipEntry): string {
 	return "Idle";
 }
 
+function formatDays(d: number): string {
+	return d < 1 ? `${d.toFixed(1)}d` : `${Math.floor(d)}d`;
+}
+
 export function formatShipDuration(entry: import("../types").ShipEntry): string {
 	if (entry.shipState === "transferring") {
-		const elapsed = Math.max(0, Math.floor(state.simTime.days - entry.transferDisplayStart));
-		const total = Math.floor(entry.transferDisplayDays);
-		return `${elapsed}d / ${total}d`;
+		const elapsed = Math.max(0, state.simTime.days - entry.transferDisplayStart);
+		const remaining = Math.max(0, entry.transferDisplayDays - elapsed);
+		const total = entry.transferDisplayDays;
+		return `${formatDays(remaining)} / ${formatDays(total)}`;
 	}
 	const action = entry.action;
 	if (action.startTime > 0 && action.duration > 0) {
@@ -59,29 +61,6 @@ export function formatShipDuration(entry: import("../types").ShipEntry): string 
 		return `${elapsed}d / ${dur}d`;
 	}
 	return "";
-}
-
-const AU_KM = 149_597_871;
-
-/**
- * Format transfer status line for a ship that is actively transferring.
- * Pure function — no DOM or state access, making it testable.
- */
-export function formatTransferStatus(
-	remainingDays: number,
-	distKm: number,
-	fuelKg: number,
-	fuelTotalKg: number,
-): string {
-	const etaStr =
-		remainingDays < 1 ? `${Math.round(remainingDays * 24)}h` : `${remainingDays.toFixed(0)}d`;
-	const distAU = distKm / AU_KM;
-	const distStr =
-		distAU < 0.01 ? `${Math.round(distKm).toLocaleString()} km` : `${distAU.toFixed(2)} AU`;
-	const fuelTotalT = (fuelTotalKg / 1000).toFixed(1);
-	const fuelT = (fuelKg / 1000).toFixed(1);
-	const fuelPct = fuelTotalKg > 0 ? Math.round((fuelKg / fuelTotalKg) * 100) : 0;
-	return `ETA: ${etaStr} | ${distStr} | Fuel: ${fuelT}t / ${fuelTotalT}t (${fuelPct}%)`;
 }
 
 const ZOOM_DIST_RECENTER: number = ZOOM_BASE / 0.25;
@@ -298,7 +277,7 @@ export function selectBody(entry: BodyEntry): void {
 		// Supplies
 		const suppliesValueEl = document.getElementById("info-supplies-value");
 		if (suppliesValueEl) {
-			suppliesValueEl.textContent = `${entry.maintenance.supplies} / ${entry.maintenance.maxSupplies} MSP`;
+			suppliesValueEl.textContent = `${Math.round(entry.maintenance.supplies)} / ${entry.maintenance.maxSupplies} MSP`;
 		}
 
 		// Action
@@ -485,7 +464,7 @@ function updateShipStatus(entry: ShipEntry): void {
 	// Supplies (live)
 	const suppliesEl = document.getElementById("info-supplies-value");
 	if (suppliesEl) {
-		suppliesEl.textContent = `${entry.maintenance.supplies} / ${entry.maintenance.maxSupplies} MSP`;
+		suppliesEl.textContent = `${Math.round(entry.maintenance.supplies)} / ${entry.maintenance.maxSupplies} MSP`;
 	}
 
 	// Fuel (live)
@@ -508,25 +487,10 @@ function updateShipStatus(entry: ShipEntry): void {
 		durationEl.textContent = formatShipDuration(entry);
 	}
 
-	// Transfer status (ETA / distance / fuel) — only visible during active transfer
+	// Hide transfer status row during normal operation (only used for error flashes)
 	const transferStatusRow = document.getElementById("info-transfer-status");
-	const transferStatusValue = document.getElementById("transfer-status-value");
-	if (transferStatusRow && transferStatusValue) {
-		if (entry.shipState === "transferring" && entry.transferTarget) {
-			const elapsed = state.simTime.days - entry.transferStartTime;
-			const remainingDays = Math.max(0, entry.transferTimeDays - elapsed);
-			const targetEntry = findBody(entry.transferTarget);
-			const distKm = targetEntry ? distanceKmBetween(entry, targetEntry) : 0;
-			transferStatusValue.textContent = formatTransferStatus(
-				remainingDays,
-				distKm,
-				entry.fuelKg,
-				entry.transferFuelTotal,
-			);
-			transferStatusRow.classList.remove("hidden");
-		} else {
-			transferStatusRow.classList.add("hidden");
-		}
+	if (transferStatusRow && entry.shipState === "transferring") {
+		transferStatusRow.classList.add("hidden");
 	}
 }
 
@@ -610,7 +574,7 @@ export function setupClickHandlers(): void {
 			const targetName: string =
 				(document.getElementById("transfer-target") as HTMLSelectElement | null)?.value ?? "";
 			const targetEntry = findBody(targetName);
-			if (targetEntry) initiateTransfer(state.selectedBody, targetEntry);
+			if (targetEntry) initiateTransfer(state.selectedBody, targetEntry, true);
 		});
 	}
 
