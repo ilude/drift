@@ -1,10 +1,12 @@
 /**
  * @vitest-environment jsdom
  */
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	formatDateTime,
+	loadSavedState,
 	restoreShipState,
+	saveState,
 	simTimeToDate,
 	simTimeToDay,
 	speedLabel,
@@ -271,5 +273,204 @@ describe("ship state persistence", () => {
 		expect((state.bodyMeshes[0] as unknown as ShipEntry).fuelKg).toBe(100000);
 		expect((state.bodyMeshes[1] as unknown as ShipEntry).fuelKg).toBe(30000);
 		expect((state.bodyMeshes[1] as unknown as ShipEntry).engineId).toBe("nuclear");
+	});
+});
+
+describe("transfer state persistence", () => {
+	const store: Record<string, string> = {};
+	beforeEach(() => {
+		for (const key of Object.keys(store)) delete store[key];
+		vi.stubGlobal("localStorage", {
+			getItem: (k: string) => store[k] ?? null,
+			setItem: (k: string, v: string) => {
+				store[k] = v;
+			},
+			removeItem: (k: string) => {
+				delete store[k];
+			},
+		});
+	});
+
+	it("saveState and loadSavedState round-trip transfer fields", () => {
+		const ship = {
+			isShip: true,
+			data: { name: "Pathfinder", category: "Ship", type: "Ship" },
+			hostPlanetName: "Earth",
+			fuelKg: 60000,
+			engineId: "nuclear",
+			shipState: "transferring" as ShipEntry["shipState"],
+			transferTarget: "Mars",
+			transferStartTime: 100,
+			transferTimeDays: 200,
+			transferFuelTotal: 5000,
+			p0x: 1.1,
+			p0z: 2.2,
+			t0x: 3.3,
+			t0z: 4.4,
+			p1x: 5.5,
+			p1z: 6.6,
+			t1x: 7.7,
+			t1z: 8.8,
+			crew: { size: 6, morale: 0.9, deploymentDays: 30 },
+			maintenance: { hullIntegrity: 1, supplies: 1, age: 0, lastMalfunction: null },
+			commandTree: { entries: [] },
+		} as unknown as (typeof state.bodyMeshes)[0];
+
+		state.bodyMeshes = [ship];
+		state.discoveredSystems = new Map();
+		state.currentSystemKey = "sol";
+		state.randomClickCount = 0;
+
+		saveState();
+		const loaded = loadSavedState();
+
+		expect(loaded).not.toBeNull();
+		const s = loaded?.ships[0];
+		expect(s.shipState).toBe("transferring");
+		expect(s.transferTarget).toBe("Mars");
+		expect(s.transferStartTime).toBe(100);
+		expect(s.transferTimeDays).toBe(200);
+		expect(s.transferFuelTotal).toBe(5000);
+		expect(s.p0x).toBe(1.1);
+		expect(s.p0z).toBe(2.2);
+		expect(s.t0x).toBe(3.3);
+		expect(s.t0z).toBe(4.4);
+		expect(s.p1x).toBe(5.5);
+		expect(s.p1z).toBe(6.6);
+		expect(s.t1x).toBe(7.7);
+		expect(s.t1z).toBe(8.8);
+	});
+
+	it("restoreShipState restores transfer fields onto ship entry", () => {
+		const shipEntry = {
+			isShip: true,
+			data: { name: "Pathfinder" },
+			fuelKg: 0,
+			engineId: "chemical",
+			shipState: "orbiting" as ShipEntry["shipState"],
+			transferTarget: null,
+			transferStartTime: 0,
+			transferTimeDays: 0,
+			transferFuelTotal: 0,
+			p0x: 0,
+			p0z: 0,
+			t0x: 0,
+			t0z: 0,
+			p1x: 0,
+			p1z: 0,
+			t1x: 0,
+			t1z: 0,
+		} as unknown as (typeof state.bodyMeshes)[0];
+
+		state.bodyMeshes = [shipEntry];
+
+		const saved: SavedStateData = {
+			version: 5,
+			simTime: 0,
+			currentSystemKey: "sol",
+			randomClickCount: 0,
+			discoveredSystems: [],
+			ships: [
+				{
+					name: "Pathfinder",
+					hostPlanetName: "Earth",
+					fuelKg: 60000,
+					engineId: "nuclear",
+					crew: undefined as unknown as ShipEntry["crew"],
+					maintenance: undefined as unknown as ShipEntry["maintenance"],
+					commandTree: undefined as unknown as ShipEntry["commandTree"],
+					shipState: "transferring",
+					transferTarget: "Mars",
+					transferStartTime: 100,
+					transferTimeDays: 200,
+					transferFuelTotal: 5000,
+					p0x: 1.1,
+					p0z: 2.2,
+					t0x: 3.3,
+					t0z: 4.4,
+					p1x: 5.5,
+					p1z: 6.6,
+					t1x: 7.7,
+					t1z: 8.8,
+				},
+			],
+		};
+		restoreShipState(saved);
+
+		const e = state.bodyMeshes[0] as unknown as ShipEntry;
+		expect(e.shipState).toBe("transferring");
+		expect(e.transferTarget).toBe("Mars");
+		expect(e.transferStartTime).toBe(100);
+		expect(e.transferTimeDays).toBe(200);
+		expect(e.transferFuelTotal).toBe(5000);
+		expect(e.p0x).toBe(1.1);
+		expect(e.p1z).toBe(6.6);
+	});
+
+	it("v4 save loads correctly — ships default to orbiting", () => {
+		const v4Save = JSON.stringify({
+			version: 4,
+			simTime: 0,
+			currentSystemKey: "sol",
+			randomClickCount: 0,
+			discoveredSystems: [],
+			ships: [
+				{
+					name: "ISS Explorer",
+					hostPlanetName: "Earth",
+					fuelKg: 80000,
+					engineId: "chemical",
+					crew: { size: 6, morale: 1, deploymentDays: 0 },
+					maintenance: { hullIntegrity: 1, supplies: 1, age: 0, lastMalfunction: null },
+					commandTree: { entries: [] },
+				},
+			],
+		});
+		localStorage.setItem("solar-sim-state", v4Save);
+
+		const loaded = loadSavedState();
+		expect(loaded).not.toBeNull();
+		expect(loaded?.ships[0].shipState).toBeUndefined();
+		expect(loaded?.ships[0].transferTarget).toBeUndefined();
+	});
+
+	it("orbiting ship save does not include transfer fields", () => {
+		const ship = {
+			isShip: true,
+			data: { name: "Wanderer", category: "Ship", type: "Ship" },
+			hostPlanetName: "Earth",
+			fuelKg: 50000,
+			engineId: "chemical",
+			shipState: "orbiting" as ShipEntry["shipState"],
+			transferTarget: null,
+			transferStartTime: 0,
+			transferTimeDays: 0,
+			transferFuelTotal: 0,
+			p0x: 0,
+			p0z: 0,
+			t0x: 0,
+			t0z: 0,
+			p1x: 0,
+			p1z: 0,
+			t1x: 0,
+			t1z: 0,
+			crew: { size: 6, morale: 1, deploymentDays: 0 },
+			maintenance: { hullIntegrity: 1, supplies: 1, age: 0, lastMalfunction: null },
+			commandTree: { entries: [] },
+		} as unknown as (typeof state.bodyMeshes)[0];
+
+		state.bodyMeshes = [ship];
+		state.discoveredSystems = new Map();
+		state.currentSystemKey = "sol";
+		state.randomClickCount = 0;
+
+		saveState();
+		const loaded = loadSavedState();
+
+		expect(loaded).not.toBeNull();
+		const s = loaded?.ships[0];
+		expect(s.shipState).toBeUndefined();
+		expect(s.transferTarget).toBeUndefined();
+		expect(s.p0x).toBeUndefined();
 	});
 });

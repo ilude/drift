@@ -14,6 +14,7 @@ import { keplerRadius, meanToTrue, orbitSpeed, scaleDist } from "../math/orbit";
 import {
 	computeHermiteKnots,
 	distanceKmBetween,
+	hermiteDerivative,
 	hermiteEval,
 	predictTargetWorld,
 } from "../rendering/ship-transfer";
@@ -405,5 +406,234 @@ describe("NaN safety -- incomplete BodyEntry objects", () => {
 		expect(Number.isNaN(knots.p1z)).toBe(false);
 		expect(Number.isNaN(knots.t1x)).toBe(false);
 		expect(Number.isNaN(knots.t1z)).toBe(false);
+	});
+});
+
+// ──────────────────────────────────────────────
+// transferPath lifecycle
+// ──────────────────────────────────────────────
+import { GameClock } from "../core/game-clock";
+import { state } from "../core/state";
+import { completeTransfer, createShip, initiateTransfer } from "../rendering/ship-transfer";
+
+describe("transferPath lifecycle", () => {
+	function setupSystem() {
+		state.BODIES = [
+			{
+				name: "Sun",
+				type: "Star" as const,
+				distance: 0,
+				e: 0,
+				period: 0,
+				radius: 696340,
+				color: "#ffdd44",
+				moons: [],
+			},
+			{
+				name: "Earth",
+				type: "Planet" as const,
+				distance: 1.0,
+				e: 0.017,
+				period: 1.0,
+				radius: 6371,
+				color: "#4488ff",
+				moons: [],
+			},
+			{
+				name: "Mars",
+				type: "Planet" as const,
+				distance: 1.524,
+				e: 0.093,
+				period: 1.881,
+				radius: 3390,
+				color: "#ff6644",
+				moons: [],
+			},
+		];
+		state.bodyMeshes = [];
+		state.simTime = new GameClock(0);
+
+		state.BODIES.forEach((b) => {
+			if (b.type !== "Star") {
+				state.bodyMeshes.push({
+					data: b,
+					mesh: { position: { x: 100 * b.distance, y: 0, z: 0, set: vi.fn() } },
+					isShip: false,
+					isMoon: false,
+					isComet: false,
+					speed: 0.01,
+					angle: 0,
+				} as unknown as import("../types").BodyEntry);
+			}
+		});
+
+		const ship = createShip({ name: "TestShip", hostPlanetName: "Earth" });
+		if (!ship) throw new Error("createShip returned undefined");
+		return ship;
+	}
+
+	it("transferPath is non-null after initiateTransfer succeeds", () => {
+		const ship = setupSystem();
+		const mars = state.bodyMeshes.find((e) => e.data.name === "Mars");
+		expect(mars).toBeDefined();
+		const ok = initiateTransfer(ship, mars as import("../types").BodyEntry);
+		expect(ok).toBe(true);
+		expect(ship.transferPath).not.toBeNull();
+	});
+
+	it("transferPath is null after completeTransfer", () => {
+		const ship = setupSystem();
+		const mars = state.bodyMeshes.find((e) => e.data.name === "Mars");
+		expect(mars).toBeDefined();
+		initiateTransfer(ship, mars as import("../types").BodyEntry);
+		expect(ship.transferPath).not.toBeNull();
+		completeTransfer(ship);
+		expect(ship.transferPath).toBeNull();
+	});
+});
+
+// ──────────────────────────────────────────────
+// computeHermiteKnots: equal tangent magnitudes
+// ──────────────────────────────────────────────
+describe("computeHermiteKnots tangent symmetry", () => {
+	it("departure and arrival tangents have equal magnitude", () => {
+		const planet = makePlanetEntry(100, 0, 1.0, 0);
+		const knots = computeHermiteKnots(0, 0, planet, 0);
+		const t0mag = Math.hypot(knots.t0x, knots.t0z);
+		const t1mag = Math.hypot(knots.t1x, knots.t1z);
+		expect(t0mag).toBeCloseTo(t1mag, 6);
+	});
+
+	it("equal tangent magnitudes hold for diagonal transfers", () => {
+		const planet = makePlanetEntry(80, 60, 1.5, 0);
+		const knots = computeHermiteKnots(10, 20, planet, 0);
+		const t0mag = Math.hypot(knots.t0x, knots.t0z);
+		const t1mag = Math.hypot(knots.t1x, knots.t1z);
+		expect(t0mag).toBeCloseTo(t1mag, 6);
+	});
+});
+
+// ──────────────────────────────────────────────
+// Re-spline continuity: position does not jump when endpoint moves
+// ──────────────────────────────────────────────
+describe("re-spline endpoint continuity", () => {
+	// Simulate the re-spline logic from rendering.ts in isolation so it can be
+	// tested without a full Three.js scene.
+	function resplineFromCurrent(
+		entry: {
+			p0x: number;
+			p0z: number;
+			t0x: number;
+			t0z: number;
+			p1x: number;
+			p1z: number;
+			t1x: number;
+			t1z: number;
+			transferTimeDays: number;
+		},
+		tEased: number,
+		elapsed: number,
+		newP1x: number,
+		newP1z: number,
+	) {
+		const curPos = hermiteEval(
+			entry.p0x,
+			entry.p0z,
+			entry.t0x,
+			entry.t0z,
+			entry.p1x,
+			entry.p1z,
+			entry.t1x,
+			entry.t1z,
+			tEased,
+		);
+		const posBeforeX = curPos.x;
+		const posBeforeZ = curPos.z;
+
+		const curDeriv = hermiteDerivative(
+			entry.p0x,
+			entry.p0z,
+			entry.t0x,
+			entry.t0z,
+			entry.p1x,
+			entry.p1z,
+			entry.t1x,
+			entry.t1z,
+			tEased,
+		);
+
+		const remainingDays = Math.max(entry.transferTimeDays - elapsed, 1);
+		const dx = newP1x - curPos.x;
+		const dz = newP1z - curPos.z;
+		const dist = Math.hypot(dx, dz);
+		const tAngle = Math.atan2(dz, dx);
+		const scale = remainingDays / Math.max(entry.transferTimeDays, 1);
+
+		const newEntry = {
+			p0x: curPos.x,
+			p0z: curPos.z,
+			t0x: curDeriv.x * scale,
+			t0z: curDeriv.z * scale,
+			p1x: newP1x,
+			p1z: newP1z,
+			t1x: Math.cos(tAngle) * dist * 0.4,
+			t1z: Math.sin(tAngle) * dist * 0.4,
+			transferTimeDays: remainingDays,
+		};
+
+		// After re-spline, t=0 on the new spline should equal the position just before
+		const posAfter = hermiteEval(
+			newEntry.p0x,
+			newEntry.p0z,
+			newEntry.t0x,
+			newEntry.t0z,
+			newEntry.p1x,
+			newEntry.p1z,
+			newEntry.t1x,
+			newEntry.t1z,
+			0,
+		);
+
+		return { posBeforeX, posBeforeZ, posAfterX: posAfter.x, posAfterZ: posAfter.z };
+	}
+
+	it("position is continuous when arrival endpoint moves mid-transfer", () => {
+		const knots = computeHermiteKnots(0, 0, makePlanetEntry(100, 0, 1.0, 0), 365);
+		const entry = { ...knots, transferTimeDays: 365 };
+
+		// Simulate being 40% through the transfer
+		const t = 0.4;
+		const tEased = t * t * (3 - 2 * t);
+		const elapsed = 365 * t;
+
+		// Target has moved significantly
+		const { posBeforeX, posBeforeZ, posAfterX, posAfterZ } = resplineFromCurrent(
+			entry,
+			tEased,
+			elapsed,
+			95,
+			20,
+		);
+
+		expect(Math.hypot(posAfterX - posBeforeX, posAfterZ - posBeforeZ)).toBeLessThan(0.01);
+	});
+
+	it("position is continuous for a transfer near completion (80%)", () => {
+		const knots = computeHermiteKnots(0, 0, makePlanetEntry(50, 50, 1.0, 0), 200);
+		const entry = { ...knots, transferTimeDays: 200 };
+
+		const t = 0.8;
+		const tEased = t * t * (3 - 2 * t);
+		const elapsed = 200 * t;
+
+		const { posBeforeX, posBeforeZ, posAfterX, posAfterZ } = resplineFromCurrent(
+			entry,
+			tEased,
+			elapsed,
+			52,
+			48,
+		);
+
+		expect(Math.hypot(posAfterX - posBeforeX, posAfterZ - posBeforeZ)).toBeLessThan(0.01);
 	});
 });

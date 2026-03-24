@@ -24,6 +24,8 @@ function resetState() {
 		"mission-complete": true,
 		malfunction: true,
 		"ship-destroyed": true,
+		"transfer-complete": true,
+		"action-complete": false,
 	};
 	clearNotifications();
 }
@@ -240,6 +242,41 @@ describe("notifications", () => {
 			addCoalescedNotification("survey-complete", "Surveyed Ceres", "Ceres", 500);
 			expect(state.notifications).toHaveLength(2);
 			vi.restoreAllMocks();
+		});
+	});
+
+	describe("new notification types (transfer-complete, action-complete)", () => {
+		it("transfer-complete pauses by default", () => {
+			expect(state.notificationPauseConfig["transfer-complete"]).toBe(true);
+			addNotification("transfer-complete", "Ship arrived at Mars");
+			expect(state.timeSpeed).toBe(0);
+		});
+
+		it("action-complete does not pause by default", () => {
+			expect(state.notificationPauseConfig["action-complete"]).toBe(false);
+			addNotification("action-complete", "Refueling completed");
+			expect(state.timeSpeed).toBe(1);
+		});
+
+		it("transfer-complete is a valid NotificationType accepted by addNotification", () => {
+			addNotification("transfer-complete", "ISS Explorer arrived at Jupiter", "ISS Explorer");
+			expect(state.notifications).toHaveLength(1);
+			expect(state.notifications[0].type).toBe("transfer-complete");
+			expect(state.notifications[0].bodyName).toBe("ISS Explorer");
+		});
+
+		it("action-complete is a valid NotificationType accepted by addNotification", () => {
+			addNotification("action-complete", "ISS Explorer: Overhaul completed", "ISS Explorer");
+			expect(state.notifications).toHaveLength(1);
+			expect(state.notifications[0].type).toBe("action-complete");
+		});
+
+		it("shouldPause returns true for transfer-complete by default", () => {
+			expect(shouldPause("transfer-complete")).toBe(true);
+		});
+
+		it("shouldPause returns false for action-complete by default", () => {
+			expect(shouldPause("action-complete")).toBe(false);
 		});
 	});
 });

@@ -351,6 +351,41 @@ describe("tickShipSimulation", () => {
 		expect(ship.maintenance.supplies).toBe(100);
 		expect(ship.crew.morale).toBe(100);
 	});
+
+	it("malfunction check fires for each interval skipped at high warp (3 intervals)", () => {
+		// Ship in transfer with very degraded hull (integrity=1) so failChance is high.
+		// Age starts at 1440 (checkIndex=48), simDt=91 advances to 1531 (checkIndex=51).
+		// Three intervals (49, 50, 51) should each be checked; with integrity=1 and high
+		// intervalAge the fail chance exceeds the seeded RNG roll on at least one interval.
+		const ship = mockShip({
+			shipState: "transferring" as const,
+			maintenance: { age: 1440, supplies: 100, maxSupplies: 100, hullIntegrity: 1 },
+		});
+		const hullBefore = ship.maintenance.hullIntegrity;
+		tickShipSimulation(ship, 91, 2000);
+		// With integrity=1 and intervalAge ~1470-1530, failChance ≈ 80%+ each check;
+		// at least one malfunction must have fired over 3 intervals.
+		expect(ship.maintenance.hullIntegrity).toBeLessThan(hullBefore);
+	});
+
+	it("colony shuttle delivers supplies for each day boundary crossed at high warp", () => {
+		// Ship at colony, simTime advances from 100.1 to 105.1 crossing 5 day boundaries.
+		const ship = mockShip({
+			hostPlanetName: "Earth",
+			fuelKg: 0,
+			fuelCapacityKg: 100000,
+			maintenance: { age: 0, supplies: 0, maxSupplies: 100, hullIntegrity: 100 },
+		});
+		// Simulate being at a colony by using the colony detection path (hostPlanetName set).
+		// tickShipSimulation detects atColony via state, so we need a matching body in state.
+		// The simplest way: set simTime=105.1, simDt=5 so dayPrev=100, dayNow=105 (5 crossings).
+		// Each crossing adds 25% fuel and 25 supplies (ceil(100*0.25)).
+		tickShipSimulation(ship, 5, 105.1);
+		// 5 deliveries × 25% of 100000 = 125000 → capped at 100000
+		expect(ship.fuelKg).toBe(100000);
+		// 5 deliveries × ceil(100*0.25)=25 = 125 → capped at 100
+		expect(ship.maintenance.supplies).toBe(100);
+	});
 });
 
 // --- selectNextSurveyTarget ---

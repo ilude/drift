@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import { beforeAll, describe, expect, it, vi } from "vitest";
-import { computeLabelPosition, formatZoomText } from "../ui/ui";
+import { computeAuWidth, computeLabelPosition, formatZoomText } from "../ui/ui";
 
 vi.mock("../rendering/scene", () => ({
 	scene: { add: vi.fn() },
@@ -133,29 +133,63 @@ describe("computeLabelPosition", () => {
 });
 
 describe("formatZoomText", () => {
-	it("returns Zoom: 1.00x when camDist equals zoomBase", () => {
-		expect(formatZoomText(120, 120)).toBe("Zoom: 1.00x");
+	it("includes zoom ratio and AU estimate", () => {
+		const result = formatZoomText(120, 120);
+		expect(result).toMatch(/^Zoom: 1\.00x \| ~/);
 	});
 
-	it("returns Zoom: 2.00x when camDist is half of zoomBase", () => {
-		expect(formatZoomText(60, 120)).toBe("Zoom: 2.00x");
+	it("zoom ratio is 2.00x when camDist is half of zoomBase", () => {
+		expect(formatZoomText(60, 120)).toContain("Zoom: 2.00x");
 	});
 
-	it("returns Zoom: 0.10x when camDist is 10x zoomBase", () => {
-		expect(formatZoomText(1200, 120)).toBe("Zoom: 0.10x");
+	it("zoom ratio is 0.10x when camDist is 10x zoomBase", () => {
+		expect(formatZoomText(1200, 120)).toContain("Zoom: 0.10x");
 	});
 
-	it("formats to exactly 2 decimal places", () => {
-		expect(formatZoomText(3, 10)).toBe("Zoom: 3.33x");
+	it("formats zoom ratio to exactly 2 decimal places", () => {
+		expect(formatZoomText(3, 10)).toContain("Zoom: 3.33x");
 	});
 
-	it("handles very small camDist (large zoom)", () => {
-		const result = formatZoomText(1, 120);
-		expect(result).toBe("Zoom: 120.00x");
+	it("includes AU separator", () => {
+		expect(formatZoomText(120, 120)).toContain(" | ");
 	});
 
-	it("handles very large camDist (tiny zoom)", () => {
-		const result = formatZoomText(12000, 120);
-		expect(result).toBe("Zoom: 0.01x");
+	it("shows sub-1 AU with 2 decimal places", () => {
+		// camDist=100, DIST_SCALE=200: (100/200)^2 = 0.25 AU
+		expect(formatZoomText(100, 120)).toContain("~0.25 AU");
+	});
+
+	it("shows AU >= 1 with 1 decimal place", () => {
+		// camDist=400, DIST_SCALE=200: (400/200)^2 = 4.0 AU
+		expect(formatZoomText(400, 120)).toContain("~4.0 AU");
+	});
+
+	it("shows AU >= 100 as integer", () => {
+		// camDist=2200, DIST_SCALE=200: (2200/200)^2 = 121 AU
+		expect(formatZoomText(2200, 120)).toContain("~121 AU");
+	});
+});
+
+describe("computeAuWidth", () => {
+	it("returns 1 AU at distScale camera distance", () => {
+		expect(computeAuWidth(200, 200)).toBe(1);
+	});
+
+	it("returns 4 AU at 2x distScale", () => {
+		expect(computeAuWidth(400, 200)).toBe(4);
+	});
+
+	it("returns 0.25 AU at 0.5x distScale", () => {
+		expect(computeAuWidth(100, 200)).toBeCloseTo(0.25);
+	});
+
+	it("scales as square of ratio", () => {
+		// (300/200)^2 = 2.25
+		expect(computeAuWidth(300, 200)).toBeCloseTo(2.25);
+	});
+
+	it("uses distScale parameter, not hardcoded value", () => {
+		// distScale=100: (200/100)^2 = 4
+		expect(computeAuWidth(200, 100)).toBe(4);
 	});
 });
