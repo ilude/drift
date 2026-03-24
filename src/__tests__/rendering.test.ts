@@ -174,7 +174,7 @@ describe("initiateTransfer", () => {
 		const mars = state.bodyMeshes.find((e) => e.data.name === "Mars");
 		expect(mars).toBeDefined();
 		initiateTransfer(ship, mars as unknown as PlanetEntry);
-		// Fuel is NOT deducted upfront — stored for per-frame consumption
+		// Fuel is NOT deducted upfront -- stored for per-frame consumption
 		expect(ship.transferFuelTotal).toBeGreaterThan(0);
 		expect(ship.shipState).toBe("transferring");
 	});
@@ -325,5 +325,170 @@ describe("asteroid scheduling coverage", () => {
 			for (let i = parity; i < N; i += 2) actual++;
 			expect(actual).toBe(count);
 		}
+	});
+});
+
+// ──────────────────────────────────────────────
+// Capture blend regression tests
+// ──────────────────────────────────────────────
+describe("capture blend (transfer arrival smoothing)", () => {
+	// Reproduces the logic from rendering.ts lines 139-160.
+	// The capture blend smoothstep steers the ship from the Hermite spline
+	// position toward the actual target station-keeping orbit in the final 15%.
+	function captureBlend(
+		splineX: number,
+		splineZ: number,
+		targetX: number,
+		targetZ: number,
+		offset: number,
+		t: number,
+	): { x: number; z: number } {
+		if (t <= 0.85) return { x: splineX, z: splineZ };
+		const aAngle = Math.atan2(splineZ - targetZ, splineX - targetX);
+		const capX = targetX + Math.cos(aAngle) * offset;
+		const capZ = targetZ + Math.sin(aAngle) * offset;
+		const blend = (t - 0.85) / 0.15;
+		const s = blend * blend * (3 - 2 * blend);
+		return {
+			x: splineX + (capX - splineX) * s,
+			z: splineZ + (capZ - splineZ) * s,
+		};
+	}
+
+	it("t <= 0.85 returns pure spline position (no blending)", () => {
+		const r = captureBlend(10, 5, 20, 15, 1.5, 0.5);
+		expect(r.x).toBe(10);
+		expect(r.z).toBe(5);
+	});
+
+	it("t = 1.0 lands at station-keeping orbit around target", () => {
+		const targetX = 20;
+		const targetZ = 15;
+		const offset = 1.5;
+		const r = captureBlend(22, 17, targetX, targetZ, offset, 1.0);
+		// Should be exactly offset distance from target
+		const dist = Math.hypot(r.x - targetX, r.z - targetZ);
+		expect(dist).toBeCloseTo(offset, 3);
+	});
+
+	it("smoothly transitions -- t=0.9 is between spline and target", () => {
+		const r085 = captureBlend(10, 5, 20, 15, 1.5, 0.85);
+		const r090 = captureBlend(10, 5, 20, 15, 1.5, 0.9);
+		const r100 = captureBlend(10, 5, 20, 15, 1.5, 1.0);
+		// r090 should be between r085 and r100
+		const d085to090 = Math.hypot(r090.x - r085.x, r090.z - r085.z);
+		const d090to100 = Math.hypot(r100.x - r090.x, r100.z - r090.z);
+		const d085to100 = Math.hypot(r100.x - r085.x, r100.z - r085.z);
+		expect(d085to090).toBeGreaterThan(0);
+		expect(d090to100).toBeGreaterThan(0);
+		// Triangle inequality: intermediate point is between endpoints
+		expect(d085to090 + d090to100).toBeCloseTo(d085to100, 3);
+	});
+
+	it("no jump when prediction is accurate (spline endpoint = target)", () => {
+		const offset = 1.5;
+		// Spline endpoint is already at the station-keeping orbit
+		const targetX = 20;
+		const targetZ = 15;
+		const angle = Math.atan2(5, 2); // approach angle
+		const splineX = targetX + Math.cos(angle) * offset;
+		const splineZ = targetZ + Math.sin(angle) * offset;
+		const r = captureBlend(splineX, splineZ, targetX, targetZ, offset, 1.0);
+		// Should stay at the same position (no correction needed)
+		expect(r.x).toBeCloseTo(splineX, 3);
+		expect(r.z).toBeCloseTo(splineZ, 3);
+	});
+});
+
+// ──────────────────────────────────────────────
+// Trail distance sampling regression tests
+// ──────────────────────────────────────────────
+describe("trail distance sampling (ship transfer)", () => {
+	// Reproduces the bug: if distance is computed AFTER glue update,
+	// it reads back the value we just wrote -> dx=0 always -> no samples.
+	// The fix computes distance BEFORE the glue overwrites previous position.
+
+	function simulateTrailSampling(
+		meshPositions: Array<{ x: number; z: number }>,
+		threshold: number,
+		readBeforeGlue: boolean,
+	): number {
+		const maxPoints = 400;
+		const positions = new Float32Array(maxPoints * 3);
+		let head = 0;
+		let count = 0;
+		let sampleAccum = 0;
+		let sampleCount = 0;
+
+		for (const pos of meshPositions) {
+			let distThisFrame = 0;
+
+			if (readBeforeGlue && count > 0) {
+				// CORRECT: read previous position BEFORE glue overwrites it
+				const prevIdx = ((head - 1 + maxPoints) % maxPoints) * 3;
+				distThisFrame = Math.hypot(pos.x - positions[prevIdx], pos.z - positions[prevIdx + 2]);
+			}
+
+			// Glue: update head to current position
+			if (count > 0) {
+				const headPhys = ((head - 1 + maxPoints) % maxPoints) * 3;
+				positions[headPhys] = pos.x;
+				positions[headPhys + 2] = pos.z;
+			}
+
+			if (!readBeforeGlue && count > 0) {
+				// BUG: read AFTER glue -- always reads back current position
+				const prevIdx = ((head - 1 + maxPoints) % maxPoints) * 3;
+				distThisFrame = Math.hypot(pos.x - positions[prevIdx], pos.z - positions[prevIdx + 2]);
+			}
+
+			sampleAccum += distThisFrame;
+			while (sampleAccum > threshold) {
+				sampleAccum -= threshold;
+				const h3 = head * 3;
+				positions[h3] = pos.x;
+				positions[h3 + 2] = pos.z;
+				head = (head + 1) % maxPoints;
+				if (count < maxPoints) count++;
+				sampleCount++;
+			}
+
+			// Seed first point (matches real code: first frame always records)
+			if (count === 0) {
+				positions[0] = pos.x;
+				positions[2] = pos.z;
+				head = 1;
+				count = 1;
+				sampleCount++;
+			}
+		}
+		return sampleCount;
+	}
+
+	it("BUG: reading after glue produces only the seed point", () => {
+		const positions = [];
+		for (let i = 0; i < 100; i++) {
+			positions.push({ x: i * 0.5, z: i * 0.3 });
+		}
+		const samples = simulateTrailSampling(positions, 0.3, false);
+		// Bug: distance is always 0 after glue, so only the initial seed is recorded
+		expect(samples).toBe(1);
+	});
+
+	it("FIX: reading before glue produces correct samples", () => {
+		const positions = [];
+		for (let i = 0; i < 100; i++) {
+			positions.push({ x: i * 0.5, z: i * 0.3 });
+		}
+		const samples = simulateTrailSampling(positions, 0.3, true);
+		// Seed + many distance-based samples from steady movement
+		expect(samples).toBeGreaterThan(50);
+	});
+
+	it("stationary ship produces only the seed point", () => {
+		const positions = Array(50).fill({ x: 5, z: 3 });
+		const samples = simulateTrailSampling(positions, 0.3, true);
+		// Only the initial seed -- no movement means no further samples
+		expect(samples).toBe(1);
 	});
 });

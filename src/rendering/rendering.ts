@@ -126,32 +126,47 @@ export function updatePositions(dt: number, camDist: number): void {
 				const elapsed = state.simTime - entry.transferStartTime;
 				const t = Math.min(elapsed / entry.transferTimeDays, 1);
 
-				// Evaluate frozen Hermite spline — no mid-flight recalculation
-				const p = transferPosition(entry, t);
-				entry.mesh.position.set(p.x, 0, p.z);
-
-				// Complete when time is up or ship is within station-keeping distance
+				// Look up target early -- needed for capture blend and completion
 				let tgt = findBodyEntry(entry.transferTarget ?? "");
 				if (!tgt) {
 					const hit = findAsteroid(entry.transferTarget ?? "");
 					if (hit) tgt = asteroidProxy(hit.asteroid, hit.beltEntry);
 				}
+
+				// Evaluate frozen Hermite spline
+				const p = transferPosition(entry, t);
+
+				// Capture blend: in the final 15% of transfer, smoothly steer
+				// from the (potentially stale) spline endpoint toward the target's
+				// actual station-keeping orbit. Eliminates the visible jump caused
+				// by prediction error in predictTargetWorld().
+				if (tgt && t > 0.85) {
+					const offset = stationKeepingOffset(tgt);
+					const aAngle = Math.atan2(p.z - tgt.mesh.position.z, p.x - tgt.mesh.position.x);
+					const capX = tgt.mesh.position.x + Math.cos(aAngle) * offset;
+					const capZ = tgt.mesh.position.z + Math.sin(aAngle) * offset;
+					const blend = (t - 0.85) / 0.15;
+					const s = blend * blend * (3 - 2 * blend); // smoothstep
+					entry.mesh.position.set(p.x + (capX - p.x) * s, 0, p.z + (capZ - p.z) * s);
+				} else {
+					entry.mesh.position.set(p.x, 0, p.z);
+				}
+
+				// Complete when time is up or within station-keeping distance
 				const distToTarget = tgt
-					? Math.hypot(p.x - tgt.mesh.position.x, p.z - tgt.mesh.position.z)
+					? Math.hypot(
+							entry.mesh.position.x - tgt.mesh.position.x,
+							entry.mesh.position.z - tgt.mesh.position.z,
+						)
 					: Number.POSITIVE_INFINITY;
 
 				if (isTransferComplete(elapsed, entry.transferTimeDays) || distToTarget <= SHIP_LOCAL_ORBIT) {
-					const entryAngle = tgt ? Math.atan2(p.z - tgt.mesh.position.z, p.x - tgt.mesh.position.x) : 0;
-					// Pre-snap ship to station-keeping position before completing transfer
-					// to eliminate visual discontinuity between spline endpoint and orbit position
-					if (tgt) {
-						const offset = stationKeepingOffset(tgt);
-						entry.mesh.position.set(
-							tgt.mesh.position.x + Math.cos(entryAngle) * offset,
-							tgt.mesh.position.y,
-							tgt.mesh.position.z + Math.sin(entryAngle) * offset,
-						);
-					}
+					const entryAngle = tgt
+						? Math.atan2(
+								entry.mesh.position.z - tgt.mesh.position.z,
+								entry.mesh.position.x - tgt.mesh.position.x,
+							)
+						: 0;
 					completeTransfer(entry, entryAngle);
 					return;
 				}
@@ -202,7 +217,7 @@ export function updatePositions(dt: number, camDist: number): void {
 			(entry as PlanetEntry).cloudMesh.rotation.y += simDt * 0.002;
 		}
 
-		// Trail recording — skip if trails hidden for this category
+		// Trail recording -- skip if trails hidden for this category
 		const catKey = (entry.isMoon ? "Moon" : entry.data.type) as CategoryKey;
 		if (!state.categoryVisibility[catKey].trails) return;
 
@@ -215,6 +230,33 @@ export function updatePositions(dt: number, camDist: number): void {
 		}
 
 		const t = entry.trail;
+
+		// For transferring ships, compute distance traveled BEFORE the glue
+		// code overwrites the previous head position with the current mesh
+		// position (otherwise dx/dz would always be zero).
+		// Seed the first trail point on the first frame of a transfer so
+		// subsequent frames have a previous position to measure distance from.
+		if (isTransferringShip && t.count === 0) {
+			const h3 = t.head * 3;
+			t.positions[h3] = entry.mesh.position.x;
+			t.positions[h3 + 1] = entry.mesh.position.y;
+			t.positions[h3 + 2] = entry.mesh.position.z;
+			t.colors[h3] = t.baseColor.r;
+			t.colors[h3 + 1] = t.baseColor.g;
+			t.colors[h3 + 2] = t.baseColor.b;
+			t.head = (t.head + 1) % t.maxPoints;
+			t.count = 1;
+			t.line.geometry.setDrawRange(0, 1);
+			t.line.geometry.attributes.position.needsUpdate = true;
+			t.line.geometry.attributes.color.needsUpdate = true;
+		}
+		let shipDistThisFrame = 0;
+		if (isTransferringShip && t.count > 0) {
+			const prevIdx = ((t.head - 1 + t.maxPoints) % t.maxPoints) * 3;
+			const prevX = t.positions[prevIdx];
+			const prevZ = t.positions[prevIdx + 2];
+			shipDistThisFrame = Math.hypot(entry.mesh.position.x - prevX, entry.mesh.position.z - prevZ);
+		}
 
 		// Always keep the last-drawn vertex glued to the current mesh position
 		// so there's no visible gap between sample intervals.
@@ -229,19 +271,11 @@ export function updatePositions(dt: number, camDist: number): void {
 
 		// Transferring ships: distance-based sampling in world space.
 		// Comets: accumulate angular distance and sample when threshold reached.
-		// Threshold scales up with zoom-out so trails grow longer, but never
-		// drops below COMET_TRAIL_STEP_ARC so trails never shrink when zooming in.
 		// Non-comets: accumulate sim time with fixed interval.
 		const isComet = isCometEntry(entry);
 		const SHIP_TRANSFER_TRAIL_STEP = 0.3; // world-space distance between trail samples
 		if (isTransferringShip) {
-			// Distance-based sampling: accumulate world-space distance traveled
-			const prevIdx = ((t.head - 1 + t.maxPoints) % t.maxPoints) * 3;
-			const prevX = t.count > 0 ? t.positions[prevIdx] : entry.mesh.position.x;
-			const prevZ = t.count > 0 ? t.positions[prevIdx + 2] : entry.mesh.position.z;
-			const dx = entry.mesh.position.x - prevX;
-			const dz = entry.mesh.position.z - prevZ;
-			t.sampleAccum += Math.hypot(dx, dz);
+			t.sampleAccum += shipDistThisFrame;
 		} else if (isComet) {
 			t.sampleAccum += Math.abs(entry.speed * simDt);
 		} else {
