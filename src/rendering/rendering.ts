@@ -78,7 +78,7 @@ export function updateAsteroids(dt: number): void {
 
 export function updatePositions(dt: number, camDist: number): void {
 	const simDt = dt * state.timeSpeed;
-	state.simTime += simDt;
+	state.simTime.advanceDays(simDt);
 	if (simDt === 0) return;
 
 	const zoomFactor = ZOOM_BASE / camDist;
@@ -123,7 +123,7 @@ export function updatePositions(dt: number, camDist: number): void {
 					);
 				}
 			} else if (entry.shipState === "transferring") {
-				const elapsed = state.simTime - entry.transferStartTime;
+				const elapsed = state.simTime.days - entry.transferStartTime;
 				const t = Math.min(elapsed / entry.transferTimeDays, 1);
 
 				// Look up target each frame for live tracking

@@ -464,7 +464,7 @@ function commitTransfer(
 	entry.t1x = knots.t1x;
 	entry.t1z = knots.t1z;
 
-	entry.transferStartTime = state.simTime;
+	entry.transferStartTime = state.simTime.days;
 	entry.transferTimeDays = gameDays;
 	entry.transferTarget = targetName;
 	entry.shipState = "transferring";

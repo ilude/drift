@@ -394,10 +394,10 @@ let lastHudSimTime = -1;
 let lastHudTimeSpeed = -1;
 
 export function updateHUD(camDist: number): void {
-	if (state.simTime !== lastHudSimTime || state.timeSpeed !== lastHudTimeSpeed) {
-		lastHudSimTime = state.simTime;
+	if (state.simTime.days !== lastHudSimTime || state.timeSpeed !== lastHudTimeSpeed) {
+		lastHudSimTime = state.simTime.days;
 		lastHudTimeSpeed = state.timeSpeed;
-		const d = truncateDate(simTimeToDate(state.simTime), state.timeSpeed);
+		const d = truncateDate(simTimeToDate(state.simTime.days), state.timeSpeed);
 		const timeText = formatDateTime(d);
 		if (timeText !== lastTimeText) {
 			timeEl.textContent = timeText;
@@ -619,11 +619,11 @@ export function setupUI(loadSystem: (systemData: SystemData) => void): void {
 			state.renderNeeded = true;
 			window.dispatchEvent(new Event("wake-render"));
 			const ship = findShip();
-			const elapsed = ship ? state.simTime - ship.transferStartTime : 0;
+			const elapsed = ship ? state.simTime.days - ship.transferStartTime : 0;
 			const t = ship && ship.transferTimeDays > 0 ? elapsed / ship.transferTimeDays : 0;
 			gameLog(`DEBUG STEP [${backward ? "B" : "N"}]:`, {
 				speed,
-				simTime: state.simTime.toFixed(3),
+				simTime: state.simTime.days.toFixed(3),
 				shipState: ship?.shipState,
 				t: t.toFixed(4),
 			});

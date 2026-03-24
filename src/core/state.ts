@@ -6,6 +6,7 @@ import type {
 	SavedStateData,
 } from "../types";
 import { isShipEntry } from "../types";
+import { GameClock } from "./game-clock";
 
 export const MAX_CLICK_DIST = 50;
 
@@ -47,14 +48,12 @@ export function formatDateTime(date: Date): string {
 
 /** Log with in-game datetime prefix. */
 export function gameLog(...args: unknown[]): void {
-	const d = simTimeToDate(state.simTime);
-	console.log(`[${formatDateTime(d)}]`, ...args);
+	console.log(`[${state.simTime.formatDateTime()}]`, ...args);
 }
 
 /** Warn with in-game datetime prefix. */
 export function gameWarn(...args: unknown[]): void {
-	const d = simTimeToDate(state.simTime);
-	console.warn(`[${formatDateTime(d)}]`, ...args);
+	console.warn(`[${state.simTime.formatDateTime()}]`, ...args);
 }
 
 export function speedLabel(timeSpeed: number): string {
@@ -73,7 +72,7 @@ export const state: AppState = {
 	asteroidBelts: [],
 	selectedBody: null,
 	flyTo: null,
-	simTime: 0,
+	simTime: new GameClock(0),
 	timeSpeed: 1,
 	currentSystemKey: "sol",
 	discoveredSystems: new Map(),

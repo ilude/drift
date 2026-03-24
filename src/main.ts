@@ -15,6 +15,7 @@ import {
 	rebuildEntityMaps,
 	resolveEntity,
 } from "./core/entities";
+import { GameClock } from "./core/game-clock";
 import { publishIntent } from "./core/intents";
 import { addCoalescedNotification, addNotification } from "./core/notifications";
 import {
@@ -101,7 +102,7 @@ if (saved) {
 		state.BODIES = active.systemData.bodies;
 		state.COMETS = active.systemData.comets;
 		state.ASTEROID_BELTS = active.systemData.asteroidBelts;
-		state.simTime = saved.simTime;
+		state.simTime = new GameClock(saved.simTime);
 		(document.querySelector(".system-name") as HTMLElement).textContent =
 			`${active.systemData.name} \u25be`;
 		document.title = `Drift - ${active.systemData.name}`;
@@ -243,7 +244,7 @@ function loadSystem(systemData: SystemData): void {
 	cacheStarEntry();
 	(document.querySelector(".system-name") as HTMLElement).textContent = `${systemData.name} \u25be`;
 	document.title = `Drift - ${systemData.name}`;
-	state.simTime = 0;
+	state.simTime = new GameClock(0);
 }
 
 // ---------------------------------------------------------------------------
@@ -423,7 +424,7 @@ function dispatchCommand(ship: ShipEntry, result: CommandResult): void {
 				if (unsurvevedMoons.length > 0) {
 					const moon = unsurvevedMoons[0];
 					const dur = getSurveyDuration(moon.data.mass, ship);
-					ship.action = mkAction("survey-nearest", "survey", state.simTime, dur, moon.data.name);
+					ship.action = mkAction("survey-nearest", "survey", state.simTime.days, dur, moon.data.name);
 					publishIntent(ship.data.name, {
 						type: "surveying",
 						target: moon.data.name,
@@ -458,7 +459,7 @@ function dispatchCommand(ship: ShipEntry, result: CommandResult): void {
 
 				if (alreadyThere) {
 					const dur = getSurveyDuration(targetMass, ship);
-					ship.action = mkAction("survey-nearest", "survey", state.simTime, dur, target);
+					ship.action = mkAction("survey-nearest", "survey", state.simTime.days, dur, target);
 					ship.stationTarget = null;
 					publishIntent(ship.data.name, { type: "surveying", target, shipName: ship.data.name });
 				} else if (!canAffordRoundTrip(ship, targetBody)) {
@@ -548,7 +549,7 @@ function dispatchCommand(ship: ShipEntry, result: CommandResult): void {
 					ship.action = noAction();
 				}
 			} else {
-				ship.action = mkAction("shore-leave", "shore-leave", state.simTime, 30);
+				ship.action = mkAction("shore-leave", "shore-leave", state.simTime.days, 30);
 			}
 			publishIntent(ship.data.name, {
 				type: "shore-leave",
@@ -571,7 +572,7 @@ function dispatchCommand(ship: ShipEntry, result: CommandResult): void {
 				}
 			} else {
 				const dur = 5;
-				ship.action = mkAction("overhaul", "overhaul", state.simTime, dur);
+				ship.action = mkAction("overhaul", "overhaul", state.simTime.days, dur);
 			}
 			publishIntent(ship.data.name, {
 				type: "overhauling",
@@ -598,7 +599,7 @@ function completeAction(ship: ShipEntry): void {
 	if (actionType === "survey-nearest") {
 		completeSurvey(ship);
 	} else if (actionType === "shore-leave") {
-		ship.crew.lastShoreLeave = state.simTime;
+		ship.crew.lastShoreLeave = state.simTime.days;
 		ship.action = noAction();
 	} else if (actionType === "overhaul") {
 		ship.maintenance.age = 0;
@@ -614,7 +615,7 @@ function completeAction(ship: ShipEntry): void {
 
 /** Called each frame for every ship. Handles simulation + action timers. */
 function tickShip(ship: ShipEntry, simDt: number): void {
-	tickShipSimulation(ship, simDt, state.simTime);
+	tickShipSimulation(ship, simDt, state.simTime.days);
 
 	// Check action timer (only while orbiting with active timed action)
 	const hasActiveAction =
@@ -623,7 +624,7 @@ function tickShip(ship: ShipEntry, simDt: number): void {
 		ship.action.startTime > 0 &&
 		ship.action.duration > 0;
 	if (hasActiveAction) {
-		const elapsed = state.simTime - ship.action.startTime;
+		const elapsed = state.simTime.days - ship.action.startTime;
 		ship.action.progress = Math.min(1, elapsed / ship.action.duration);
 
 		if (ship.action.progress >= 1) {
@@ -633,7 +634,7 @@ function tickShip(ship: ShipEntry, simDt: number): void {
 
 	// Auto-evaluate command tree when idle and orbiting (kicks off autonomous behavior)
 	// Skip until positions have been computed (simTime > 0.1 ensures at least a few frames)
-	if (ship.shipState === "orbiting" && !ship.action.type && state.simTime > 0.1) {
+	if (ship.shipState === "orbiting" && !ship.action.type && state.simTime.days > 0.1) {
 		gameLog(`[tickShip] ${ship.data.name}: idle, re-evaluating command tree`);
 		const result = evaluateCommandTree(ship);
 		if (result) dispatchCommand(ship, result);
@@ -666,7 +667,7 @@ export function onTransferComplete(ship: ShipEntry): void {
 
 		const mass = resolved?.mass ?? EARTH_MASS_KG;
 		const dur = getSurveyDuration(mass, ship);
-		ship.action.startTime = state.simTime;
+		ship.action.startTime = state.simTime.days;
 		ship.action.duration = dur;
 		ship.action.progress = 0;
 		publishIntent(ship.data.name, {
@@ -679,15 +680,15 @@ export function onTransferComplete(ship: ShipEntry): void {
 			ship.stationTarget = surveyTarget ?? null;
 		}
 	} else if (actionType === "refuel") {
-		ship.action.startTime = state.simTime;
+		ship.action.startTime = state.simTime.days;
 		ship.action.duration = 5;
 		ship.action.progress = 0;
 	} else if (actionType === "shore-leave") {
-		ship.action.startTime = state.simTime;
+		ship.action.startTime = state.simTime.days;
 		ship.action.duration = 30;
 		ship.action.progress = 0;
 	} else if (actionType === "overhaul") {
-		ship.action.startTime = state.simTime;
+		ship.action.startTime = state.simTime.days;
 		ship.action.duration = 5;
 		ship.action.progress = 0;
 	} else {
@@ -762,14 +763,14 @@ function animate(now: number): void {
 			window.dispatchEvent(new Event("debug-step-done"));
 			const ship = findShip();
 			if (ship) {
-				const elapsed: number = state.simTime - ship.transferStartTime;
+				const elapsed: number = state.simTime.days - ship.transferStartTime;
 				const t: number = ship.transferTimeDays > 0 ? elapsed / ship.transferTimeDays : 0;
 				gameLog("DEBUG STEP PAUSED:", {
-					simTime: state.simTime.toFixed(3),
+					simTime: state.simTime.days.toFixed(3),
 					shipState: ship.shipState,
 					t: t.toFixed(4),
 					shipPos: `(${ship.mesh.position.x.toFixed(2)}, ${ship.mesh.position.z.toFixed(2)})`,
-					elapsed: (state.simTime - ship.transferStartTime).toFixed(3),
+					elapsed: (state.simTime.days - ship.transferStartTime).toFixed(3),
 				});
 			}
 		}

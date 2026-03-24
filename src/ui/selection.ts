@@ -248,7 +248,7 @@ export function selectBody(entry: BodyEntry): void {
 		// Days since leave
 		const leaveValueEl = document.getElementById("info-leave-value");
 		if (leaveValueEl) {
-			const daysSinceLeave = Math.round(state.simTime - entry.crew.lastShoreLeave);
+			const daysSinceLeave = Math.round(state.simTime.days - entry.crew.lastShoreLeave);
 			leaveValueEl.textContent = `${daysSinceLeave}d`;
 		}
 
@@ -423,7 +423,7 @@ function updateShipStatus(entry: ShipEntry): void {
 	// Days since leave (live)
 	const leaveEl = document.getElementById("info-leave-value");
 	if (leaveEl) {
-		const daysSinceLeave = Math.round(state.simTime - entry.crew.lastShoreLeave);
+		const daysSinceLeave = Math.round(state.simTime.days - entry.crew.lastShoreLeave);
 		leaveEl.textContent = `${daysSinceLeave}d`;
 	}
 

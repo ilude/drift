@@ -12,7 +12,7 @@ export function addNotification(type: NotificationType, message: string, bodyNam
 		id: nextId++,
 		type,
 		message,
-		simTime: state.simTime,
+		simTime: state.simTime.days,
 		bodyName,
 		read: false,
 	};

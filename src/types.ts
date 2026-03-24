@@ -1,4 +1,5 @@
 import type * as THREE from "three";
+import type { GameClock } from "./core/game-clock";
 
 // --- Scratch object return types ---
 
@@ -457,7 +458,7 @@ export interface AppState {
 	asteroidBelts: AsteroidBeltEntry[];
 	selectedBody: BodyEntry | null;
 	flyTo: FlyToState | null;
-	simTime: number;
+	simTime: GameClock;
 	timeSpeed: number;
 	currentSystemKey: string;
 	discoveredSystems: Map<string, DiscoveredSystem>;

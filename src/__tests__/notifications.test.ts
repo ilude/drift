@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { GameClock } from "../core/game-clock";
 import {
 	addCoalescedNotification,
 	addNotification,
@@ -13,7 +14,7 @@ import { state } from "../core/state";
 
 function resetState() {
 	state.notifications = [];
-	state.simTime = 100;
+	state.simTime = new GameClock(100);
 	state.timeSpeed = 1;
 	state.notificationPauseConfig = {
 		"survey-complete": false,

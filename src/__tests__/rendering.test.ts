@@ -13,6 +13,7 @@ vi.mock("../rendering/scene", () => ({
 	ZOOM_BASE: 300,
 }));
 
+import { GameClock } from "../core/game-clock";
 import { state } from "../core/state";
 import { COMET_TRAIL_STEP_ARC } from "../rendering/bodies";
 import {
@@ -148,7 +149,7 @@ describe("initiateTransfer", () => {
 			},
 		];
 		state.bodyMeshes = [];
-		state.simTime = 0;
+		state.simTime = new GameClock(0);
 
 		state.BODIES?.forEach((b) => {
 			if (b.type !== "Star") {
