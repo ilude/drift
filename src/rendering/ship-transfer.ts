@@ -92,8 +92,17 @@ export function predictTargetWorld(
 	const px = targetEntry.mesh.position.x;
 	const pz = targetEntry.mesh.position.z;
 
-	// Stationary bodies (star) or ships/asteroids without proper orbital elements
-	if (targetEntry.speed === 0 || isShipEntry(targetEntry)) {
+	// Stationary bodies (star), ships, or entities without orbital elements (asteroid proxies)
+	if (targetEntry.speed === 0 || isShipEntry(targetEntry) || targetEntry.angle === undefined) {
+		// Fall back to linear extrapolation for entities without Kepler elements
+		if (targetEntry.speed !== 0 && targetEntry.angle === undefined) {
+			const currentAngle = Math.atan2(pz, px);
+			const currentR = Math.hypot(px, pz);
+			const arrivalAngle = currentAngle + targetEntry.speed * daysFromNow;
+			_targetWorldOut.x = Math.cos(arrivalAngle) * currentR;
+			_targetWorldOut.z = Math.sin(arrivalAngle) * currentR;
+			return _targetWorldOut;
+		}
 		_targetWorldOut.x = px;
 		_targetWorldOut.z = pz;
 		return _targetWorldOut;

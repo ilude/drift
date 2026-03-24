@@ -194,6 +194,27 @@ describe("predictTargetWorld", () => {
 		const second = predictTargetWorld(body, 10);
 		expect(second).toBe(ref);
 	});
+
+	it("handles asteroid proxy without angle/e fields (no NaN)", () => {
+		// Asteroid proxies are cast as BodyEntry but lack angle and data.e
+		const proxy = {
+			mesh: { position: { x: 10, y: 0, z: 5 } },
+			data: { name: "2024-MB-001", distance: 2.5, type: "Asteroid" },
+			speed: orbitSpeed(3),
+			isMoon: false,
+			isShip: false,
+			isComet: false,
+			parentMesh: null,
+			// angle intentionally omitted — this is the bug case
+		} as unknown as BodyEntry;
+		const result = predictTargetWorld(proxy, 100);
+		expect(Number.isNaN(result.x)).toBe(false);
+		expect(Number.isNaN(result.z)).toBe(false);
+		// Should use linear extrapolation — radius preserved
+		const inputR = Math.hypot(10, 5);
+		const resultR = Math.hypot(result.x, result.z);
+		expect(resultR).toBeCloseTo(inputR, 3);
+	});
 });
 
 // ──────────────────────────────────────────────

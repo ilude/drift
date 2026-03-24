@@ -156,6 +156,11 @@ export function updatePositions(dt: number, camDist: number): void {
 					return;
 				}
 			}
+
+			// Velocity tail: hidden for ships (trail covers transfers)
+			if (entry.tailLine) {
+				entry.tailLine.visible = false;
+			}
 		} else if (isCometEntry(entry)) {
 			const { a, e, incRad, nodeRad, periRad } = entry.data;
 			entry.angle += entry.speed * simDt;
