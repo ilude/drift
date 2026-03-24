@@ -1,6 +1,11 @@
 import "./style.css";
 import * as THREE from "three";
-import { evaluateCommandTree, selectNextSurveyTarget, tickShipSimulation } from "./core/commands";
+import {
+	evaluateCommandTree,
+	getUnsurvevedMoonsOfHost,
+	selectNextSurveyTarget,
+	tickShipSimulation,
+} from "./core/commands";
 import { addCoalescedNotification, addNotification } from "./core/notifications";
 import { loadSavedState, MASTER_SEED, restoreShipState, saveState, state } from "./core/state";
 import { seededRandom } from "./core/utils";
@@ -95,6 +100,8 @@ if (saved) {
 
 createBodies();
 createComets();
+// Initial position tick so all bodies are placed before ship creation
+updatePositions(1e-10, 300);
 createShip();
 if (saved) restoreShipState(saved);
 state.asteroidBelts = createAsteroidBelts();
@@ -337,6 +344,19 @@ function canAffordRoundTrip(ship: ShipEntry, target: BodyEntry): boolean {
 function dispatchCommand(ship: ShipEntry, result: CommandResult): void {
 	switch (result.action) {
 		case "survey": {
+			// Survey unsurveyed moons of the current host before moving to the next planet
+			const hostEntry = findBodyByName(ship.hostPlanetName);
+			const hostSurveyed = hostEntry && isSurveyable(hostEntry) && hostEntry.survey.surveyLevel > 0;
+			if (hostSurveyed) {
+				const unsurvevedMoons = getUnsurvevedMoonsOfHost(ship);
+				if (unsurvevedMoons.length > 0) {
+					const moon = unsurvevedMoons[0];
+					const dur = getSurveyDuration(moon.data.mass, ship);
+					ship.action = mkAction("survey-nearest", "survey", state.simTime, dur, moon.data.name);
+					break;
+				}
+			}
+
 			const target = selectNextSurveyTarget(ship);
 			if (target) {
 				const targetBody = findBodyByName(target);
@@ -595,7 +615,7 @@ function animate(now: number): void {
 					shipState: ship.shipState,
 					t: t.toFixed(4),
 					shipPos: `(${ship.mesh.position.x.toFixed(2)}, ${ship.mesh.position.z.toFixed(2)})`,
-					hasBlend: !!ship.blendTarget,
+					elapsed: (state.simTime - ship.transferStartTime).toFixed(3),
 				});
 			}
 		}

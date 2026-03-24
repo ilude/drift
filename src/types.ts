@@ -119,7 +119,7 @@ export interface ShipEntryData {
 }
 
 export type PlanetCategory = "rocky" | "subNeptune" | "iceGiant" | "gasGiant";
-export type ShipState = "orbiting" | "departing" | "transferring";
+export type ShipState = "orbiting" | "transferring";
 
 // --- Command priority tree ---
 
@@ -291,7 +291,6 @@ export interface ShipEntry extends BaseEntry {
 	t1x: number;
 	t1z: number;
 	pendingTransfer: PendingTransfer | null;
-	transferRecalcCounter: number;
 	// Visual
 	transferPath: THREE.Line | null;
 	tailPositions: Float32Array;
@@ -301,7 +300,6 @@ export interface ShipEntry extends BaseEntry {
 	// Frame counters
 	lastAngle?: number;
 	departFrameCount?: number;
-	blendTarget?: { entryAngle: number } | null;
 	baseSize: number;
 	realisticSize: number;
 	// Command & autonomy

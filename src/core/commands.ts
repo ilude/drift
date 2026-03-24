@@ -1,4 +1,4 @@
-import type { CommandCondition, CommandResult, ShipEntry } from "../types";
+import type { BodyEntry, CommandCondition, CommandResult, ShipEntry } from "../types";
 import { isShipEntry, isSurveyable } from "../types";
 import { state } from "./state";
 import { seededRandom } from "./utils";
@@ -81,8 +81,11 @@ const SUPPLY_RESTOCK_PER_DAY = 20; // +20 supplies/day during overhaul
 export function tickShipSimulation(ship: ShipEntry, simDt: number, simTime: number): void {
 	const atColony = isAtColony(ship);
 
+	// Recovery actions only apply while orbiting (not during transfer to destination)
+	const isOrbiting = ship.shipState === "orbiting";
+
 	// Morale: gradual recovery during shore leave, decay when deployed
-	if (ship.action.type === "shore-leave") {
+	if (isOrbiting && ship.action.type === "shore-leave") {
 		ship.crew.morale = Math.min(100, ship.crew.morale + MORALE_RECOVERY_PER_DAY * simDt);
 		ship.crew.lastShoreLeave = simTime;
 	} else if (!atColony) {
@@ -90,14 +93,14 @@ export function tickShipSimulation(ship: ShipEntry, simDt: number, simTime: numb
 		ship.crew.morale = computeMorale(daysSinceLeave, ship.crew.deploymentLimit);
 	}
 
-	// Gradual refueling during refuel action
-	if (ship.action.type === "refuel") {
+	// Gradual refueling during refuel action (only while orbiting)
+	if (isOrbiting && ship.action.type === "refuel") {
 		const fuelPerFrame = REFUEL_RATE_PER_DAY * ship.fuelCapacityKg * simDt;
 		ship.fuelKg = Math.min(ship.fuelCapacityKg, ship.fuelKg + fuelPerFrame);
 	}
 
-	// Gradual hull repair + supply restock during overhaul
-	if (ship.action.type === "overhaul") {
+	// Gradual hull repair + supply restock during overhaul (only while orbiting)
+	if (isOrbiting && ship.action.type === "overhaul") {
 		ship.maintenance.hullIntegrity = Math.min(
 			100,
 			ship.maintenance.hullIntegrity + HULL_REPAIR_PER_DAY * simDt,
@@ -168,6 +171,7 @@ export function selectNextSurveyTarget(ship: ShipEntry): string | null {
 		if (!isSurveyable(body)) return false;
 		if (body.survey.surveyLevel !== 0) return false;
 		if (body.data.type === "Star") return false;
+		if (body.isMoon) return false;
 		return true;
 	});
 
@@ -184,4 +188,10 @@ export function selectNextSurveyTarget(ship: ShipEntry): string | null {
 		return (nearest as { data: { name: string } }).data.name;
 	}
 	return null;
+}
+
+export function getUnsurvevedMoonsOfHost(ship: ShipEntry): BodyEntry[] {
+	const host = state.bodyMeshes.find((e) => e.data.name === ship.hostPlanetName);
+	if (!host) return [];
+	return host.moons.filter((moon) => isSurveyable(moon) && moon.survey.surveyLevel === 0);
 }
