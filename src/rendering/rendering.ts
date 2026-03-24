@@ -213,11 +213,13 @@ export function updatePositions(dt: number, camDist: number): void {
 								const targetWorld = predictTargetWorld(tgt, remainingDays);
 								entry.p1x = targetWorld.x;
 								entry.p1z = targetWorld.z;
-								const dist = Math.hypot(entry.p1x - entry.p0x, entry.p1z - entry.p0z);
-								const targetAngle = Math.atan2(targetWorld.z, targetWorld.x);
-								const targetTangentDir = targetAngle + Math.PI / 2;
-								entry.t1x = Math.cos(targetTangentDir) * dist * 0.3;
-								entry.t1z = Math.sin(targetTangentDir) * dist * 0.3;
+								const dx = targetWorld.x - entry.p0x;
+								const dz = targetWorld.z - entry.p0z;
+								const dist = Math.hypot(dx, dz);
+								// Arrival tangent: along approach direction (straight-line deceleration)
+								const approachAngle = Math.atan2(dz, dx);
+								entry.t1x = Math.cos(approachAngle) * dist * 0.3;
+								entry.t1z = Math.sin(approachAngle) * dist * 0.3;
 							}
 						}
 					}
@@ -225,14 +227,16 @@ export function updatePositions(dt: number, camDist: number): void {
 					// Evaluate Hermite spline position
 					const p = transferPosition(entry, t);
 
-					// Blend toward target's local orbit over the full transfer
+					// Blend toward target's station-keeping point
 					const tgt = findBodyEntry(entry.transferTarget ?? "");
 					const captureResult = applyCaptureBlend(p, tgt, t);
 
 					if (captureResult === "complete") {
-						const dx = p.x - (tgt as PlanetEntry).mesh.position.x;
-						const dz = p.z - (tgt as PlanetEntry).mesh.position.z;
-						entry.blendTarget = { entryAngle: Math.atan2(dz, dx) };
+						if (tgt) {
+							const dx = p.x - tgt.mesh.position.x;
+							const dz = p.z - tgt.mesh.position.z;
+							entry.blendTarget = { entryAngle: Math.atan2(dz, dx) };
+						}
 						completeTransfer(entry);
 						return;
 					}

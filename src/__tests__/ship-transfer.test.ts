@@ -127,11 +127,11 @@ describe("applyCaptureBlend", () => {
 // predictTargetWorld
 // ──────────────────────────────────────────────
 describe("predictTargetWorld", () => {
-	it("zero days returns current position (circular orbit approximation)", () => {
+	it("zero days returns current position", () => {
 		const planet = makePlanetEntry(100, 0, 1.0, 0.01);
 		const result = predictTargetWorld(planet, 0);
-		// Angle is atan2(0, 100) = 0; scaleDist(1.0) * cos(0) = scaleDist(1.0)
-		expect(result.x).toBeGreaterThan(0);
+		// Uses mesh position directly: currentR = 100, angle = 0
+		expect(result.x).toBeCloseTo(100);
 		expect(result.z).toBeCloseTo(0);
 	});
 
@@ -173,35 +173,32 @@ describe("computeHermiteKnots", () => {
 		// Planet at (100, 0) with speed=0 so it won't move
 		const planet = makePlanetEntry(100, 0, 1.0, 0);
 		const knots = computeHermiteKnots(0, 0, 0, planet, 0);
-		// predictTargetWorld(planet, 0) with speed=0 → atan2(0,100)=0, r = scaleDist(1.0)
-		const expectedX = Math.sqrt(1.0) * 200; // DIST_SCALE=200
-		expect(knots.p1x).toBeCloseTo(expectedX, 2);
+		// predictTargetWorld uses mesh position directly: currentR = hypot(100, 0) = 100
+		expect(knots.p1x).toBeCloseTo(100, 2);
 		expect(knots.p1z).toBeCloseTo(0, 2);
 	});
 
-	it("departure tangent is rotated 90° from departAngle (CCW perpendicular)", () => {
+	it("departure tangent points mostly toward target (blended with heading)", () => {
 		const planet = makePlanetEntry(100, 0, 1.0, 0);
 		const angle = Math.PI / 4; // 45°
 		const knots = computeHermiteKnots(0, 0, angle, planet, 0);
-		const tangentDir = angle + Math.PI / 2;
-		// The tangent direction should point in tangentDir; check unit vector matches
+		// Tangent should have a positive x component (toward target at +x)
 		const mag = Math.hypot(knots.t0x, knots.t0z);
 		expect(mag).toBeGreaterThan(0);
-		expect(knots.t0x / mag).toBeCloseTo(Math.cos(tangentDir), 5);
-		expect(knots.t0z / mag).toBeCloseTo(Math.sin(tangentDir), 5);
+		expect(knots.t0x / mag).toBeGreaterThan(0);
 	});
 
-	it("arrival tangent is perpendicular to radial direction (CCW orbit)", () => {
-		// Planet along +x axis; radial direction is 0°, tangent should be 90° (CCW)
+	it("arrival tangent points along approach direction (straight-line deceleration)", () => {
+		// Planet along +x axis; ship departs from origin → approach direction is +x (angle 0)
 		const planet = makePlanetEntry(100, 0, 1.0, 0);
 		const knots = computeHermiteKnots(0, 0, 0, planet, 0);
-		// targetAngle = atan2(0, predictedX) = 0; targetTangentDir = π/2
 		const mag = Math.hypot(knots.t1x, knots.t1z);
 		expect(mag).toBeGreaterThan(0);
 		const ux = knots.t1x / mag;
 		const uz = knots.t1z / mag;
-		expect(ux).toBeCloseTo(Math.cos(Math.PI / 2), 5);
-		expect(uz).toBeCloseTo(Math.sin(Math.PI / 2), 5);
+		// Approach from origin to (100,0) → direction is (1, 0)
+		expect(ux).toBeCloseTo(1, 3);
+		expect(uz).toBeCloseTo(0, 3);
 	});
 
 	it("tangent magnitudes are proportional to travel distance", () => {
