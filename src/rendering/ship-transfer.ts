@@ -1,7 +1,14 @@
 import * as THREE from "three";
 import { findAsteroidEntity, rebuildEntityMaps } from "../core/entities";
 import { state } from "../core/state";
-import { DIST_SCALE, orbitSpeed } from "../math/orbit";
+import {
+	DIST_SCALE,
+	keplerRadius,
+	MOON_DIST_SCALE,
+	meanToTrue,
+	orbitSpeed,
+	scaleDist,
+} from "../math/orbit";
 import { AU_TO_KM, checkTransferKm, ENGINE_TYPES } from "../math/ship-physics";
 import type {
 	AsteroidBeltEntry,
@@ -11,10 +18,12 @@ import type {
 	ShipEntry,
 	Vector3Like,
 } from "../types";
+import { isCometEntry, isShipEntry } from "../types";
 import {
 	createLabel,
 	createTrail,
 	findBodyEntry,
+	orbitToWorld,
 	SEL_RING_INNER,
 	SEL_RING_OUTER,
 	SEL_RING_SEGS,
@@ -80,23 +89,71 @@ export function predictTargetWorld(
 	targetEntry: BodyEntry,
 	daysFromNow: number,
 ): { x: number; z: number } {
-	// For bodies with a parent (moons) or non-circular orbits (comets),
-	// use current position + angular velocity extrapolation
 	const px = targetEntry.mesh.position.x;
 	const pz = targetEntry.mesh.position.z;
-	const currentAngle = Math.atan2(pz, px);
-	const currentR = Math.hypot(px, pz);
 
-	if (currentR < 0.001 || targetEntry.speed === 0) {
-		// Stationary body (star) — just return current position
+	// Stationary bodies (star) or ships/asteroids without proper orbital elements
+	if (targetEntry.speed === 0 || isShipEntry(targetEntry)) {
 		_targetWorldOut.x = px;
 		_targetWorldOut.z = pz;
 		return _targetWorldOut;
 	}
 
-	const arrivalAngle = currentAngle + targetEntry.speed * daysFromNow;
-	_targetWorldOut.x = Math.cos(arrivalAngle) * currentR;
-	_targetWorldOut.z = Math.sin(arrivalAngle) * currentR;
+	// Comets: full 3D inclined Kepler orbit
+	if (isCometEntry(targetEntry)) {
+		const { a, e, incRad, nodeRad, periRad } = targetEntry.data;
+		const futureM = targetEntry.angle + targetEntry.speed * daysFromNow;
+		const theta = meanToTrue(futureM, e);
+		const r = keplerRadius(a, e, theta);
+		const rScaled = scaleDist(r);
+		const w = orbitToWorld(
+			rScaled * Math.cos(theta),
+			rScaled * Math.sin(theta),
+			incRad,
+			nodeRad,
+			periRad,
+		);
+		_targetWorldOut.x = w.x;
+		_targetWorldOut.z = w.z;
+		return _targetWorldOut;
+	}
+
+	// Moons: propagate parent orbit then add moon offset
+	if (targetEntry.isMoon && targetEntry.parentMesh) {
+		const parentEntry = state.bodyMeshes.find((e) => e.mesh === targetEntry.parentMesh);
+		let parentFutureX: number;
+		let parentFutureZ: number;
+		if (parentEntry && !isShipEntry(parentEntry) && !isCometEntry(parentEntry)) {
+			const pEcc = parentEntry.data.e || 0;
+			const futureParentM = parentEntry.angle + parentEntry.speed * daysFromNow;
+			const parentTheta = meanToTrue(futureParentM, pEcc);
+			const parentKr = keplerRadius(parentEntry.data.distance, pEcc, parentTheta);
+			const parentR = scaleDist(parentKr);
+			parentFutureX = Math.cos(parentTheta) * parentR;
+			parentFutureZ = Math.sin(parentTheta) * parentR;
+		} else {
+			// Parent position unknown — use current
+			parentFutureX = targetEntry.parentMesh.position.x;
+			parentFutureZ = targetEntry.parentMesh.position.z;
+		}
+		const moonE = targetEntry.data.e || 0;
+		const futureMoonM = targetEntry.angle + targetEntry.speed * daysFromNow;
+		const moonTheta = meanToTrue(futureMoonM, moonE);
+		const moonKr = keplerRadius(targetEntry.data.distance, moonE, moonTheta);
+		const moonR = moonKr * MOON_DIST_SCALE;
+		_targetWorldOut.x = parentFutureX + Math.cos(moonTheta) * moonR;
+		_targetWorldOut.z = parentFutureZ + Math.sin(moonTheta) * moonR;
+		return _targetWorldOut;
+	}
+
+	// Regular planets: Kepler propagation in the ecliptic plane
+	const ecc = targetEntry.data.e || 0;
+	const futureM = targetEntry.angle + targetEntry.speed * daysFromNow;
+	const theta = meanToTrue(futureM, ecc);
+	const kr = keplerRadius(targetEntry.data.distance, ecc, theta);
+	const r = scaleDist(kr);
+	_targetWorldOut.x = Math.cos(theta) * r;
+	_targetWorldOut.z = Math.sin(theta) * r;
 	return _targetWorldOut;
 }
 
