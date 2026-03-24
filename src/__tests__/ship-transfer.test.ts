@@ -10,20 +10,26 @@ vi.mock("../rendering/scene", () => ({
 	cometGroup: { add: vi.fn() },
 }));
 
+import { keplerRadius, meanToTrue, orbitSpeed, scaleDist } from "../math/orbit";
 import {
 	computeHermiteKnots,
 	distanceKmBetween,
 	hermiteEval,
 	predictTargetWorld,
 } from "../rendering/ship-transfer";
-import type { PlanetEntry } from "../types";
+import type { BodyEntry, PlanetEntry } from "../types";
 
-// Minimal PlanetEntry mock — only fields these functions actually read
+// Minimal PlanetEntry mock -- only fields these functions actually read
 function makePlanetEntry(x: number, z: number, distanceAU: number, speed = 0.01): PlanetEntry {
 	return {
 		mesh: { position: { x, y: 0, z } },
-		data: { name: "TestPlanet", distance: distanceAU },
+		data: { name: "TestPlanet", distance: distanceAU, e: 0 },
+		angle: 0,
 		speed,
+		isMoon: false,
+		isShip: false,
+		isComet: false,
+		parentMesh: null,
 	} as unknown as PlanetEntry;
 }
 
@@ -76,26 +82,45 @@ describe("hermiteEval", () => {
 // ──────────────────────────────────────────────
 // predictTargetWorld
 // ──────────────────────────────────────────────
+
+function mockTarget(overrides: Record<string, unknown> = {}): BodyEntry {
+	return {
+		mesh: { position: { x: 10, y: 0, z: 0 } },
+		angle: 0,
+		speed: orbitSpeed(1), // 1 year period
+		data: { distance: 1, e: 0, type: "Planet", name: "Test" },
+		isMoon: false,
+		isShip: false,
+		isComet: false,
+		parentMesh: null,
+		...overrides,
+	} as unknown as BodyEntry;
+}
+
 describe("predictTargetWorld", () => {
-	it("zero days returns current position", () => {
-		const planet = makePlanetEntry(100, 0, 1.0, 0.01);
+	it("zero days returns Kepler position at current mean anomaly", () => {
+		// Planet at 1 AU, e=0, angle=0 → position is (scaleDist(1), 0)
+		const distAU = 1.0;
+		const r = scaleDist(distAU);
+		const planet = makePlanetEntry(r, 0, distAU, orbitSpeed(1));
 		const result = predictTargetWorld(planet, 0);
-		// Uses mesh position directly: currentR = 100, angle = 0
-		expect(result.x).toBeCloseTo(100);
-		expect(result.z).toBeCloseTo(0);
+		expect(result.x).toBeCloseTo(r, 3);
+		expect(result.z).toBeCloseTo(0, 3);
 	});
 
-	it("non-zero days advances the planet along its orbit", () => {
-		const planet = makePlanetEntry(100, 0, 1.0, 0.01);
+	it("non-zero days advances the planet along its Kepler orbit", () => {
+		// Circular orbit (e=0) -- world-space radius is constant
+		const distAU = 1.0;
+		const r = scaleDist(distAU);
+		const planet = makePlanetEntry(r, 0, distAU, orbitSpeed(1));
+
 		const r0 = predictTargetWorld(planet, 0);
-		const x0 = r0.x;
-		const z0 = r0.z;
+		const dist0 = Math.hypot(r0.x, r0.z);
 
 		const r1 = predictTargetWorld(planet, 100);
-		// After 100 days of movement the z component should be non-zero
-		expect(r1.z).not.toBeCloseTo(z0);
-		// Distance from origin should remain equal (circular orbit)
-		const dist0 = Math.hypot(x0, z0);
+		// After 100 days the z component should be non-zero
+		expect(r1.z).not.toBeCloseTo(0);
+		// Circular orbit: world-space radius stays constant
 		const dist1 = Math.hypot(r1.x, r1.z);
 		expect(dist1).toBeCloseTo(dist0, 3);
 	});
@@ -105,6 +130,90 @@ describe("predictTargetWorld", () => {
 		const result = predictTargetWorld(planet, 10);
 		expect(typeof result.x).toBe("number");
 		expect(typeof result.z).toBe("number");
+	});
+
+	it("stationary body (speed=0) returns current mesh position", () => {
+		// Star at origin -- speed=0 means no orbital motion
+		const star = mockTarget({ mesh: { position: { x: 0, y: 0, z: 0 } }, speed: 0 });
+		const result = predictTargetWorld(star, 100);
+		expect(result.x).toBeCloseTo(0);
+		expect(result.z).toBeCloseTo(0);
+	});
+
+	it("circular orbit advances ~90 degrees after a quarter period", () => {
+		// Body at (scaleDist(1), 0) with a 1-year circular orbit
+		const r = scaleDist(1);
+		const body = mockTarget({ mesh: { position: { x: r, y: 0, z: 0 } }, speed: orbitSpeed(1) });
+		const quarterYear = 365.25 / 4;
+		const result = predictTargetWorld(body, quarterYear);
+		// Radius should stay the same (circular orbit, no eccentricity in angular propagation)
+		expect(Math.hypot(result.x, result.z)).toBeCloseTo(r, 3);
+		// Angle should be ~π/2
+		const angle = Math.atan2(result.z, result.x);
+		expect(angle).toBeCloseTo(Math.PI / 2, 2);
+	});
+
+	it("two different positions in same orbit have equal world-space radii", () => {
+		// The angular propagation preserves radius -- perihelion and a later position
+		// both sit at currentR, so two snapshots 180 days apart share the same radius
+		const r = scaleDist(1);
+		const body = mockTarget({ mesh: { position: { x: r, y: 0, z: 0 } }, speed: orbitSpeed(1) });
+		const r0 = predictTargetWorld(body, 0);
+		const radius0 = Math.hypot(r0.x, r0.z);
+		const r1 = predictTargetWorld(body, 365.25 / 2);
+		const radius1 = Math.hypot(r1.x, r1.z);
+		expect(radius1).toBeCloseTo(radius0, 3);
+	});
+
+	it("prediction matches manual Kepler propagation", () => {
+		// Verify: futureM = angle + speed*days → theta via meanToTrue → keplerRadius → scaleDist
+		const distAU = 2.0;
+		const ecc = 0.1;
+		const speed = orbitSpeed(2); // 2-year period
+		const startAngle = 0.5; // non-zero mean anomaly
+		const days = 200;
+		const body = mockTarget({
+			mesh: { position: { x: scaleDist(distAU), y: 0, z: 0 } },
+			speed,
+			angle: startAngle,
+			data: { distance: distAU, e: ecc, type: "Planet", name: "Test" },
+		});
+		const result = predictTargetWorld(body, days);
+		const futureM = startAngle + speed * days;
+		const theta = meanToTrue(futureM, ecc);
+		const kr = keplerRadius(distAU, ecc, theta);
+		const expectedX = Math.cos(theta) * scaleDist(kr);
+		const expectedZ = Math.sin(theta) * scaleDist(kr);
+		expect(result.x).toBeCloseTo(expectedX, 5);
+		expect(result.z).toBeCloseTo(expectedZ, 5);
+	});
+
+	it("returns the same scratch object reference on every call (no allocation)", () => {
+		const body = mockTarget();
+		const ref = predictTargetWorld(body, 0);
+		const second = predictTargetWorld(body, 10);
+		expect(second).toBe(ref);
+	});
+
+	it("handles asteroid proxy without angle/e fields (no NaN)", () => {
+		// Asteroid proxies are cast as BodyEntry but lack angle and data.e
+		const proxy = {
+			mesh: { position: { x: 10, y: 0, z: 5 } },
+			data: { name: "2024-MB-001", distance: 2.5, type: "Asteroid" },
+			speed: orbitSpeed(3),
+			isMoon: false,
+			isShip: false,
+			isComet: false,
+			parentMesh: null,
+			// angle intentionally omitted -- this is the bug case
+		} as unknown as BodyEntry;
+		const result = predictTargetWorld(proxy, 100);
+		expect(Number.isNaN(result.x)).toBe(false);
+		expect(Number.isNaN(result.z)).toBe(false);
+		// Should use linear extrapolation -- radius preserved
+		const inputR = Math.hypot(10, 5);
+		const resultR = Math.hypot(result.x, result.z);
+		expect(resultR).toBeCloseTo(inputR, 3);
 	});
 });
 
@@ -200,5 +309,101 @@ describe("distanceKmBetween", () => {
 		const a = makeBodyAtAngle(1.0, 0);
 		const b = makeBodyAtAngle(1.0, Math.PI / 2);
 		expect(distanceKmBetween(a, b)).toBeCloseTo(Math.SQRT2 * AU_TO_KM, -3);
+	});
+});
+
+// ──────────────────────────────────────────────
+// NaN safety -- incomplete BodyEntry objects
+// ──────────────────────────────────────────────
+import { stationKeepingOffset } from "../rendering/ship-transfer";
+
+/** Minimal asteroid-like proxy: worst case with most BodyEntry fields missing. */
+function minimalProxy(x: number, z: number, speed: number): BodyEntry {
+	return {
+		mesh: { position: { x, y: 0, z } },
+		data: { name: "Proxy", distance: 2.5, type: "Asteroid" },
+		speed,
+		isMoon: false,
+		isShip: false,
+		isComet: false,
+		parentMesh: null,
+	} as unknown as BodyEntry;
+}
+
+describe("NaN safety -- incomplete BodyEntry objects", () => {
+	it("predictTargetWorld with minimal proxy produces no NaN", () => {
+		const proxy = minimalProxy(10, 5, orbitSpeed(3));
+		const result = predictTargetWorld(proxy, 100);
+		expect(Number.isNaN(result.x)).toBe(false);
+		expect(Number.isNaN(result.z)).toBe(false);
+	});
+
+	it("predictTargetWorld with zero-speed proxy produces no NaN", () => {
+		const proxy = minimalProxy(10, 5, 0);
+		const result = predictTargetWorld(proxy, 100);
+		expect(Number.isNaN(result.x)).toBe(false);
+		expect(Number.isNaN(result.z)).toBe(false);
+	});
+
+	it("computeHermiteKnots with minimal proxy produces no NaN in any knot value", () => {
+		const proxy = minimalProxy(10, 5, orbitSpeed(3));
+		const knots = computeHermiteKnots(0, 0, proxy, 100);
+		expect(Number.isNaN(knots.p0x)).toBe(false);
+		expect(Number.isNaN(knots.p0z)).toBe(false);
+		expect(Number.isNaN(knots.t0x)).toBe(false);
+		expect(Number.isNaN(knots.t0z)).toBe(false);
+		expect(Number.isNaN(knots.p1x)).toBe(false);
+		expect(Number.isNaN(knots.p1z)).toBe(false);
+		expect(Number.isNaN(knots.t1x)).toBe(false);
+		expect(Number.isNaN(knots.t1z)).toBe(false);
+	});
+
+	it("hermiteEval with knots from minimal proxy produces no NaN", () => {
+		const proxy = minimalProxy(10, 5, orbitSpeed(3));
+		const knots = computeHermiteKnots(0, 0, proxy, 100);
+		for (const t of [0, 0.25, 0.5, 0.75, 1]) {
+			const result = hermiteEval(
+				knots.p0x,
+				knots.p0z,
+				knots.t0x,
+				knots.t0z,
+				knots.p1x,
+				knots.p1z,
+				knots.t1x,
+				knots.t1z,
+				t,
+			);
+			expect(Number.isNaN(result.x)).toBe(false);
+			expect(Number.isNaN(result.z)).toBe(false);
+		}
+	});
+
+	it("distanceKmBetween with minimal proxies produces no NaN", () => {
+		const a = minimalProxy(10, 5, orbitSpeed(3));
+		const b = minimalProxy(-20, 15, orbitSpeed(5));
+		const dist = distanceKmBetween(a, b);
+		expect(Number.isNaN(dist)).toBe(false);
+		expect(dist).toBeGreaterThan(0);
+	});
+
+	it("stationKeepingOffset with minimal proxy (no mesh.userData) produces no NaN", () => {
+		const proxy = minimalProxy(10, 5, 0);
+		const offset = stationKeepingOffset(proxy);
+		expect(Number.isNaN(offset)).toBe(false);
+		expect(offset).toBeGreaterThan(0);
+	});
+
+	it("computeHermiteKnots with coincident departure and target produces no NaN", () => {
+		// Edge case: ship departs from exactly where the target is
+		const proxy = minimalProxy(0, 0, 0);
+		const knots = computeHermiteKnots(0, 0, proxy, 0);
+		expect(Number.isNaN(knots.p0x)).toBe(false);
+		expect(Number.isNaN(knots.p0z)).toBe(false);
+		expect(Number.isNaN(knots.t0x)).toBe(false);
+		expect(Number.isNaN(knots.t0z)).toBe(false);
+		expect(Number.isNaN(knots.p1x)).toBe(false);
+		expect(Number.isNaN(knots.p1z)).toBe(false);
+		expect(Number.isNaN(knots.t1x)).toBe(false);
+		expect(Number.isNaN(knots.t1z)).toBe(false);
 	});
 });

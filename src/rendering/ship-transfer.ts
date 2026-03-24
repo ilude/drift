@@ -1,7 +1,14 @@
 import * as THREE from "three";
 import { findAsteroidEntity, rebuildEntityMaps } from "../core/entities";
 import { state } from "../core/state";
-import { DIST_SCALE, orbitSpeed } from "../math/orbit";
+import {
+	DIST_SCALE,
+	keplerRadius,
+	MOON_DIST_SCALE,
+	meanToTrue,
+	orbitSpeed,
+	scaleDist,
+} from "../math/orbit";
 import { AU_TO_KM, checkTransferKm, ENGINE_TYPES } from "../math/ship-physics";
 import type {
 	AsteroidBeltEntry,
@@ -11,10 +18,12 @@ import type {
 	ShipEntry,
 	Vector3Like,
 } from "../types";
+import { isCometEntry, isShipEntry } from "../types";
 import {
 	createLabel,
 	createTrail,
 	findBodyEntry,
+	orbitToWorld,
 	SEL_RING_INNER,
 	SEL_RING_OUTER,
 	SEL_RING_SEGS,
@@ -80,78 +89,81 @@ export function predictTargetWorld(
 	targetEntry: BodyEntry,
 	daysFromNow: number,
 ): { x: number; z: number } {
-	// For bodies with a parent (moons) or non-circular orbits (comets),
-	// use current position + angular velocity extrapolation
 	const px = targetEntry.mesh.position.x;
 	const pz = targetEntry.mesh.position.z;
-	const currentAngle = Math.atan2(pz, px);
-	const currentR = Math.hypot(px, pz);
 
-	if (currentR < 0.001 || targetEntry.speed === 0) {
-		// Stationary body (star) — just return current position
+	// Stationary bodies (star), ships, or entities without orbital elements (asteroid proxies)
+	if (targetEntry.speed === 0 || isShipEntry(targetEntry) || targetEntry.angle === undefined) {
+		// Fall back to linear extrapolation for entities without Kepler elements
+		if (targetEntry.speed !== 0 && targetEntry.angle === undefined) {
+			const currentAngle = Math.atan2(pz, px);
+			const currentR = Math.hypot(px, pz);
+			const arrivalAngle = currentAngle + targetEntry.speed * daysFromNow;
+			_targetWorldOut.x = Math.cos(arrivalAngle) * currentR;
+			_targetWorldOut.z = Math.sin(arrivalAngle) * currentR;
+			return _targetWorldOut;
+		}
 		_targetWorldOut.x = px;
 		_targetWorldOut.z = pz;
 		return _targetWorldOut;
 	}
 
-	const arrivalAngle = currentAngle + targetEntry.speed * daysFromNow;
-	_targetWorldOut.x = Math.cos(arrivalAngle) * currentR;
-	_targetWorldOut.z = Math.sin(arrivalAngle) * currentR;
-	return _targetWorldOut;
-}
-
-const SHIP_PATH_LOOKAHEAD: number = 0.25; // show 25% of curve ahead
-const SHIP_TRANSFER_PTS: number = 128; // transfer curve sample points
-const SHIP_MAX_ARC_PTS: number = 48; // max orbit arc points
-const SHIP_PATH_BUFFER: number = SHIP_TRANSFER_PTS + SHIP_MAX_ARC_PTS + 1; // total buffer capacity
-
-function createTransferPath(): THREE.Line {
-	const positions = new Float32Array(SHIP_PATH_BUFFER * 3);
-	const colors = new Float32Array(SHIP_PATH_BUFFER * 4);
-	const geom = new THREE.BufferGeometry();
-	geom.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-	geom.setAttribute("color", new THREE.BufferAttribute(colors, 4));
-	const mat = new THREE.LineBasicMaterial({
-		transparent: true,
-		vertexColors: true,
-		opacity: 1.0,
-	});
-	const line = new THREE.Line(geom, mat);
-	line.frustumCulled = false;
-	scene.add(line);
-	return line;
-}
-
-export function updateTransferPath(entry: ShipEntry, elapsedDays: number): void {
-	if (!entry.transferPath) return;
-	entry.departFrameCount = (entry.departFrameCount || 0) + 1;
-	if (entry.departFrameCount % 4 !== 0) return;
-	const positions = entry.transferPath.geometry.attributes.position.array as Float32Array;
-	const colors = entry.transferPath.geometry.attributes.color.array as Float32Array;
-	const isSelected = state.selectedBody === entry;
-	const baseAlpha = isSelected ? 0.5 : 0.2;
-
-	const tCurrent = elapsedDays / entry.transferTimeDays;
-	const tEnd = Math.min(tCurrent + SHIP_PATH_LOOKAHEAD, 1.0);
-	const tRange = tEnd - tCurrent;
-
-	for (let i = 0; i <= SHIP_TRANSFER_PTS; i++) {
-		const frac = i / SHIP_TRANSFER_PTS;
-		const t = tCurrent + frac * tRange;
-		const p = transferPosition(entry, t);
-		const idx3 = i * 3;
-		positions[idx3] = p.x;
-		positions[idx3 + 1] = 0;
-		positions[idx3 + 2] = p.z;
-		const idx4 = i * 4;
-		colors[idx4] = 0.33;
-		colors[idx4 + 1] = 0.33;
-		colors[idx4 + 2] = 0.33;
-		colors[idx4 + 3] = baseAlpha * (1 - frac);
+	// Comets: full 3D inclined Kepler orbit
+	if (isCometEntry(targetEntry)) {
+		const { a, e, incRad, nodeRad, periRad } = targetEntry.data;
+		const futureM = targetEntry.angle + targetEntry.speed * daysFromNow;
+		const theta = meanToTrue(futureM, e);
+		const r = keplerRadius(a, e, theta);
+		const rScaled = scaleDist(r);
+		const w = orbitToWorld(
+			rScaled * Math.cos(theta),
+			rScaled * Math.sin(theta),
+			incRad,
+			nodeRad,
+			periRad,
+		);
+		_targetWorldOut.x = w.x;
+		_targetWorldOut.z = w.z;
+		return _targetWorldOut;
 	}
-	entry.transferPath.geometry.attributes.position.needsUpdate = true;
-	entry.transferPath.geometry.attributes.color.needsUpdate = true;
-	entry.transferPath.geometry.setDrawRange(0, SHIP_TRANSFER_PTS + 1);
+
+	// Moons: propagate parent orbit then add moon offset
+	if (targetEntry.isMoon && targetEntry.parentMesh) {
+		const parentEntry = state.bodyMeshes.find((e) => e.mesh === targetEntry.parentMesh);
+		let parentFutureX: number;
+		let parentFutureZ: number;
+		if (parentEntry && !isShipEntry(parentEntry) && !isCometEntry(parentEntry)) {
+			const pEcc = parentEntry.data.e || 0;
+			const futureParentM = parentEntry.angle + parentEntry.speed * daysFromNow;
+			const parentTheta = meanToTrue(futureParentM, pEcc);
+			const parentKr = keplerRadius(parentEntry.data.distance, pEcc, parentTheta);
+			const parentR = scaleDist(parentKr);
+			parentFutureX = Math.cos(parentTheta) * parentR;
+			parentFutureZ = Math.sin(parentTheta) * parentR;
+		} else {
+			// Parent position unknown -- use current
+			parentFutureX = targetEntry.parentMesh.position.x;
+			parentFutureZ = targetEntry.parentMesh.position.z;
+		}
+		const moonE = targetEntry.data.e || 0;
+		const futureMoonM = targetEntry.angle + targetEntry.speed * daysFromNow;
+		const moonTheta = meanToTrue(futureMoonM, moonE);
+		const moonKr = keplerRadius(targetEntry.data.distance, moonE, moonTheta);
+		const moonR = moonKr * MOON_DIST_SCALE;
+		_targetWorldOut.x = parentFutureX + Math.cos(moonTheta) * moonR;
+		_targetWorldOut.z = parentFutureZ + Math.sin(moonTheta) * moonR;
+		return _targetWorldOut;
+	}
+
+	// Regular planets: Kepler propagation in the ecliptic plane
+	const ecc = targetEntry.data.e || 0;
+	const futureM = targetEntry.angle + targetEntry.speed * daysFromNow;
+	const theta = meanToTrue(futureM, ecc);
+	const kr = keplerRadius(targetEntry.data.distance, ecc, theta);
+	const r = scaleDist(kr);
+	_targetWorldOut.x = Math.cos(theta) * r;
+	_targetWorldOut.z = Math.sin(theta) * r;
+	return _targetWorldOut;
 }
 
 export function computeHermiteKnots(
@@ -173,7 +185,7 @@ export function computeHermiteKnots(
 	const dx = targetWorld.x - departX;
 	const dz = targetWorld.z - departZ;
 	const dist = Math.hypot(dx, dz);
-	// Both tangents point along the direct line to target — simple S-curve
+	// Both tangents point along the direct line to target -- simple S-curve
 	const angle = Math.atan2(dz, dx);
 	return {
 		p0x: departX,
@@ -185,109 +197,6 @@ export function computeHermiteKnots(
 		t1x: Math.cos(angle) * dist * 0.3,
 		t1z: Math.sin(angle) * dist * 0.3,
 	};
-}
-
-export function updateDepartureArc(entry: ShipEntry): void {
-	if (!entry.transferPath || !entry.pendingTransfer) return;
-	const host = findBodyEntry(entry.hostPlanetName);
-	if (!host) return;
-	const positions = entry.transferPath.geometry.attributes.position.array as Float32Array;
-	const colors = entry.transferPath.geometry.attributes.color.array as Float32Array;
-	const isSelected = state.selectedBody === entry;
-	const baseAlpha = isSelected ? 0.5 : 0.2;
-	const pt = entry.pendingTransfer;
-
-	// Recompute departure angle every 30 frames (~1x/sec at 30fps)
-	entry.departFrameCount = (entry.departFrameCount || 0) + 1;
-	if (entry.departFrameCount % 30 === 0) {
-		const targetEntry = findBodyEntry(pt.targetName);
-		if (targetEntry) {
-			const targetWorld = predictTargetWorld(targetEntry, pt.gameDays);
-			const toTargetDir = Math.atan2(
-				targetWorld.z - host.mesh.position.z,
-				targetWorld.x - host.mesh.position.x,
-			);
-			pt.optimalLocalAngle = toTargetDir - Math.PI / 2;
-		}
-	}
-
-	const TWO_PI = Math.PI * 2;
-	const curAngle = ((entry.angle % TWO_PI) + TWO_PI) % TWO_PI;
-	const tgtAngle = ((pt.optimalLocalAngle % TWO_PI) + TWO_PI) % TWO_PI;
-
-	// Skip full geometry rebuild if ship angle hasn't moved significantly
-	const prevAngle = entry.lastAngle ?? curAngle - 1;
-	if (Math.abs(curAngle - prevAngle) < 0.01) return;
-	entry.lastAngle = curAngle;
-
-	let sweep = tgtAngle - curAngle;
-	if (sweep < 0) sweep += TWO_PI;
-	if (sweep > TWO_PI) sweep -= TWO_PI;
-
-	const ARC_PTS = Math.max(4, Math.min(SHIP_MAX_ARC_PTS, Math.round(sweep * 8)));
-	let idx = 0;
-
-	// Part 1: orbit arc to departure point
-	for (let i = 0; i <= ARC_PTS; i++) {
-		const frac = i / ARC_PTS;
-		const a = curAngle + frac * sweep;
-		const idx3 = idx * 3;
-		positions[idx3] = host.mesh.position.x + Math.cos(a) * SHIP_LOCAL_ORBIT;
-		positions[idx3 + 1] = 0;
-		positions[idx3 + 2] = host.mesh.position.z + Math.sin(a) * SHIP_LOCAL_ORBIT;
-		const idx4 = idx * 4;
-		colors[idx4] = 0.33;
-		colors[idx4 + 1] = 0.33;
-		colors[idx4 + 2] = 0.33;
-		colors[idx4 + 3] = baseAlpha;
-		idx++;
-	}
-
-	// Part 2: Hermite spline from departure to predicted target
-	const targetEntry = findBodyEntry(pt.targetName);
-	if (targetEntry) {
-		const departX = host.mesh.position.x + Math.cos(pt.optimalLocalAngle) * SHIP_LOCAL_ORBIT;
-		const departZ = host.mesh.position.z + Math.sin(pt.optimalLocalAngle) * SHIP_LOCAL_ORBIT;
-		const knots = computeHermiteKnots(departX, departZ, targetEntry, pt.gameDays);
-
-		for (let i = 1; i <= SHIP_TRANSFER_PTS; i++) {
-			const frac = i / SHIP_TRANSFER_PTS;
-			const p = hermiteEval(
-				knots.p0x,
-				knots.p0z,
-				knots.t0x,
-				knots.t0z,
-				knots.p1x,
-				knots.p1z,
-				knots.t1x,
-				knots.t1z,
-				frac,
-			);
-			const idx3 = idx * 3;
-			positions[idx3] = p.x;
-			positions[idx3 + 1] = 0;
-			positions[idx3 + 2] = p.z;
-			const idx4 = idx * 4;
-			colors[idx4] = 0.33;
-			colors[idx4 + 1] = 0.33;
-			colors[idx4 + 2] = 0.33;
-			colors[idx4 + 3] = baseAlpha * (1 - frac * 0.7);
-			idx++;
-		}
-	}
-
-	entry.transferPath.geometry.attributes.position.needsUpdate = true;
-	entry.transferPath.geometry.attributes.color.needsUpdate = true;
-	entry.transferPath.geometry.setDrawRange(0, idx);
-}
-
-function removeTransferPath(entry: ShipEntry): void {
-	if (entry.transferPath) {
-		scene.remove(entry.transferPath);
-		entry.transferPath.geometry.dispose();
-		(entry.transferPath.material as THREE.Material).dispose();
-		entry.transferPath = null;
-	}
 }
 
 export interface ShipConfig {
@@ -369,6 +278,7 @@ export function createShip(config: ShipConfig): ShipEntry | undefined {
 		moons: [] as BodyEntry[],
 		isMoon: false,
 		isShip: true as const,
+		isComet: false as const,
 		screenSize: SHIP_SIZE,
 		baseSize: SHIP_SIZE,
 		realisticSize: SHIP_SIZE,
@@ -450,12 +360,22 @@ export function createShip(config: ShipConfig): ShipEntry | undefined {
 		stationTarget: null,
 	} as ShipEntry;
 
-	// Velocity tail — always visible, short trail showing direction
+	// Velocity tail -- always visible, short trail showing direction
 	const tailGeom = new THREE.BufferGeometry();
 	tailGeom.setAttribute("position", new THREE.BufferAttribute(entry.tailPositions, 3));
 	tailGeom.setDrawRange(0, 0);
 	entry.tailLine = new THREE.Line(tailGeom, shipTailMat);
 	scene.add(entry.tailLine);
+
+	// Snap ship to host planet's station-keeping orbit on creation
+	if (hostPlanetEntry) {
+		const offset = stationKeepingOffset(hostPlanetEntry);
+		mesh.position.set(
+			hostPlanetEntry.mesh.position.x + Math.cos(entry.angle) * offset,
+			hostPlanetEntry.mesh.position.y,
+			hostPlanetEntry.mesh.position.z + Math.sin(entry.angle) * offset,
+		);
+	}
 
 	state.bodyMeshes.push(entry);
 	rebuildEntityMaps();
@@ -470,10 +390,15 @@ export function setOnTransferComplete(hook: (ship: ShipEntry) => void): void {
 }
 
 export function completeTransfer(entry: ShipEntry, entryAngle = 0): void {
-	removeTransferPath(entry);
+	// Clear the transfer trail
+	entry.trail.count = 0;
+	entry.trail.head = 0;
+	entry.trail.sampleAccum = 0;
+	entry.trail.line.geometry.setDrawRange(0, 0);
+
 	const transferTarget = entry.transferTarget ?? "";
 
-	// Find the target body — could be a planet, moon, or comet
+	// Find the target body -- could be a planet, moon, or comet
 	const target = findBodyEntry(transferTarget);
 
 	entry.shipState = "orbiting";
@@ -546,16 +471,11 @@ function commitTransfer(
 	entry.pendingTransfer = null;
 	entry.stationTarget = null;
 
-	removeTransferPath(entry);
-	entry.transferPath = createTransferPath();
-
-	// Pre-fill tail buffer with current position to avoid line-to-origin artifact
-	for (let i = 0; i < SHIP_TAIL_LENGTH; i++) {
-		entry.tailPositions[i * 3] = entry.mesh.position.x;
-		entry.tailPositions[i * 3 + 1] = 0;
-		entry.tailPositions[i * 3 + 2] = entry.mesh.position.z;
-	}
-	entry.tailCount = 0;
+	// Clear the trail for a fresh start
+	entry.trail.count = 0;
+	entry.trail.head = 0;
+	entry.trail.sampleAccum = 0;
+	entry.trail.line.geometry.setDrawRange(0, 0);
 }
 
 export function beginTransfer(entry: ShipEntry): void {
@@ -630,7 +550,7 @@ export function findAsteroid(
 /**
  * Build a lightweight BodyEntry-compatible proxy for an asteroid.
  * Reads position from the belt's Float32Array. Returns a fresh position object
- * per call — safe to hold references across multiple calls.
+ * per call -- safe to hold references across multiple calls.
  */
 export function asteroidProxy(asteroid: AsteroidInfo, beltEntry: AsteroidBeltEntry): BodyEntry {
 	const idx = asteroid.beltIndex ?? 0;
@@ -681,7 +601,7 @@ export function initiateTransfer(entry: ShipEntry, targetEntry: BodyEntry): bool
 		return false;
 	}
 
-	// Store fuel cost — consumed gradually during transfer, not upfront
+	// Store fuel cost -- consumed gradually during transfer, not upfront
 	const gameDays = result.transferDays ?? 0;
 	entry.transferFuelTotal = result.fuelUsedKg ?? 0;
 

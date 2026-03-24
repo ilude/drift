@@ -400,9 +400,9 @@ describe("selectNextSurveyTarget", () => {
 	});
 });
 
-// --- selectNextSurveyTarget — asteroids ---
+// --- selectNextSurveyTarget -- asteroids ---
 
-describe("selectNextSurveyTarget — asteroids", () => {
+describe("selectNextSurveyTarget -- asteroids", () => {
 	beforeEach(() => {
 		state.bodyMeshes = [];
 		state.asteroidBelts = [];
@@ -489,9 +489,9 @@ describe("selectNextSurveyTarget — asteroids", () => {
 	});
 });
 
-// --- selectNextSurveyTarget — intents ---
+// --- selectNextSurveyTarget -- intents ---
 
-describe("selectNextSurveyTarget — intents", () => {
+describe("selectNextSurveyTarget -- intents", () => {
 	function shipAt(x: number, z: number): ShipEntry {
 		return mockShip({
 			data: { name: "Ship" } as unknown as ShipEntry["data"],
@@ -569,5 +569,75 @@ describe("getUnsurvevedMoonsOfHost", () => {
 		rebuildEntityMaps();
 		const ship = mockShip({ hostPlanetName: "Nonexistent" });
 		expect(getUnsurvevedMoonsOfHost(ship)).toHaveLength(0);
+	});
+});
+
+// --- selectNextSurveyTarget -- NaN safety with positional bodies ---
+
+describe("selectNextSurveyTarget -- NaN safety", () => {
+	beforeEach(() => {
+		state.bodyMeshes = [];
+		state.asteroidBelts = [];
+		state.shipIntents.clear();
+	});
+
+	it("does not crash or produce NaN with asteroid entries that have real positions", () => {
+		// Bodies with numeric x/z positions (no distanceToSquared mock)
+		const venus = mockBodyEntry("Venus", {
+			mesh: { position: { x: 50, y: 0, z: 30, distanceToSquared: () => 3400 } },
+		});
+		const mars = mockBodyEntry("Mars", {
+			mesh: { position: { x: 100, y: 0, z: -20, distanceToSquared: () => 10400 } },
+		});
+		state.bodyMeshes = [venus, mars] as BodyEntry[];
+
+		const ship = mockShip({
+			mesh: {
+				position: { x: 0, y: 0, z: 0, distanceToSquared: () => 0 },
+			} as unknown as ShipEntry["mesh"],
+		});
+
+		const result = selectNextSurveyTarget(ship);
+		expect(result).not.toBeNull();
+		// Venus is closer (dist^2 = 50^2+30^2 = 3400 vs 100^2+20^2 = 10400)
+		expect(result).toBe("Venus");
+	});
+
+	it("handles mix of bodies and asteroids without NaN in distance calculation", () => {
+		// One far planet, one close asteroid
+		const jupiter = mockBodyEntry("Jupiter", {
+			mesh: { position: { x: 500, y: 0, z: 0, distanceToSquared: () => 250000 } },
+		});
+		state.bodyMeshes = [jupiter] as BodyEntry[];
+
+		const positions = new Float32Array([10, 0, 10]); // one asteroid at (10,0,10)
+		state.asteroidBelts = [
+			{
+				belt: { name: "Belt", minAU: 2, maxAU: 3, count: 1, color: "#aaa", size: 1, maxInc: 5 },
+				positions,
+				count: 1,
+				asteroids: [
+					{
+						designation: "AST-001",
+						au: 2.5,
+						period: 3.95,
+						diameter: 100,
+						mass: 1e15,
+						beltIndex: 0,
+						survey: { surveyLevel: 0, deposits: [] },
+					},
+				],
+			} as unknown as (typeof state.asteroidBelts)[number],
+		];
+
+		const ship = mockShip({
+			mesh: {
+				position: { x: 0, y: 0, z: 0, distanceToSquared: () => 0 },
+			} as unknown as ShipEntry["mesh"],
+		});
+
+		const result = selectNextSurveyTarget(ship);
+		// Asteroid at (10,10) is closer than Jupiter at (500,0)
+		expect(result).toBe("AST-001");
 	});
 });

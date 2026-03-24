@@ -322,7 +322,7 @@ function buildPool(bodyType: string, radius: number): WeightedResource[] {
 		];
 	}
 
-	// Rocky: Planet, Dwarf Planet, Moon — default
+	// Rocky: Planet, Dwarf Planet, Moon -- default
 	return [
 		{ id: "iron", weight: 25 },
 		{ id: "copper", weight: 15 },

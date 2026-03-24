@@ -90,7 +90,7 @@ function attachZoomHandler(canvas: HTMLCanvasElement): void {
 }
 attachZoomHandler(renderer.domElement);
 
-// Antialias toggle — requires renderer recreation
+// Antialias toggle -- requires renderer recreation
 export function setAntialias(enabled: boolean): void {
 	const oldTarget = controls.target.clone();
 	controls.dispose();

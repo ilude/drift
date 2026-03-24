@@ -490,7 +490,7 @@ export function setupUI(loadSystem: (systemData: SystemData) => void): void {
 		if (e.key === "Enter") document.getElementById("btn-discover")?.click();
 	});
 
-	// Time controls — speed selector dropdown
+	// Time controls -- speed selector dropdown
 	const TIME_SCALES: Array<{ label: string; speed: number }> = [
 		{ label: "5 Seconds", speed: 5 / 86400 },
 		{ label: "30 Seconds", speed: 30 / 86400 },

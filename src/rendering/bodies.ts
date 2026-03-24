@@ -91,7 +91,7 @@ export const SEL_RING_OUTER: number = 1.5;
 export const SEL_RING_SEGS: number = 24;
 export const TRAIL_MAX_POINTS: number = 400;
 const COMET_TRAIL_MAX_POINTS: number = 1200;
-// Fixed angular step per trail sample — all comets share the same arc length (based on Tempel 1)
+// Fixed angular step per trail sample -- all comets share the same arc length (based on Tempel 1)
 const TEMPEL1_PERIOD = 5.5;
 export const COMET_TRAIL_STEP_ARC: number = orbitSpeed(TEMPEL1_PERIOD) * 0.02;
 export const COMET_ORBIT_OPACITY: number = 0.03;
@@ -100,7 +100,7 @@ export const COMET_ORBIT_SELECTED_OPACITY: number = 0.05;
 export const UNSURVEYED_ASTEROID_COLOR = [0.545, 0.439, 0.439] as const; // #8B7070 red-grey
 export const SURVEYED_ASTEROID_COLOR = [0.439, 0.439, 0.533] as const; // #707088 blue-grey
 
-/** Find any body by name (planet, moon, comet — anything except ships).
+/** Find any body by name (planet, moon, comet -- anything except ships).
  * @deprecated Use findBody() from core/entities.ts for new code. */
 export function findBodyEntry(name: string): BodyEntry | undefined {
 	const entry = findBody(name);

@@ -305,7 +305,7 @@ function completeSurvey(ship: ShipEntry): void {
 		const summary = deposits.length > 0 ? `${deposits.length} deposits (${names})` : "no deposits";
 		addCoalescedNotification(
 			"survey-complete",
-			`Surveyed ${body.data.name} — ${summary}`,
+			`Surveyed ${body.data.name} -- ${summary}`,
 			body.data.name,
 		);
 	} else {
@@ -333,7 +333,7 @@ function completeSurvey(ship: ShipEntry): void {
 			const summary = deposits.length > 0 ? `${deposits.length} deposits (${names})` : "no deposits";
 			addCoalescedNotification(
 				"survey-complete",
-				`Surveyed ${hit.asteroid.designation} — ${summary}`,
+				`Surveyed ${hit.asteroid.designation} -- ${summary}`,
 				hit.asteroid.designation,
 			);
 		}
@@ -385,7 +385,23 @@ function canAffordRoundTrip(ship: ShipEntry, target: BodyEntry): boolean {
 	return leg2.feasible;
 }
 
+let _dispatchDepth = 0;
 function dispatchCommand(ship: ShipEntry, result: CommandResult): void {
+	_dispatchDepth++;
+	if (_dispatchDepth > 5) {
+		console.error(
+			"dispatchCommand recursion detected",
+			ship.data.name,
+			result.action,
+			_dispatchDepth,
+		);
+		_dispatchDepth = 0;
+		return;
+	}
+	console.log(
+		`[dispatch] ${ship.data.name}: ${result.action}${result.target ? ` → ${result.target}` : ""}`,
+	);
+
 	// Clear one-shot immediate command on ANY dispatch (not just transfer)
 	ship.immediateCommand = null;
 
@@ -411,7 +427,7 @@ function dispatchCommand(ship: ShipEntry, result: CommandResult): void {
 
 			const target = selectNextSurveyTarget(ship);
 			if (target) {
-				// Resolve target — could be a body or an asteroid
+				// Resolve target -- could be a body or an asteroid
 				const resolved = resolveEntity(target);
 				if (!resolved) break;
 				// Get a BodyEntry for transfer: use bodyEntry if available, else build asteroid proxy
@@ -438,7 +454,7 @@ function dispatchCommand(ship: ShipEntry, result: CommandResult): void {
 					ship.stationTarget = null;
 					publishIntent(ship.data.name, { type: "surveying", target, shipName: ship.data.name });
 				} else if (!canAffordRoundTrip(ship, targetBody)) {
-					// Not enough fuel for hop + return — head home to refuel first
+					// Not enough fuel for hop + return -- head home to refuel first
 					const colony = findColony();
 					if (colony && colony.data.name !== ship.hostPlanetName) {
 						if (initiateTransfer(ship, colony)) {
@@ -448,12 +464,13 @@ function dispatchCommand(ship: ShipEntry, result: CommandResult): void {
 							ship.action = noAction();
 						}
 					} else {
-						// Already at colony — refuel and retry
+						// Already at colony -- refuel and retry
 						ship.fuelKg = ship.fuelCapacityKg;
 						ship.action = noAction();
 					}
 				} else {
 					// Transfer directly to the body
+					console.log(`[dispatch] ${ship.data.name}: initiating transfer to ${target}`);
 					if (initiateTransfer(ship, targetBody)) {
 						ship.action = mkAction("survey-nearest", "survey", 0, 0, target);
 						ship.stationTarget = null;
@@ -467,7 +484,7 @@ function dispatchCommand(ship: ShipEntry, result: CommandResult): void {
 					}
 				}
 			} else {
-				addCoalescedNotification("mission-complete", "System survey complete — all bodies surveyed");
+				addCoalescedNotification("mission-complete", "System survey complete -- all bodies surveyed");
 				ship.action = mkAction("idle", "idle");
 				publishIntent(ship.data.name, {
 					type: "idle",
@@ -495,8 +512,8 @@ function dispatchCommand(ship: ShipEntry, result: CommandResult): void {
 				if (initiateTransfer(ship, earth)) {
 					ship.action = mkAction("refuel", "refuel");
 				} else {
-					// Can't reach colony — stranded, clear action to avoid stuck state
-					addNotification("low-fuel", `Ship stranded at ${ship.hostPlanetName} — insufficient fuel`);
+					// Can't reach colony -- stranded, clear action to avoid stuck state
+					addNotification("low-fuel", `Ship stranded at ${ship.hostPlanetName} -- insufficient fuel`);
 					ship.action = noAction();
 				}
 			} else {
@@ -518,7 +535,7 @@ function dispatchCommand(ship: ShipEntry, result: CommandResult): void {
 				} else {
 					addNotification(
 						"low-fuel",
-						`Ship stranded at ${ship.hostPlanetName} — insufficient fuel for shore leave`,
+						`Ship stranded at ${ship.hostPlanetName} -- insufficient fuel for shore leave`,
 					);
 					ship.action = noAction();
 				}
@@ -540,7 +557,7 @@ function dispatchCommand(ship: ShipEntry, result: CommandResult): void {
 				} else {
 					addNotification(
 						"low-fuel",
-						`Ship stranded at ${ship.hostPlanetName} — insufficient fuel for overhaul`,
+						`Ship stranded at ${ship.hostPlanetName} -- insufficient fuel for overhaul`,
 					);
 					ship.action = noAction();
 				}
@@ -564,9 +581,11 @@ function dispatchCommand(ship: ShipEntry, result: CommandResult): void {
 			});
 			break;
 	}
+	_dispatchDepth = 0;
 }
 
 function completeAction(ship: ShipEntry): void {
+	console.log(`[completeAction] ${ship.data.name}: ${ship.action.type} completed`);
 	const actionType = ship.action.type;
 	if (actionType === "survey-nearest") {
 		completeSurvey(ship);
@@ -607,6 +626,7 @@ function tickShip(ship: ShipEntry, simDt: number): void {
 	// Auto-evaluate command tree when idle and orbiting (kicks off autonomous behavior)
 	// Skip until positions have been computed (simTime > 0.1 ensures at least a few frames)
 	if (ship.shipState === "orbiting" && !ship.action.type && state.simTime > 0.1) {
+		console.log(`[tickShip] ${ship.data.name}: idle, re-evaluating command tree`);
 		const result = evaluateCommandTree(ship);
 		if (result) dispatchCommand(ship, result);
 	}
@@ -614,6 +634,10 @@ function tickShip(ship: ShipEntry, simDt: number): void {
 
 /** Called when a ship arrives at a planet after transfer. */
 export function onTransferComplete(ship: ShipEntry): void {
+	console.log(
+		`[transferComplete] ${ship.data.name}: arrived at ${ship.hostPlanetName}`,
+		`action=${ship.action.type} target=${ship.action.target}`,
+	);
 	// If ship was en route for a specific action, start it at the destination
 	const actionType = ship.action.type;
 	if (actionType === "survey-nearest") {
@@ -659,7 +683,7 @@ export function onTransferComplete(ship: ShipEntry): void {
 		ship.action.duration = 5;
 		ship.action.progress = 0;
 	} else {
-		// No pending action — evaluate command tree
+		// No pending action -- evaluate command tree
 		const result = evaluateCommandTree(ship);
 		if (result) dispatchCommand(ship, result);
 	}
@@ -748,13 +772,34 @@ function animate(now: number): void {
 	if (simActive) {
 		const simDt = dt * state.timeSpeed;
 		for (const entry of state.bodyMeshes) {
-			if (isShipEntry(entry)) tickShip(entry, simDt);
+			if (isShipEntry(entry)) {
+				tickShip(entry, simDt);
+				if (Number.isNaN(entry.mesh.position.x)) {
+					console.error("[SHIP NaN]", entry.data.name, {
+						state: entry.shipState,
+						host: entry.hostPlanetName,
+						action: entry.action.type,
+						fuel: entry.fuelKg,
+					});
+				}
+			}
 		}
 	}
 	if (simActive) updatePositions(dt, cachedCamDist);
 	const _t1 = performance.now();
 	if (simActive) updateAsteroids(dt);
 	const _t2 = performance.now();
+
+	// NaN guard: detect corrupted camera/controls state
+	if (Number.isNaN(camera.position.x) || Number.isNaN(controls.target.x)) {
+		console.error("[CAMERA NaN]", {
+			camPos: `${camera.position.x},${camera.position.y},${camera.position.z}`,
+			target: `${controls.target.x},${controls.target.y},${controls.target.z}`,
+			flyTo: state.flyTo?.entry.data.name,
+			selectedBody: state.selectedBody?.data.name,
+		});
+	}
+
 	updateFlyTo();
 	updateFollow();
 	controls.update();
@@ -779,6 +824,15 @@ function animate(now: number): void {
 	_perfTimings.hud = _t4 - _t3;
 	_perfTimings.render = _t5 - _t4;
 	_perfTimings.total = _t5 - _t0;
+	if (_perfTimings.total > 100) {
+		console.warn("[SLOW FRAME]", {
+			total: `${_perfTimings.total.toFixed(1)}ms`,
+			positions: `${_perfTimings.positions.toFixed(1)}ms`,
+			asteroids: `${_perfTimings.asteroids.toFixed(1)}ms`,
+			labels: `${_perfTimings.labels.toFixed(1)}ms`,
+			render: `${_perfTimings.render.toFixed(1)}ms`,
+		});
+	}
 	updatePerfDisplay(_perfTimings);
 
 	// When paused with no camera animation, consume the dirty flag and stop

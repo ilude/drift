@@ -13,7 +13,7 @@ vi.mock("../rendering/scene", () => ({
 import { isInKirkwoodGap, nameHash, orbitSegmentCount } from "../rendering/bodies";
 
 describe("nameHash", () => {
-	it("is deterministic — same input returns same value", () => {
+	it("is deterministic -- same input returns same value", () => {
 		expect(nameHash("Earth")).toBe(nameHash("Earth"));
 	});
 

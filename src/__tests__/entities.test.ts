@@ -195,8 +195,8 @@ describe("findPlanet", () => {
 		expect(findPlanet("Saturn")).toBeDefined();
 	});
 
-	it("rejects moons (isComet undefined, but isMoon true — isPlanetEntry passes, so moon IS a PlanetEntry)", () => {
-		// Moons are stored as PlanetEntry with isMoon=true — findPlanet returns them
+	it("rejects moons (isComet undefined, but isMoon true -- isPlanetEntry passes, so moon IS a PlanetEntry)", () => {
+		// Moons are stored as PlanetEntry with isMoon=true -- findPlanet returns them
 		// This matches the existing type structure (PlanetEntry covers moons)
 		const moon = mockBody("Phobos", "Moon", { isMoon: true });
 		state.bodyMeshes = [moon];
