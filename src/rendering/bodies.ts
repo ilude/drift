@@ -90,6 +90,7 @@ export const SEL_RING_INNER: number = 1.3;
 export const SEL_RING_OUTER: number = 1.5;
 export const SEL_RING_SEGS: number = 24;
 export const TRAIL_MAX_POINTS: number = 400;
+export const SHIP_TRAIL_MAX_POINTS: number = 80; // short tail, not full path
 const COMET_TRAIL_MAX_POINTS: number = 1200;
 // Fixed angular step per trail sample -- all comets share the same arc length (based on Tempel 1)
 const TEMPEL1_PERIOD = 5.5;

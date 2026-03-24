@@ -273,7 +273,7 @@ export function updatePositions(dt: number, camDist: number): void {
 		// Comets: accumulate angular distance and sample when threshold reached.
 		// Non-comets: accumulate sim time with fixed interval.
 		const isComet = isCometEntry(entry);
-		const SHIP_TRANSFER_TRAIL_STEP = 0.3; // world-space distance between trail samples
+		const SHIP_TRANSFER_TRAIL_STEP = 0.1; // world-space distance; 80 pts × 0.1 = 8 unit tail
 		if (isTransferringShip) {
 			t.sampleAccum += shipDistThisFrame;
 		} else if (isComet) {

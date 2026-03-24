@@ -27,7 +27,7 @@ import {
 	SEL_RING_INNER,
 	SEL_RING_OUTER,
 	SEL_RING_SEGS,
-	TRAIL_MAX_POINTS,
+	SHIP_TRAIL_MAX_POINTS,
 } from "./bodies";
 import { scene } from "./scene";
 
@@ -250,7 +250,7 @@ export function createShip(config: ShipConfig): ShipEntry | undefined {
 	mesh.add(selRing);
 
 	const labelDiv = createLabel(config.name, shipColor, false);
-	const trail = createTrail(shipColor, TRAIL_MAX_POINTS);
+	const trail = createTrail(shipColor, SHIP_TRAIL_MAX_POINTS);
 
 	const resolvedEngineId = config.engineId ?? ENGINE_TYPES[0].id;
 	const defaultEngine = ENGINE_TYPES.find((e) => e.id === resolvedEngineId) ?? ENGINE_TYPES[0];
