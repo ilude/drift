@@ -122,8 +122,8 @@ createComets();
 // Initial position tick so all bodies are placed before ship creation
 updatePositions(1e-10, 300);
 createShip({ name: "ISS Explorer", hostPlanetName: "Earth" });
-createShip({ name: "Magellan", hostPlanetName: "Mars" });
-createShip({ name: "Kepler", hostPlanetName: "Jupiter" });
+createShip({ name: "ISS Magellan", hostPlanetName: "Mars" });
+createShip({ name: "ISS Kepler", hostPlanetName: "Jupiter" });
 if (saved) restoreShipState(saved);
 state.asteroidBelts = createAsteroidBelts();
 rebuildEntityMaps();

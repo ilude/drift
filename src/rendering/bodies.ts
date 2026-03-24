@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { findBody, rebuildEntityMaps } from "../core/entities";
+import { rebuildEntityMaps } from "../core/entities";
 import { state } from "../core/state";
 import { seededRandom } from "../core/utils";
 import { estimateMass } from "../data/system-generator";
@@ -24,7 +24,6 @@ import type {
 	TrailState,
 	Vector3Like,
 } from "../types";
-import { isShipEntry } from "../types";
 import { cometGroup, labelContainer, scene, trailGroups } from "./scene";
 import { createStarMaterial, generateBodyTexture, generateCloudTextureForBody } from "./textures";
 
@@ -100,13 +99,6 @@ export const COMET_ORBIT_SELECTED_OPACITY: number = 0.05;
 
 export const UNSURVEYED_ASTEROID_COLOR = [0.545, 0.439, 0.439] as const; // #8B7070 red-grey
 export const SURVEYED_ASTEROID_COLOR = [0.439, 0.439, 0.533] as const; // #707088 blue-grey
-
-/** Find any body by name (planet, moon, comet -- anything except ships).
- * @deprecated Use findBody() from core/entities.ts for new code. */
-export function findBodyEntry(name: string): BodyEntry | undefined {
-	const entry = findBody(name);
-	return entry && !isShipEntry(entry) ? entry : undefined;
-}
 
 const sharedMoonGeoms: THREE.SphereGeometry[] = LOD_SEGS.map(
 	(s) => new THREE.SphereGeometry(MOON_SIZE, s, s),
