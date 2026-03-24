@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { findBody, findShip } from "../core/entities";
+import { findAsteroidEntity, findBody, findShip } from "../core/entities";
 import { getUnreadCount, markAllRead, markRead } from "../core/notifications";
 import { formatDateTime, simTimeToDate, state, truncateDate } from "../core/state";
 import { generateSystem } from "../data/system-generator";
@@ -9,7 +9,7 @@ import {
 	lodLevel,
 	MOON_LOD_ZOOM,
 } from "../math/visual";
-import { camera, setAntialias, ZOOM_BASE } from "../rendering/scene";
+import { camera, labelContainer, setAntialias, ZOOM_BASE } from "../rendering/scene";
 import type { BodyEntry, CategoryKey, CategoryVisibility, SystemData } from "../types";
 import { isShipEntry, isSurveyable } from "../types";
 import { recenterOnStar, selectBody } from "./selection";
@@ -180,6 +180,10 @@ let lastScaleFactor = -1;
 let lastLodCamDist = -1;
 let labelFrameCounter = 0;
 
+// Asteroid station-keeping labels: shown when a ship is orbiting at an asteroid
+const asteroidLabels = new Map<string, HTMLDivElement>();
+const astLabelVec = new THREE.Vector3();
+
 export function updateLabels(camDist: number): void {
 	const cv = state.categoryVisibility;
 	const zoomFactor = ZOOM_BASE / camDist;
@@ -311,6 +315,48 @@ export function updateLabels(camDist: number): void {
 
 	if (needsScaleUpdate) lastScaleFactor = scaleFactor;
 	if (needsLodUpdate) lastLodCamDist = camDist;
+
+	// Asteroid station-keeping labels: show asteroid name when a ship is there
+	const activeAsteroids = new Set<string>();
+	for (const entry of state.bodyMeshes) {
+		if (!isShipEntry(entry) || entry.shipState !== "orbiting") continue;
+		const hit = findAsteroidEntity(entry.hostPlanetName);
+		if (!hit) continue;
+		activeAsteroids.add(entry.hostPlanetName);
+
+		const idx = hit.asteroid.beltIndex ?? 0;
+		const ax = hit.beltEntry.positions[idx * 3];
+		const ay = hit.beltEntry.positions[idx * 3 + 1];
+		const az = hit.beltEntry.positions[idx * 3 + 2];
+
+		let label = asteroidLabels.get(entry.hostPlanetName);
+		if (!label) {
+			label = document.createElement("div");
+			label.style.cssText =
+				"position:absolute;color:#8899aa;font-family:'Courier New',monospace;" +
+				"font-size:10px;white-space:nowrap;text-shadow:0 0 4px #000,0 0 2px #000;opacity:0.85;";
+			labelContainer.appendChild(label);
+			asteroidLabels.set(entry.hostPlanetName, label);
+		}
+		label.textContent = entry.hostPlanetName;
+		label.style.display = "";
+
+		astLabelVec.set(ax, ay, az);
+		astLabelVec.project(camera);
+		if (astLabelVec.z > 1) {
+			label.style.display = "none";
+		} else {
+			const lx = (astLabelVec.x * 0.5 + 0.5) * screenW + 8;
+			const ly = (-astLabelVec.y * 0.5 + 0.5) * screenH - 6;
+			label.style.transform = `translate(${lx}px, ${ly}px)`;
+		}
+	}
+	// Hide labels for asteroids no longer occupied
+	for (const [name, label] of asteroidLabels) {
+		if (!activeAsteroids.has(name)) {
+			label.style.display = "none";
+		}
+	}
 }
 
 // --- HUD ---

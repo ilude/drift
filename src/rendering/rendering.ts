@@ -126,31 +126,36 @@ export function updatePositions(dt: number, camDist: number): void {
 				const elapsed = state.simTime - entry.transferStartTime;
 				const t = Math.min(elapsed / entry.transferTimeDays, 1);
 
-				// Look up target early -- needed for capture blend and completion
+				// Look up target each frame for live tracking
 				let tgt = findBodyEntry(entry.transferTarget ?? "");
 				if (!tgt) {
 					const hit = findAsteroid(entry.transferTarget ?? "");
 					if (hit) tgt = asteroidProxy(hit.asteroid, hit.beltEntry);
 				}
 
-				// Evaluate frozen Hermite spline
-				const p = transferPosition(entry, t);
-
-				// Capture blend: in the final 15% of transfer, smoothly steer
-				// from the (potentially stale) spline endpoint toward the target's
-				// actual station-keeping orbit. Eliminates the visible jump caused
-				// by prediction error in predictTargetWorld().
-				if (tgt && t > 0.85) {
+				// Continuously update spline arrival endpoint to track the
+				// target's actual position. This keeps the ship visually heading
+				// toward the target even when the initial prediction drifts.
+				if (tgt) {
 					const offset = stationKeepingOffset(tgt);
-					const aAngle = Math.atan2(p.z - tgt.mesh.position.z, p.x - tgt.mesh.position.x);
-					const capX = tgt.mesh.position.x + Math.cos(aAngle) * offset;
-					const capZ = tgt.mesh.position.z + Math.sin(aAngle) * offset;
-					const blend = (t - 0.85) / 0.15;
-					const s = blend * blend * (3 - 2 * blend); // smoothstep
-					entry.mesh.position.set(p.x + (capX - p.x) * s, 0, p.z + (capZ - p.z) * s);
-				} else {
-					entry.mesh.position.set(p.x, 0, p.z);
+					const approachAngle = Math.atan2(
+						entry.mesh.position.z - tgt.mesh.position.z,
+						entry.mesh.position.x - tgt.mesh.position.x,
+					);
+					entry.p1x = tgt.mesh.position.x + Math.cos(approachAngle) * offset;
+					entry.p1z = tgt.mesh.position.z + Math.sin(approachAngle) * offset;
+					// Update arrival tangent to match new endpoint
+					const dx = entry.p1x - entry.p0x;
+					const dz = entry.p1z - entry.p0z;
+					const dist = Math.hypot(dx, dz);
+					const tAngle = Math.atan2(dz, dx);
+					entry.t1x = Math.cos(tAngle) * dist * 0.3;
+					entry.t1z = Math.sin(tAngle) * dist * 0.3;
 				}
+
+				// Evaluate Hermite spline with live-tracked endpoint
+				const p = transferPosition(entry, t);
+				entry.mesh.position.set(p.x, 0, p.z);
 
 				// Complete when time is up or within station-keeping distance
 				const distToTarget = tgt
