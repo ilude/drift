@@ -9,7 +9,9 @@
 - `bun run test` — Run tests
 - `bun run test:watch` — Watch mode tests
 - `bun run test:coverage` — Coverage report (v8)
-- `bun run lint` — Biome (linter + formatter)
+- `bun run lint` — Biome (linter + formatter), includes cognitive complexity checking (max 15)
+- `bun run dead-code` — Knip (unused files, exports, types, dependencies)
+- `bun run typecheck` — TypeScript type checking
 
 ## Architecture
 
@@ -23,6 +25,7 @@ src/
               entities.ts,               (unified O(1) entity resolution)
               intents.ts,                (ship intent broadcast for coordination)
               commands.ts,               (command tree evaluation, ship simulation)
+              commander.ts,              (commander judgment: decide, defer, preempt)
               notifications.ts           (notification system with coalescing)
   math/       orbit.ts, visual.ts,       (pure math, no app imports)
               transfer.ts, ship-physics.ts
@@ -47,7 +50,7 @@ core/utils.ts, math/orbit.ts, math/visual.ts  (pure math, no app imports)
         |
     core/entities.ts  (imports: state.ts, types.ts, math/orbit.ts)
         |
-  core/intents.ts, core/commands.ts, core/notifications.ts, data/resources.ts
+  core/intents.ts, core/commands.ts, core/commander.ts, core/notifications.ts, data/resources.ts
         |
   rendering/scene.ts, rendering/textures.ts, rendering/bodies.ts
         |
@@ -63,7 +66,8 @@ core/utils.ts, math/orbit.ts, math/visual.ts  (pure math, no app imports)
 - `src/core/state.ts` — Single centralized state object, save/restore to localStorage (SAVE_VERSION 5, plural ships)
 - `src/core/entities.ts` — Unified O(1) entity resolution: resolveEntity, findBody, findPlanet, findShip, findStar, findAsteroidEntity. Backed by Maps rebuilt via rebuildEntityMaps(). Lives in core/ so commands.ts can import it.
 - `src/core/intents.ts` — Ship intent broadcast for multi-ship coordination: publishIntent, clearIntent, getClaimedTargets. Ships broadcast current activity, others skip claimed targets.
-- `src/core/commands.ts` — Command tree evaluation (pure logic, no rendering imports), ship simulation tick, commander judgment (preemptive servicing, learning)
+- `src/core/commands.ts` — Command tree evaluation (pure logic, no rendering imports), ship simulation tick
+- `src/core/commander.ts` — Commander judgment layer: `commanderDecide()` entry point, preemptive servicing at colonies, defer maintenance in the field, learning from failures
 - `src/core/notifications.ts` — Notification system with coalescing, smart pause, FIFO cap (200 entries)
 - `src/math/orbit.ts` — Kepler solver (meanToTrue), orbital mechanics primitives
 - `src/math/ship-physics.ts` — Brachistochrone transfer physics, engine tiers, delta-v budget
@@ -99,7 +103,7 @@ core/utils.ts, math/orbit.ts, math/visual.ts  (pure math, no app imports)
   2. **Game hardness multiplier** (per-system on AppState): player-chosen difficulty. 1.0 = default, higher = slower/harder. Current multipliers: `surveyMultiplier`, `repairMultiplier`, `refuelMultiplier`, `moraleMultiplier`, `supplyMultiplier`.
   - **Formula:** `effectiveRate = baseRate * quality / hardnessMultiplier`
   - **Convention:** All new rate-based systems MUST include both modifiers. Values are stored as decimals (1.0 = 100%). When brainstorming new systems, proactively identify where quality and hardness modifiers should apply.
-- **Commander judgment:** Ships have a `Commander` with `judgment` (0.0–1.0) and `experience` counter. Judgment enables preemptive servicing at colonies: before departing, raises command tree thresholds by `(100 - base) * judgment * 0.3`. Learning from failure: malfunctions and emergency-returns bump judgment with diminishing returns, capped at 0.9. New ships start at 0.3. Future crew career system designed in `tasks/crew-career-system.md`.
+- **Commander judgment:** Ships have a `Commander` with `judgment` (0.0–1.0) and `experience` counter. Lives in `core/commander.ts` — the judgment layer on top of the mechanical command tree (`core/commands.ts`). Two judgment patterns: (1) **preemptive servicing** at colonies — raises maintenance thresholds before departure by `(100 - base) * judgment * 0.3`; (2) **defer maintenance** in the field — at unsurveyed bodies, defers maintenance commands when judgment says it's safe to survey first (personal floor interpolates from command threshold toward critical by judgment). Learning from failure: malfunctions and emergency-returns bump judgment with diminishing returns, capped at 0.9. New ships start at 0.3. All callers use `commanderDecide(ship)` — never call `evaluateCommandTree` directly for dispatch. DDD model documented in `tasks/ddd-model.md`. Future crew career system designed in `tasks/crew-career-system.md`.
 - **Comet trails:** Pre-filled on creation by computing past orbital positions backwards. Trail buffer is 1200 points (vs 400 for planets). Sample rate scales with zoom level.
 - **Render-on-demand:** 30fps cap; render loop stops when paused and resumes on input (wake-render event).
 - **No circular imports.** Pure math modules have zero app imports.
