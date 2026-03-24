@@ -9,10 +9,17 @@ import {
 	lodLevel,
 	MOON_LOD_ZOOM,
 } from "../math/visual";
-import { camera, labelContainer, setAntialias, ZOOM_BASE } from "../rendering/scene";
+import {
+	auRingLabels,
+	auRings,
+	camera,
+	labelContainer,
+	setAntialias,
+	ZOOM_BASE,
+} from "../rendering/scene";
 import type { BodyEntry, CategoryKey, CategoryVisibility, ShipEntry, SystemData } from "../types";
 import { isShipEntry, isSurveyable } from "../types";
-import { recenterOnStar, selectBody } from "./selection";
+import { formatShipAction, formatShipDuration, recenterOnStar, selectBody } from "./selection";
 
 // --- Body list panel ---
 
@@ -66,9 +73,31 @@ export function buildBodyList(): void {
 			const hasMoons = entry.moons && entry.moons.length > 0;
 			const item = document.createElement("div");
 			item.className = "body-list-item";
-			const toggleSpan = hasMoons ? `<span class="moon-toggle">[+]</span>` : "";
-			item.innerHTML = `<span class="body-color-dot" style="background:${entry.data.color}"></span>
+
+			if (isShipEntry(entry)) {
+				// Rich ship status card
+				const ship = entry as ShipEntry;
+				const actionText = formatShipAction(ship);
+				const durationText = formatShipDuration(ship);
+				const fuelPct =
+					ship.fuelCapacityKg > 0 ? Math.round((ship.fuelKg / ship.fuelCapacityKg) * 100) : 0;
+				const hullPct = Math.round(ship.maintenance.hullIntegrity);
+				const fuelColor = fuelPct > 70 ? "#4a6a4a" : fuelPct > 40 ? "#aaaa44" : "#aa4444";
+				const hullColor = hullPct > 70 ? "#4a6a4a" : hullPct > 40 ? "#aaaa44" : "#aa4444";
+				const durationSpan = durationText ? `  <span style="color:#6a8a6a">${durationText}</span>` : "";
+				item.innerHTML =
+					`<span class="body-color-dot" style="background:${ship.data.color}"></span>` +
+					`<span class="body-list-name">${ship.data.name}</span>` +
+					`<div data-ship-status="${ship.data.name}" style="font-size:9px;color:#8a8a8a;margin-top:2px;padding-left:14px">` +
+					`<div>${actionText}${durationSpan}</div>` +
+					`<div>F:<span style="color:${fuelColor}">${fuelPct}%</span>  H:<span style="color:${hullColor}">${hullPct}%</span></div>` +
+					`</div>`;
+			} else {
+				const toggleSpan = hasMoons ? `<span class="moon-toggle">[+]</span>` : "";
+				item.innerHTML = `<span class="body-color-dot" style="background:${entry.data.color}"></span>
                 <span class="body-list-name">${entry.data.name}</span>${toggleSpan}`;
+			}
+
 			item.addEventListener("click", (e) => {
 				if ((e.target as HTMLElement).classList.contains("moon-toggle")) {
 					const moonList = item.nextElementSibling;
@@ -101,6 +130,32 @@ export function buildBodyList(): void {
 
 		bodyListEl.appendChild(section);
 	});
+}
+
+export function updateShipOutliner(): void {
+	for (const entry of state.bodyMeshes) {
+		if (!isShipEntry(entry)) continue;
+		const ship = entry as ShipEntry;
+		const statusEl = bodyListEl.querySelector<HTMLElement>(
+			`[data-ship-status="${CSS.escape(ship.data.name)}"]`,
+		);
+		if (!statusEl) continue;
+
+		const actionText = formatShipAction(ship);
+		const durationText = formatShipDuration(ship);
+		const fuelPct =
+			ship.fuelCapacityKg > 0 ? Math.round((ship.fuelKg / ship.fuelCapacityKg) * 100) : 0;
+		const hullPct = Math.round(ship.maintenance.hullIntegrity);
+		const fuelColor = fuelPct > 70 ? "#4a6a4a" : fuelPct > 40 ? "#aaaa44" : "#aa4444";
+		const hullColor = hullPct > 70 ? "#4a6a4a" : hullPct > 40 ? "#aaaa44" : "#aa4444";
+		const durationSpan = durationText ? `  <span style="color:#6a8a6a">${durationText}</span>` : "";
+		const newHtml =
+			`<div>${actionText}${durationSpan}</div>` +
+			`<div>F:<span style="color:${fuelColor}">${fuelPct}%</span>  H:<span style="color:${hullColor}">${hullPct}%</span></div>`;
+		if (statusEl.innerHTML !== newHtml) {
+			statusEl.innerHTML = newHtml;
+		}
+	}
 }
 
 // --- System switcher ---
@@ -169,8 +224,23 @@ export function computeLabelPosition(
 	return { x: cx + screenRadius + gap, y: cy - 6, visible: true };
 }
 
+/** Estimate viewport width in AU from camera distance. Uses sqrt-compressed world coords. */
+export function computeAuWidth(camDist: number, distScale: number): number {
+	return (camDist / distScale) ** 2;
+}
+
+function formatAuWidth(au: number): string {
+	if (au < 1) return `~${au.toFixed(2)} AU`;
+	if (au < 100) return `~${au.toFixed(1)} AU`;
+	return `~${Math.round(au)} AU`;
+}
+
 export function formatZoomText(camDist: number, zoomBase: number): string {
-	return `Zoom: ${(zoomBase / camDist).toFixed(2)}x`;
+	const zoomStr = `Zoom: ${(zoomBase / camDist).toFixed(2)}x`;
+	// DIST_SCALE from orbit.ts is 200; inline here to avoid a math import in ui.ts
+	const DIST_SCALE = 200;
+	const au = computeAuWidth(camDist, DIST_SCALE);
+	return `${zoomStr} | ${formatAuWidth(au)}`;
 }
 
 const tempVec = new THREE.Vector3();
@@ -320,6 +390,13 @@ export function updateLabels(camDist: number): void {
 			entry.cloudMesh.visible = sr > 15;
 		}
 
+		// Depth-based label dimming: farther objects fade out
+		const labelOpacity = Math.max(0.3, Math.min(1.0, 1.0 - dist / (camDist * 3)));
+		const prevOpacity = Number.parseFloat(entry.labelDiv.style.opacity || "1");
+		if (Math.abs(labelOpacity - prevOpacity) > 0.05) {
+			entry.labelDiv.style.opacity = labelOpacity.toFixed(2);
+		}
+
 		// Only update label transforms every 2 frames
 		if (shouldUpdateTransforms) {
 			const pos = computeLabelPosition(cx, cy, sr, screenW, screenH, margin);
@@ -382,6 +459,31 @@ export function updateLabels(camDist: number): void {
 			label.style.display = "none";
 		}
 	}
+
+	// AU ring labels: project the +X intersection of each ring to screen
+	if (auRingLabels.length > 0 && auRings[0]?.visible) {
+		const ringLabelVec = new THREE.Vector3();
+		for (let i = 0; i < auRings.length; i++) {
+			const ring = auRings[i];
+			const labelDiv = auRingLabels[i];
+			if (!ring || !labelDiv) continue;
+			const posAttr = ring.geometry.getAttribute("position") as THREE.BufferAttribute;
+			ringLabelVec.set(posAttr.getX(0), 0, posAttr.getZ(0));
+			ringLabelVec.project(camera);
+			if (ringLabelVec.z > 1) {
+				labelDiv.style.display = "none";
+			} else {
+				const lx = (ringLabelVec.x * 0.5 + 0.5) * screenW + 4;
+				const ly = (-ringLabelVec.y * 0.5 + 0.5) * screenH - 6;
+				if (lx >= 0 && lx <= screenW && ly >= 0 && ly <= screenH) {
+					labelDiv.style.transform = `translate(${lx}px, ${ly}px)`;
+					labelDiv.style.display = "";
+				} else {
+					labelDiv.style.display = "none";
+				}
+			}
+		}
+	}
 }
 
 // --- HUD ---
@@ -421,6 +523,8 @@ export function updateHUD(camDist: number): void {
 			badge.style.display = "none";
 		}
 	}
+
+	updateShipOutliner();
 }
 
 // --- Perf timing overlay ---
@@ -592,12 +696,38 @@ export function setupUI(loadSystem: (systemData: SystemData) => void): void {
 
 	pauseBtn.addEventListener("click", togglePause);
 
+	// Advance-to-next-event button
+	const advanceBtn = document.getElementById("btn-advance") as HTMLElement;
+	let advanceMode = false;
+	let savedPauseConfig: typeof state.notificationPauseConfig | null = null;
+
+	advanceBtn.addEventListener("click", () => {
+		savedPauseConfig = { ...state.notificationPauseConfig };
+		for (const key of Object.keys(state.notificationPauseConfig) as Array<
+			keyof typeof state.notificationPauseConfig
+		>) {
+			state.notificationPauseConfig[key] = true;
+		}
+		advanceMode = true;
+		state.timeSpeed = 30;
+		paused = false;
+		updateSpeedBtn();
+		state.renderNeeded = true;
+		window.dispatchEvent(new Event("wake-render"));
+	});
+
 	// Sync pause button when timeSpeed is changed externally (e.g., by notification system)
 	window.addEventListener("wake-render", () => {
 		const shouldBePaused = state.timeSpeed === 0;
 		if (shouldBePaused !== paused) {
 			paused = shouldBePaused;
 			updateSpeedBtn();
+		}
+		// Restore pause config when advance mode completes (game paused by an event)
+		if (advanceMode && state.timeSpeed === 0 && savedPauseConfig) {
+			state.notificationPauseConfig = savedPauseConfig;
+			savedPauseConfig = null;
+			advanceMode = false;
 		}
 	});
 
@@ -663,6 +793,8 @@ const NOTIF_ICONS: Record<string, string> = {
 	"maintenance-needed": "W",
 	"mission-complete": "\u2605",
 	"ship-destroyed": "X",
+	"transfer-complete": "\u2192",
+	"action-complete": "\u25cf",
 };
 
 function renderNotifDropdown(dropdown: HTMLElement): void {
@@ -871,6 +1003,27 @@ function setupViewMenu(): void {
 	aaLabel.appendChild(document.createTextNode(" Antialiasing"));
 	aaRow.appendChild(aaLabel);
 	content.appendChild(aaRow);
+
+	// Distance rings toggle
+	const ringsRow = document.createElement("div");
+	ringsRow.className = "view-cat-toggles";
+	ringsRow.style.padding = "5px 8px";
+	const ringsLabel = document.createElement("label");
+	ringsLabel.className = "view-toggle";
+	const ringsCb = document.createElement("input");
+	ringsCb.type = "checkbox";
+	ringsCb.checked = true;
+	ringsCb.addEventListener("change", () => {
+		const visible = ringsCb.checked;
+		for (const ring of auRings) ring.visible = visible;
+		for (const lbl of auRingLabels) lbl.style.display = visible ? "" : "none";
+		state.renderNeeded = true;
+		window.dispatchEvent(new Event("wake-render"));
+	});
+	ringsLabel.appendChild(ringsCb);
+	ringsLabel.appendChild(document.createTextNode(" Distance Rings"));
+	ringsRow.appendChild(ringsLabel);
+	content.appendChild(ringsRow);
 
 	const sep = document.createElement("div");
 	sep.className = "view-menu-sep";

@@ -15,14 +15,17 @@ import {
 	initiateTransfer,
 } from "../rendering/rendering";
 import { camera, controls, renderer, ZOOM_BASE } from "../rendering/scene";
+import { distanceKmBetween } from "../rendering/ship-transfer";
 import type { AsteroidBeltData, AsteroidInfo, BodyEntry, FlyToState } from "../types";
 import { isCometEntry, isShipEntry, isSurveyable } from "../types";
 import { renderCommandTree } from "./commands";
 
 /** Format a ship's current action as display text. Single source of truth for action display. */
-function formatShipAction(entry: import("../types").ShipEntry): string {
+export function formatShipAction(entry: import("../types").ShipEntry): string {
 	if (entry.shipState === "transferring") {
-		return `In transit to ${entry.transferTarget}`;
+		const elapsed = state.simTime.days - entry.transferDisplayStart;
+		const remaining = Math.max(0, Math.ceil(entry.transferDisplayDays - elapsed));
+		return `In transit to ${entry.transferTarget} (${remaining}d)`;
 	}
 	const action = entry.action;
 	if (action.type === "survey-nearest" && action.startTime > 0) {
@@ -43,7 +46,12 @@ function formatShipAction(entry: import("../types").ShipEntry): string {
 	return "Idle";
 }
 
-function formatShipDuration(entry: import("../types").ShipEntry): string {
+export function formatShipDuration(entry: import("../types").ShipEntry): string {
+	if (entry.shipState === "transferring") {
+		const elapsed = Math.max(0, Math.floor(state.simTime.days - entry.transferDisplayStart));
+		const total = Math.floor(entry.transferDisplayDays);
+		return `${elapsed}d / ${total}d`;
+	}
 	const action = entry.action;
 	if (action.startTime > 0 && action.duration > 0) {
 		const elapsed = Math.floor(action.progress * action.duration);
@@ -51,6 +59,29 @@ function formatShipDuration(entry: import("../types").ShipEntry): string {
 		return `${elapsed}d / ${dur}d`;
 	}
 	return "";
+}
+
+const AU_KM = 149_597_871;
+
+/**
+ * Format transfer status line for a ship that is actively transferring.
+ * Pure function — no DOM or state access, making it testable.
+ */
+export function formatTransferStatus(
+	remainingDays: number,
+	distKm: number,
+	fuelKg: number,
+	fuelTotalKg: number,
+): string {
+	const etaStr =
+		remainingDays < 1 ? `${Math.round(remainingDays * 24)}h` : `${remainingDays.toFixed(0)}d`;
+	const distAU = distKm / AU_KM;
+	const distStr =
+		distAU < 0.01 ? `${Math.round(distKm).toLocaleString()} km` : `${distAU.toFixed(2)} AU`;
+	const fuelTotalT = (fuelTotalKg / 1000).toFixed(1);
+	const fuelT = (fuelKg / 1000).toFixed(1);
+	const fuelPct = fuelTotalKg > 0 ? Math.round((fuelKg / fuelTotalKg) * 100) : 0;
+	return `ETA: ${etaStr} | ${distStr} | Fuel: ${fuelT}t / ${fuelTotalT}t (${fuelPct}%)`;
 }
 
 const ZOOM_DIST_RECENTER: number = ZOOM_BASE / 0.25;
@@ -142,7 +173,11 @@ export function selectBody(entry: BodyEntry): void {
 	}
 	const typeEl = document.getElementById("info-type");
 	if (typeEl) {
-		typeEl.textContent = entry.data.type;
+		if (!isShipEntry(entry) && entry.data.distance > 0) {
+			typeEl.textContent = `${entry.data.type} — ${entry.data.distance.toFixed(2)} AU`;
+		} else {
+			typeEl.textContent = entry.data.type;
+		}
 	}
 
 	document.querySelectorAll(".body-list-item").forEach((el) => {
@@ -397,18 +432,30 @@ export function selectAsteroid(hit: {
 	}
 }
 
-export function updateFollow(): void {
+export function updateFollow(dt = 0.033): void {
 	if (!state.selectedBody || state.flyTo) return;
 	const pos: THREE.Vector3 = state.selectedBody.mesh.position;
 	const dx: number = pos.x - controls.target.x;
 	const dy: number = pos.y - controls.target.y;
 	const dz: number = pos.z - controls.target.z;
-	controls.target.x += dx;
-	controls.target.y += dy;
-	controls.target.z += dz;
-	camera.position.x += dx;
-	camera.position.y += dy;
-	camera.position.z += dz;
+	const damping = 12;
+	const factor = 1 - Math.exp(-damping * dt);
+	// Snap when factor is effectively 1 to avoid floating point drift
+	if (factor >= 0.99) {
+		controls.target.x += dx;
+		controls.target.y += dy;
+		controls.target.z += dz;
+		camera.position.x += dx;
+		camera.position.y += dy;
+		camera.position.z += dz;
+	} else {
+		controls.target.x += dx * factor;
+		controls.target.y += dy * factor;
+		controls.target.z += dz * factor;
+		camera.position.x += dx * factor;
+		camera.position.y += dy * factor;
+		camera.position.z += dz * factor;
+	}
 }
 
 function updateShipStatus(entry: ShipEntry): void {
@@ -459,6 +506,27 @@ function updateShipStatus(entry: ShipEntry): void {
 	const durationEl = document.getElementById("info-duration-value");
 	if (durationEl) {
 		durationEl.textContent = formatShipDuration(entry);
+	}
+
+	// Transfer status (ETA / distance / fuel) — only visible during active transfer
+	const transferStatusRow = document.getElementById("info-transfer-status");
+	const transferStatusValue = document.getElementById("transfer-status-value");
+	if (transferStatusRow && transferStatusValue) {
+		if (entry.shipState === "transferring" && entry.transferTarget) {
+			const elapsed = state.simTime.days - entry.transferStartTime;
+			const remainingDays = Math.max(0, entry.transferTimeDays - elapsed);
+			const targetEntry = findBody(entry.transferTarget);
+			const distKm = targetEntry ? distanceKmBetween(entry, targetEntry) : 0;
+			transferStatusValue.textContent = formatTransferStatus(
+				remainingDays,
+				distKm,
+				entry.fuelKg,
+				entry.transferFuelTotal,
+			);
+			transferStatusRow.classList.remove("hidden");
+		} else {
+			transferStatusRow.classList.add("hidden");
+		}
 	}
 }
 

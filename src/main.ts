@@ -601,11 +601,26 @@ function completeAction(ship: ShipEntry): void {
 	} else if (actionType === "shore-leave") {
 		ship.crew.lastShoreLeave = state.simTime.days;
 		ship.action = noAction();
+		addCoalescedNotification(
+			"action-complete",
+			`${ship.data.name}: Shore leave completed`,
+			ship.data.name,
+		);
 	} else if (actionType === "overhaul") {
 		ship.maintenance.age = 0;
 		ship.action = noAction();
+		addCoalescedNotification(
+			"action-complete",
+			`${ship.data.name}: Overhaul completed`,
+			ship.data.name,
+		);
 	} else if (actionType === "refuel") {
 		ship.action = noAction();
+		addCoalescedNotification(
+			"action-complete",
+			`${ship.data.name}: Refueling completed`,
+			ship.data.name,
+		);
 	}
 
 	// Re-evaluate command tree for next action
@@ -646,6 +661,11 @@ export function onTransferComplete(ship: ShipEntry): void {
 	gameLog(
 		`[transferComplete] ${ship.data.name}: arrived at ${ship.hostPlanetName}`,
 		`action=${ship.action.type} target=${ship.action.target}`,
+	);
+	addCoalescedNotification(
+		"transfer-complete",
+		`${ship.data.name} arrived at ${ship.hostPlanetName}`,
+		ship.data.name,
 	);
 	// If ship was en route for a specific action, start it at the destination
 	const actionType = ship.action.type;
@@ -810,7 +830,7 @@ function animate(now: number): void {
 	}
 
 	updateFlyTo();
-	updateFollow();
+	updateFollow(dt);
 	controls.update();
 
 	cachedCamDist = camera.position.distanceTo(controls.target);
