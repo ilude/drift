@@ -9,14 +9,7 @@ import {
 	lodLevel,
 	MOON_LOD_ZOOM,
 } from "../math/visual";
-import {
-	auRingLabels,
-	auRings,
-	camera,
-	labelContainer,
-	setAntialias,
-	ZOOM_BASE,
-} from "../rendering/scene";
+import { camera, labelContainer, setAntialias, ZOOM_BASE } from "../rendering/scene";
 import type { BodyEntry, CategoryKey, CategoryVisibility, ShipEntry, SystemData } from "../types";
 import { isShipEntry, isSurveyable } from "../types";
 import { formatShipAction, formatShipDuration, recenterOnStar, selectBody } from "./selection";
@@ -440,7 +433,14 @@ export function updateLabels(camDist: number): void {
 			labelContainer.appendChild(label);
 			asteroidLabels.set(entry.hostPlanetName, label);
 		}
-		label.textContent = entry.hostPlanetName;
+		const shipsAtAsteroid = orbitingShipsAtBody.get(entry.hostPlanetName) || [];
+		let asteroidHtml = entry.hostPlanetName;
+		if (shipsAtAsteroid.length > 0) {
+			for (const ship of shipsAtAsteroid) {
+				asteroidHtml += `<div style="font-size:9px; color:#7a9a7a; margin-top:2px">${ship.data.name}</div>`;
+			}
+		}
+		label.innerHTML = asteroidHtml;
 		label.style.display = "";
 
 		astLabelVec.set(ax, ay, az);
@@ -457,31 +457,6 @@ export function updateLabels(camDist: number): void {
 	for (const [name, label] of asteroidLabels) {
 		if (!activeAsteroids.has(name)) {
 			label.style.display = "none";
-		}
-	}
-
-	// AU ring labels: project the +X intersection of each ring to screen
-	if (auRingLabels.length > 0 && auRings[0]?.visible) {
-		const ringLabelVec = new THREE.Vector3();
-		for (let i = 0; i < auRings.length; i++) {
-			const ring = auRings[i];
-			const labelDiv = auRingLabels[i];
-			if (!ring || !labelDiv) continue;
-			const posAttr = ring.geometry.getAttribute("position") as THREE.BufferAttribute;
-			ringLabelVec.set(posAttr.getX(0), 0, posAttr.getZ(0));
-			ringLabelVec.project(camera);
-			if (ringLabelVec.z > 1) {
-				labelDiv.style.display = "none";
-			} else {
-				const lx = (ringLabelVec.x * 0.5 + 0.5) * screenW + 4;
-				const ly = (-ringLabelVec.y * 0.5 + 0.5) * screenH - 6;
-				if (lx >= 0 && lx <= screenW && ly >= 0 && ly <= screenH) {
-					labelDiv.style.transform = `translate(${lx}px, ${ly}px)`;
-					labelDiv.style.display = "";
-				} else {
-					labelDiv.style.display = "none";
-				}
-			}
 		}
 	}
 }
@@ -1003,27 +978,6 @@ function setupViewMenu(): void {
 	aaLabel.appendChild(document.createTextNode(" Antialiasing"));
 	aaRow.appendChild(aaLabel);
 	content.appendChild(aaRow);
-
-	// Distance rings toggle
-	const ringsRow = document.createElement("div");
-	ringsRow.className = "view-cat-toggles";
-	ringsRow.style.padding = "5px 8px";
-	const ringsLabel = document.createElement("label");
-	ringsLabel.className = "view-toggle";
-	const ringsCb = document.createElement("input");
-	ringsCb.type = "checkbox";
-	ringsCb.checked = true;
-	ringsCb.addEventListener("change", () => {
-		const visible = ringsCb.checked;
-		for (const ring of auRings) ring.visible = visible;
-		for (const lbl of auRingLabels) lbl.style.display = visible ? "" : "none";
-		state.renderNeeded = true;
-		window.dispatchEvent(new Event("wake-render"));
-	});
-	ringsLabel.appendChild(ringsCb);
-	ringsLabel.appendChild(document.createTextNode(" Distance Rings"));
-	ringsRow.appendChild(ringsLabel);
-	content.appendChild(ringsRow);
 
 	const sep = document.createElement("div");
 	sep.className = "view-menu-sep";

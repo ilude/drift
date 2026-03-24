@@ -308,7 +308,6 @@ export interface ShipEntry extends BaseEntry {
 	t1z: number;
 	pendingTransfer: PendingTransfer | null;
 	// Visual
-	transferPath: THREE.Line | null;
 	tailPositions: Float32Array;
 	tailIndex: number;
 	tailCount: number;

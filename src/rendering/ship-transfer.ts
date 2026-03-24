@@ -333,8 +333,7 @@ export function createShip(config: ShipConfig): ShipEntry | undefined {
 		t1x: 0,
 		t1z: 0, // Hermite arrival point + tangent
 		pendingTransfer: null,
-		// Visual: transfer path line and velocity tail
-		transferPath: null,
+		// Visual: velocity tail
 		tailPositions: new Float32Array(SHIP_TAIL_LENGTH * 3),
 		tailIndex: 0,
 		tailCount: 0,
@@ -416,9 +415,6 @@ export function setOnTransferComplete(hook: (ship: ShipEntry) => void): void {
 }
 
 export function completeTransfer(entry: ShipEntry, entryAngle = 0): void {
-	// Dispose transfer path preview
-	disposeTransferPath(entry);
-
 	// Clear the transfer trail
 	entry.trail.count = 0;
 	entry.trail.head = 0;
@@ -477,65 +473,13 @@ export function completeTransfer(entry: ShipEntry, entryAngle = 0): void {
 	if (onTransferCompleteHook) onTransferCompleteHook(entry);
 }
 
-const PATH_SEGMENTS = 64;
-const PATH_POINTS = PATH_SEGMENTS + 1;
-
-function buildPathPositions(entry: ShipEntry, out: Float32Array): void {
-	for (let i = 0; i < PATH_POINTS; i++) {
-		const t = i / PATH_SEGMENTS;
-		const p = hermiteEval(
-			entry.p0x,
-			entry.p0z,
-			entry.t0x,
-			entry.t0z,
-			entry.p1x,
-			entry.p1z,
-			entry.t1x,
-			entry.t1z,
-			t,
-		);
-		out[i * 3] = p.x;
-		out[i * 3 + 1] = 0;
-		out[i * 3 + 2] = p.z;
-	}
-}
-
-function buildPathGeometry(entry: ShipEntry): THREE.BufferGeometry {
-	const positions = new Float32Array(PATH_POINTS * 3);
-	buildPathPositions(entry, positions);
-	const geom = new THREE.BufferGeometry();
-	geom.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-	return geom;
-}
-
-/** Re-sample the Hermite spline into the existing transferPath geometry (called each frame). */
-export function refreshTransferPath(entry: ShipEntry): void {
-	if (!entry.transferPath) return;
-	const attr = entry.transferPath.geometry.attributes.position as THREE.BufferAttribute;
-	buildPathPositions(entry, attr.array as Float32Array);
-	attr.needsUpdate = true;
-	entry.transferPath.computeLineDistances();
-}
-
-function disposeTransferPath(entry: ShipEntry): void {
-	if (entry.transferPath) {
-		scene.remove(entry.transferPath);
-		entry.transferPath.geometry.dispose();
-		(entry.transferPath.material as THREE.Material).dispose();
-		entry.transferPath = null;
-	}
-}
-
-/** Shared logic: write spline knots, set transfer state, create path, prefill tail. */
+/** Shared logic: write spline knots, set transfer state, prefill tail. */
 function commitTransfer(
 	entry: ShipEntry,
 	knots: ReturnType<typeof computeHermiteKnots>,
 	gameDays: number,
 	targetName: string,
 ): void {
-	// Dispose any existing path before creating a new one (re-spline case)
-	disposeTransferPath(entry);
-
 	entry.p0x = knots.p0x;
 	entry.p0z = knots.p0z;
 	entry.t0x = knots.t0x;
@@ -562,20 +506,6 @@ function commitTransfer(
 	entry.trail.head = 0;
 	entry.trail.sampleAccum = 0;
 	entry.trail.line.geometry.setDrawRange(0, 0);
-
-	// Create transfer path preview line
-	const geom = buildPathGeometry(entry);
-	const mat = new THREE.LineDashedMaterial({
-		color: entry.data.color,
-		dashSize: 0.3,
-		gapSize: 0.15,
-		transparent: true,
-		opacity: 0.4,
-	});
-	const line = new THREE.Line(geom, mat);
-	line.computeLineDistances();
-	scene.add(line);
-	entry.transferPath = line;
 }
 
 export function beginTransfer(entry: ShipEntry): void {

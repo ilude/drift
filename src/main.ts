@@ -198,10 +198,6 @@ function teardownSystem(): void {
 				scene.remove(entry.tailLine);
 				entry.tailLine.geometry.dispose();
 			}
-			if (entry.transferPath) {
-				scene.remove(entry.transferPath);
-				entry.transferPath.geometry.dispose();
-			}
 		}
 	});
 	state.bodyMeshes.length = 0;

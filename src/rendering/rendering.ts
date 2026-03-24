@@ -18,7 +18,6 @@ import {
 	completeTransfer,
 	findAsteroid,
 	hermiteDerivative,
-	refreshTransferPath,
 	SHIP_LOCAL_ORBIT,
 	stationKeepingOffset,
 	transferPosition,
@@ -271,9 +270,6 @@ export function updatePositions(dt: number, camDist: number): void {
 					}
 				}
 
-				// Update transfer path preview geometry each frame
-				refreshTransferPath(entry);
-
 				// Complete when time is up or within station-keeping distance
 				const distToTarget = tgt
 					? Math.hypot(
@@ -441,8 +437,8 @@ export function updatePositions(dt: number, camDist: number): void {
 			// Rebuild index array: oldest to newest draw order
 			buildTrailIndices(t.head, t.count, t.maxPoints, t.indices);
 
-			// Ship trails fade from transparent (oldest) to full color (newest)
-			if (isTransferringShip) {
+			// Trails fade from transparent (oldest) to full color (newest)
+			if (isTransferringShip || isComet) {
 				for (let j = 0; j < t.count; j++) {
 					const fade = t.count > 1 ? j / (t.count - 1) : 1;
 					const idx = t.indices[j] * 3;

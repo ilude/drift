@@ -1,7 +1,5 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import { DIST_SCALE } from "../math/orbit";
-
 // Scene
 export const scene: THREE.Scene = new THREE.Scene();
 scene.background = new THREE.Color("#07070d");
@@ -124,38 +122,6 @@ scene.add(trailGroups);
 
 export const cometGroup: THREE.Group = new THREE.Group();
 scene.add(cometGroup);
-
-// AU distance rings
-const AU_RINGS = [1, 5, 10, 30];
-const RING_SEGMENTS = 64;
-const ringMat = new THREE.LineBasicMaterial({ color: 0x4488aa, transparent: true, opacity: 0.06 });
-
-export const auRings: THREE.Line[] = [];
-export const auRingLabels: HTMLDivElement[] = [];
-
-for (const au of AU_RINGS) {
-	const worldR = Math.sqrt(au) * DIST_SCALE;
-	const pts = new Float32Array((RING_SEGMENTS + 1) * 3);
-	for (let i = 0; i <= RING_SEGMENTS; i++) {
-		const angle = (i / RING_SEGMENTS) * Math.PI * 2;
-		pts[i * 3] = Math.cos(angle) * worldR;
-		pts[i * 3 + 1] = 0;
-		pts[i * 3 + 2] = Math.sin(angle) * worldR;
-	}
-	const geo = new THREE.BufferGeometry();
-	geo.setAttribute("position", new THREE.BufferAttribute(pts, 3));
-	const ring = new THREE.Line(geo, ringMat);
-	scene.add(ring);
-	auRings.push(ring);
-
-	const label = document.createElement("div");
-	label.style.cssText =
-		"position:absolute;color:#4488aa;font-family:'Courier New',monospace;" +
-		"font-size:9px;white-space:nowrap;opacity:0.5;pointer-events:none;";
-	label.textContent = `${au} AU`;
-	labelContainer.appendChild(label);
-	auRingLabels.push(label);
-}
 
 // Resize handling
 window.addEventListener("resize", () => {
