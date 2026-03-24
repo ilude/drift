@@ -94,13 +94,6 @@
             <div id="info-ship-fuel" class="info-row hidden">
                 <span class="info-label">Fuel:</span><span id="ship-fuel-value">-</span>
             </div>
-            <div id="info-transfer" class="info-row hidden">
-                <span class="info-label">Transfer:</span>
-                <span class="transfer-controls">
-                    <select id="transfer-target"></select>
-                    <button type="button" id="btn-transfer" class="ctrl-btn">Go</button>
-                </span>
-            </div>
             <div id="info-transfer-status" class="info-row hidden">
                 <span class="info-label"></span><span id="transfer-status-value"></span>
             </div>
@@ -153,8 +146,9 @@
     </div>
 
     <div id="status-bar">
-        <span style="flex:1"></span>
         <span id="zoom-display">Zoom: 1.00x</span>
+        <span style="flex:1"></span>
+        <span id="survey-display">Surveyed: 0%</span>
     </div>
 
     <script type="module" src="src/main.ts"></script>

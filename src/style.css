@@ -332,7 +332,8 @@ body {
 }
 
 #zoom-display,
-#time-display {
+#time-display,
+#survey-display {
 	color: #6a9a6a;
 }
 
@@ -404,30 +405,9 @@ body {
 	display: none;
 }
 
-.transfer-controls {
-	display: flex;
-	gap: 4px;
-	align-items: center;
-}
-
 #transfer-status-value {
 	color: #cc6644;
 	font-size: 10px;
-}
-
-#transfer-target {
-	background: #141420;
-	border: 1px solid #2a3a2a;
-	color: #88cc88;
-	font-family: inherit;
-	font-size: 10px;
-	padding: 1px 4px;
-	max-width: 100px;
-}
-
-#transfer-target:focus {
-	border-color: #4a6a4a;
-	outline: none;
 }
 
 .info-label {

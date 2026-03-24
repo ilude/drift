@@ -12,7 +12,7 @@ import {
 import { camera, labelContainer, setAntialias, ZOOM_BASE } from "../rendering/scene";
 import type { BodyEntry, CategoryKey, CategoryVisibility, ShipEntry, SystemData } from "../types";
 import { isShipEntry, isSurveyable } from "../types";
-import { formatShipAction, formatShipDuration, recenterOnStar, selectBody } from "./selection";
+import { recenterOnStar, selectBody } from "./selection";
 
 // --- Body list panel ---
 
@@ -67,29 +67,9 @@ export function buildBodyList(): void {
 			const item = document.createElement("div");
 			item.className = "body-list-item";
 
-			if (isShipEntry(entry)) {
-				// Rich ship status card
-				const ship = entry as ShipEntry;
-				const actionText = formatShipAction(ship);
-				const durationText = formatShipDuration(ship);
-				const fuelPct =
-					ship.fuelCapacityKg > 0 ? Math.round((ship.fuelKg / ship.fuelCapacityKg) * 100) : 0;
-				const hullPct = Math.round(ship.maintenance.hullIntegrity);
-				const fuelColor = fuelPct > 70 ? "#4a6a4a" : fuelPct > 40 ? "#aaaa44" : "#aa4444";
-				const hullColor = hullPct > 70 ? "#4a6a4a" : hullPct > 40 ? "#aaaa44" : "#aa4444";
-				const durationSpan = durationText ? `  <span style="color:#6a8a6a">${durationText}</span>` : "";
-				item.innerHTML =
-					`<span class="body-color-dot" style="background:${ship.data.color}"></span>` +
-					`<span class="body-list-name">${ship.data.name}</span>` +
-					`<div data-ship-status="${ship.data.name}" style="font-size:9px;color:#8a8a8a;margin-top:2px;padding-left:14px">` +
-					`<div>${actionText}${durationSpan}</div>` +
-					`<div>F:<span style="color:${fuelColor}">${fuelPct}%</span>  H:<span style="color:${hullColor}">${hullPct}%</span></div>` +
-					`</div>`;
-			} else {
-				const toggleSpan = hasMoons ? `<span class="moon-toggle">[+]</span>` : "";
-				item.innerHTML = `<span class="body-color-dot" style="background:${entry.data.color}"></span>
+			const toggleSpan = !isShipEntry(entry) && hasMoons ? `<span class="moon-toggle">[+]</span>` : "";
+			item.innerHTML = `<span class="body-color-dot" style="background:${entry.data.color}"></span>
                 <span class="body-list-name">${entry.data.name}</span>${toggleSpan}`;
-			}
 
 			item.addEventListener("click", (e) => {
 				if ((e.target as HTMLElement).classList.contains("moon-toggle")) {
@@ -123,32 +103,6 @@ export function buildBodyList(): void {
 
 		bodyListEl.appendChild(section);
 	});
-}
-
-export function updateShipOutliner(): void {
-	for (const entry of state.bodyMeshes) {
-		if (!isShipEntry(entry)) continue;
-		const ship = entry as ShipEntry;
-		const statusEl = bodyListEl.querySelector<HTMLElement>(
-			`[data-ship-status="${CSS.escape(ship.data.name)}"]`,
-		);
-		if (!statusEl) continue;
-
-		const actionText = formatShipAction(ship);
-		const durationText = formatShipDuration(ship);
-		const fuelPct =
-			ship.fuelCapacityKg > 0 ? Math.round((ship.fuelKg / ship.fuelCapacityKg) * 100) : 0;
-		const hullPct = Math.round(ship.maintenance.hullIntegrity);
-		const fuelColor = fuelPct > 70 ? "#4a6a4a" : fuelPct > 40 ? "#aaaa44" : "#aa4444";
-		const hullColor = hullPct > 70 ? "#4a6a4a" : hullPct > 40 ? "#aaaa44" : "#aa4444";
-		const durationSpan = durationText ? `  <span style="color:#6a8a6a">${durationText}</span>` : "";
-		const newHtml =
-			`<div>${actionText}${durationSpan}</div>` +
-			`<div>F:<span style="color:${fuelColor}">${fuelPct}%</span>  H:<span style="color:${hullColor}">${hullPct}%</span></div>`;
-		if (statusEl.innerHTML !== newHtml) {
-			statusEl.innerHTML = newHtml;
-		}
-	}
 }
 
 // --- System switcher ---
@@ -465,8 +419,10 @@ export function updateLabels(camDist: number): void {
 
 const timeEl = document.getElementById("time-display") as HTMLElement;
 const zoomEl = document.getElementById("zoom-display") as HTMLElement;
+const surveyEl = document.getElementById("survey-display") as HTMLElement;
 let lastTimeText = "";
 let lastZoomText = "";
+let lastSurveyText = "";
 let lastHudSimTime = -1;
 let lastHudTimeSpeed = -1;
 
@@ -488,6 +444,28 @@ export function updateHUD(camDist: number): void {
 		lastZoomText = zoomText;
 	}
 
+	// Survey percentage — count surveyable bodies + asteroids
+	let total = 0;
+	let surveyed = 0;
+	for (const entry of state.bodyMeshes) {
+		if (isSurveyable(entry)) {
+			total++;
+			if (entry.survey.surveyLevel > 0) surveyed++;
+		}
+	}
+	for (const belt of state.asteroidBelts) {
+		for (const ast of belt.asteroids) {
+			total++;
+			if (ast.survey.surveyLevel > 0) surveyed++;
+		}
+	}
+	const pct = total > 0 ? ((surveyed / total) * 100).toFixed(2) : "0.00";
+	const surveyText = `Surveyed: ${pct}%`;
+	if (surveyText !== lastSurveyText) {
+		surveyEl.textContent = surveyText;
+		lastSurveyText = surveyText;
+	}
+
 	const badge = document.getElementById("notif-badge");
 	if (badge) {
 		const count = getUnreadCount();
@@ -498,8 +476,6 @@ export function updateHUD(camDist: number): void {
 			badge.style.display = "none";
 		}
 	}
-
-	updateShipOutliner();
 }
 
 // --- Perf timing overlay ---
