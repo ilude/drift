@@ -357,6 +357,16 @@ export function createShip(config: ShipConfig): ShipEntry | undefined {
 	entry.tailLine = new THREE.Line(tailGeom, shipTailMat);
 	scene.add(entry.tailLine);
 
+	// Snap ship to host planet's station-keeping orbit on creation
+	if (hostPlanetEntry) {
+		const offset = stationKeepingOffset(hostPlanetEntry);
+		mesh.position.set(
+			hostPlanetEntry.mesh.position.x + Math.cos(entry.angle) * offset,
+			hostPlanetEntry.mesh.position.y,
+			hostPlanetEntry.mesh.position.z + Math.sin(entry.angle) * offset,
+		);
+	}
+
 	state.bodyMeshes.push(entry);
 	rebuildEntityMaps();
 	return entry;
