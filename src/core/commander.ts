@@ -101,20 +101,38 @@ export function checkPreemptiveService(
 	return null;
 }
 
+function getConditionMetrics(
+	ship: ShipEntry,
+	type: Exclude<CommandCondition["type"], "always">,
+): { current: number; critical: number } {
+	switch (type) {
+		case "fuel-below":
+			return { current: (ship.fuelKg / ship.fuelCapacityKg) * 100, critical: CRITICAL_FUEL_PCT };
+		case "hull-below":
+			return { current: ship.maintenance.hullIntegrity, critical: CRITICAL_HULL };
+		case "supplies-below":
+			return {
+				current: (ship.maintenance.supplies / ship.maintenance.maxSupplies) * 100,
+				critical: CRITICAL_SUPPLIES,
+			};
+		case "morale-below":
+			// Morale is never critical enough to abort a survey -- crew can tough it out
+			return { current: ship.crew.morale, critical: 5 };
+	}
+}
+
+function isMaintenanceAction(action: CommandResult["action"]): boolean {
+	return action === "refuel" || action === "overhaul" || action === "shore-leave";
+}
+
 // "Finish the job before heading home" — defer maintenance when already at an unsurveyed
 // body, if the commander judges it safe enough to complete the survey first.
-export function checkDeferMaintenance(
+function checkDeferMaintenance(
 	ship: ShipEntry,
 	pendingResult: CommandResult,
 ): CommandResult | null {
 	// Only intercept maintenance actions
-	if (
-		pendingResult.action !== "refuel" &&
-		pendingResult.action !== "overhaul" &&
-		pendingResult.action !== "shore-leave"
-	) {
-		return null;
-	}
+	if (!isMaintenanceAction(pendingResult.action)) return null;
 	// Only applies while orbiting (not mid-transfer)
 	if (ship.shipState !== "orbiting") return null;
 	// Only applies at non-colony locations (at a colony, just do the maintenance)
@@ -128,12 +146,6 @@ export function checkDeferMaintenance(
 	// Low-judgment commanders don't defer -- they follow orders literally
 	if (j < 0.2) return null;
 
-	// For each maintenance condition that fired, check if we're above the critical floor
-	// scaled by judgment. Higher judgment = willing to defer closer to critical.
-	const fuelPct = (ship.fuelKg / ship.fuelCapacityKg) * 100;
-	const hullPct = ship.maintenance.hullIntegrity;
-	const supplyPct = (ship.maintenance.supplies / ship.maintenance.maxSupplies) * 100;
-
 	for (const entry of ship.commandTree.entries) {
 		if (!entry.enabled) continue;
 		const cond = entry.condition;
@@ -142,32 +154,10 @@ export function checkDeferMaintenance(
 		if (!checkCondition(cond, ship)) continue;
 
 		// This condition fired -- would the commander defer it?
-		const threshold = cond.threshold;
-		let current: number;
-		let critical: number;
-
-		switch (cond.type) {
-			case "fuel-below":
-				current = fuelPct;
-				critical = CRITICAL_FUEL_PCT;
-				break;
-			case "hull-below":
-				current = hullPct;
-				critical = CRITICAL_HULL;
-				break;
-			case "supplies-below":
-				current = supplyPct;
-				critical = CRITICAL_SUPPLIES;
-				break;
-			case "morale-below":
-				// Morale is never critical enough to abort a survey -- crew can tough it out
-				current = ship.crew.morale;
-				critical = 5;
-				break;
-		}
+		const { current, critical } = getConditionMetrics(ship, cond.type);
 
 		// Commander's personal floor: interpolate from threshold down toward critical
-		const personalFloor = critical + (threshold - critical) * (1 - j);
+		const personalFloor = critical + (cond.threshold - critical) * (1 - j);
 		if (current < personalFloor) {
 			// Too risky even for this commander -- don't defer
 			return null;

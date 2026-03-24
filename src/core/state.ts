@@ -4,6 +4,7 @@ import type {
 	CategoryVisibility,
 	SavedShipData,
 	SavedStateData,
+	ShipEntry,
 } from "../types";
 import { isShipEntry } from "../types";
 import { GameClock } from "./game-clock";
@@ -205,35 +206,46 @@ export function loadSavedState(): SavedStateData | null {
 	}
 }
 
+function restoreShipFields(ship: ShipEntry, saved: SavedShipData): void {
+	ship.fuelKg = saved.fuelKg;
+	ship.engineId = saved.engineId;
+	if (saved.crew) ship.crew = saved.crew;
+	if (saved.maintenance) ship.maintenance = saved.maintenance;
+	if (saved.commandTree) ship.commandTree = saved.commandTree;
+	if (saved.commander) ship.commander = saved.commander;
+}
+
+function applySplineFields(ship: ShipEntry, saved: SavedShipData): void {
+	ship.p0x = saved.p0x ?? 0;
+	ship.p0y = saved.p0y ?? 0;
+	ship.p0z = saved.p0z ?? 0;
+	ship.t0x = saved.t0x ?? 0;
+	ship.t0y = saved.t0y ?? 0;
+	ship.t0z = saved.t0z ?? 0;
+	ship.p1x = saved.p1x ?? 0;
+	ship.p1y = saved.p1y ?? 0;
+	ship.p1z = saved.p1z ?? 0;
+	ship.t1x = saved.t1x ?? 0;
+	ship.t1y = saved.t1y ?? 0;
+	ship.t1z = saved.t1z ?? 0;
+}
+
+function restoreTransferState(ship: ShipEntry, saved: SavedShipData): void {
+	if (saved.shipState !== "transferring" || !saved.transferTarget) return;
+	ship.shipState = "transferring";
+	ship.transferTarget = saved.transferTarget;
+	ship.transferStartTime = saved.transferStartTime ?? 0;
+	ship.transferTimeDays = saved.transferTimeDays ?? 0;
+	ship.transferFuelTotal = saved.transferFuelTotal ?? 0;
+	applySplineFields(ship, saved);
+}
+
 export function restoreShipState(savedData: SavedStateData | null): void {
 	if (!savedData || !savedData.ships || savedData.ships.length === 0) return;
 	for (const savedShip of savedData.ships) {
 		const shipEntry = state.bodyMeshes.find((e) => isShipEntry(e) && e.data.name === savedShip.name);
 		if (!shipEntry || !isShipEntry(shipEntry)) continue;
-		shipEntry.fuelKg = savedShip.fuelKg;
-		shipEntry.engineId = savedShip.engineId;
-		if (savedShip.crew) shipEntry.crew = savedShip.crew;
-		if (savedShip.maintenance) shipEntry.maintenance = savedShip.maintenance;
-		if (savedShip.commandTree) shipEntry.commandTree = savedShip.commandTree;
-		if (savedShip.commander) shipEntry.commander = savedShip.commander;
-		if (savedShip.shipState === "transferring" && savedShip.transferTarget) {
-			shipEntry.shipState = "transferring";
-			shipEntry.transferTarget = savedShip.transferTarget;
-			shipEntry.transferStartTime = savedShip.transferStartTime ?? 0;
-			shipEntry.transferTimeDays = savedShip.transferTimeDays ?? 0;
-			shipEntry.transferFuelTotal = savedShip.transferFuelTotal ?? 0;
-			shipEntry.p0x = savedShip.p0x ?? 0;
-			shipEntry.p0y = savedShip.p0y ?? 0;
-			shipEntry.p0z = savedShip.p0z ?? 0;
-			shipEntry.t0x = savedShip.t0x ?? 0;
-			shipEntry.t0y = savedShip.t0y ?? 0;
-			shipEntry.t0z = savedShip.t0z ?? 0;
-			shipEntry.p1x = savedShip.p1x ?? 0;
-			shipEntry.p1y = savedShip.p1y ?? 0;
-			shipEntry.p1z = savedShip.p1z ?? 0;
-			shipEntry.t1x = savedShip.t1x ?? 0;
-			shipEntry.t1y = savedShip.t1y ?? 0;
-			shipEntry.t1z = savedShip.t1z ?? 0;
-		}
+		restoreShipFields(shipEntry, savedShip);
+		restoreTransferState(shipEntry, savedShip);
 	}
 }

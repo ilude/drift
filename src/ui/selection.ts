@@ -6,7 +6,14 @@ import { ENGINE_TYPES } from "../math/ship-physics";
 import { easeOutCubic } from "../math/visual";
 import { COMET_ORBIT_OPACITY, COMET_ORBIT_SELECTED_OPACITY } from "../rendering/rendering";
 import { camera, controls, renderer, ZOOM_BASE } from "../rendering/scene";
-import type { AsteroidBeltData, AsteroidInfo, BodyEntry, FlyToState } from "../types";
+import type {
+	AsteroidBeltData,
+	AsteroidInfo,
+	BodyEntry,
+	FlyToState,
+	ResourceDeposit,
+	ShipEntry,
+} from "../types";
 import { isCometEntry, isShipEntry, isSurveyable } from "../types";
 import { renderCommandTree } from "./commands";
 
@@ -36,6 +43,53 @@ export function formatShipAction(entry: import("../types").ShipEntry): string {
 
 function formatDays(d: number): string {
 	return d < 1 ? `${d.toFixed(1)}d` : `${Math.floor(d)}d`;
+}
+
+/**
+ * Format accessibility as a 5-character ASCII bar.
+ * Converts a 0-1 accessibility value to a bar like [====.] or [.....]
+ */
+export function formatAccessibilityBar(accessibility: number): string {
+	const filled = Math.round(accessibility * 5);
+	return `[${"=".repeat(filled)}${".".repeat(5 - filled)}]`;
+}
+
+/**
+ * Classify the mining value of a deposit list based on accessible quantity.
+ * Returns score, label, and color for UI display.
+ */
+interface MiningValueScore {
+	score: number;
+	label: string;
+	color: string;
+}
+
+export function classifyMiningValue(
+	deposits: ResourceDeposit[],
+	surveyLevel: number,
+): MiningValueScore {
+	const score = deposits
+		.filter((d) => d.minSurveyLevel <= surveyLevel)
+		.reduce((sum, d) => sum + d.quantity * d.accessibility, 0);
+
+	let label: string;
+	let color: string;
+
+	if (score > 100000) {
+		label = "High";
+		color = "#4a6a4a";
+	} else if (score > 10000) {
+		label = "Medium";
+		color = "#aaaa44";
+	} else if (score > 0) {
+		label = "Low";
+		color = "#888888";
+	} else {
+		label = "None";
+		color = "#666666";
+	}
+
+	return { score, label, color };
 }
 
 export function formatShipDuration(entry: import("../types").ShipEntry): string {
@@ -119,13 +173,187 @@ export function recenterOnStar(): void {
 	animateCameraTo(star, ZOOM_DIST_RECENTER, INITIAL_CAM_DIR);
 }
 
-export function selectBody(entry: BodyEntry): void {
-	if (state.selectedBody) {
-		(state.selectedBody.selRing.material as THREE.MeshBasicMaterial).opacity = 0;
-		if (isCometEntry(state.selectedBody) && state.selectedBody.orbitLine) {
-			(state.selectedBody.orbitLine.material as THREE.LineBasicMaterial).opacity = COMET_ORBIT_OPACITY;
-		}
+const SHIP_ROW_IDS = [
+	"info-ship-engine",
+	"info-ship-fuel",
+	"info-crew-row",
+	"info-morale-row",
+	"info-leave-row",
+	"info-hull-row",
+	"info-supplies-row",
+	"info-action-row",
+	"info-duration-row",
+];
+
+/** Set text and traffic-light color (green/yellow/red) on a DOM element by percentage value. */
+function setColoredPct(id: string, pct: number): void {
+	const el = document.getElementById(id);
+	if (!el) return;
+	el.textContent = `${pct}%`;
+	el.style.color = pct > 70 ? "#4a6a4a" : pct > 40 ? "#aaaa44" : "#aa4444";
+}
+
+function setFuelText(entry: ShipEntry): void {
+	const pct = entry.fuelCapacityKg > 0 ? Math.round((entry.fuelKg / entry.fuelCapacityKg) * 100) : 0;
+	const el = document.getElementById("ship-fuel-value");
+	if (el)
+		el.textContent = `${(entry.fuelKg / 1000).toFixed(2)}t / ${(entry.fuelCapacityKg / 1000).toFixed(2)}t (${pct}%)`;
+}
+
+function deselectCurrentBody(): void {
+	if (!state.selectedBody) return;
+	(state.selectedBody.selRing.material as THREE.MeshBasicMaterial).opacity = 0;
+	if (isCometEntry(state.selectedBody) && state.selectedBody.orbitLine) {
+		(state.selectedBody.orbitLine.material as THREE.LineBasicMaterial).opacity = COMET_ORBIT_OPACITY;
 	}
+}
+
+function updateBodyInfoTitle(entry: BodyEntry): void {
+	document.getElementById("info-panel")?.classList.remove("hidden");
+
+	const titleEl = document.getElementById("info-title");
+	if (titleEl) titleEl.textContent = entry.data.name;
+
+	const typeEl = document.getElementById("info-type");
+	if (typeEl) {
+		typeEl.textContent =
+			!isShipEntry(entry) && entry.data.distance > 0
+				? `${entry.data.type} — ${entry.data.distance.toFixed(2)} AU`
+				: entry.data.type;
+	}
+
+	document.querySelectorAll(".body-list-item").forEach((el) => {
+		el.classList.toggle(
+			"selected",
+			el.querySelector(".body-list-name")?.textContent === entry.data.name,
+		);
+	});
+}
+
+function showShipPanel(entry: ShipEntry): void {
+	for (const id of SHIP_ROW_IDS) {
+		document.getElementById(id)?.classList.remove("hidden");
+	}
+	document.getElementById("info-resources-section")?.classList.add("hidden");
+
+	const cmdContainer = document.getElementById("command-tree-container");
+	if (cmdContainer) {
+		cmdContainer.classList.remove("hidden");
+		renderCommandTree(entry, cmdContainer);
+	}
+
+	const engine = ENGINE_TYPES.find((e) => e.id === entry.engineId);
+	const engineValueEl = document.getElementById("ship-engine-value");
+	if (engineValueEl) engineValueEl.textContent = engine ? engine.name : entry.engineId;
+
+	setFuelText(entry);
+
+	const crewValueEl = document.getElementById("info-crew-value");
+	if (crewValueEl) crewValueEl.textContent = `${entry.crew.count} crew`;
+
+	setColoredPct("info-morale-value", Math.round(entry.crew.morale));
+
+	const leaveValueEl = document.getElementById("info-leave-value");
+	if (leaveValueEl)
+		leaveValueEl.textContent = `${Math.round(state.simTime.days - entry.crew.lastShoreLeave)}d`;
+
+	setColoredPct("info-hull-value", Math.round(entry.maintenance.hullIntegrity));
+
+	const suppliesValueEl = document.getElementById("info-supplies-value");
+	if (suppliesValueEl) {
+		suppliesValueEl.textContent = `${Math.round(entry.maintenance.supplies)} / ${entry.maintenance.maxSupplies} MSP`;
+	}
+
+	const actionValueEl = document.getElementById("info-action-value");
+	if (actionValueEl) actionValueEl.textContent = formatShipAction(entry);
+
+	const durationValueEl = document.getElementById("info-duration-value");
+	if (durationValueEl) durationValueEl.textContent = formatShipDuration(entry);
+}
+
+function hideShipPanel(): void {
+	for (const id of SHIP_ROW_IDS) {
+		document.getElementById(id)?.classList.add("hidden");
+	}
+	document.getElementById("command-tree-container")?.classList.add("hidden");
+}
+
+function buildDepositRow(deposit: ResourceDeposit): HTMLElement | null {
+	const def = getResourceDef(deposit.resourceId);
+	if (!def) return null;
+
+	const categoryColors: Record<string, string> = {
+		metal: "#aaccaa",
+		volatile: "#88aacc",
+		industrial: "#ccaa88",
+		radioactive: "#cc8888",
+		umbral: "#aa88cc",
+	};
+
+	const row = document.createElement("div");
+	row.style.cssText = "display:flex;gap:6px;align-items:baseline;font-size:11px;padding:1px 0;";
+
+	const symbolEl = document.createElement("span");
+	symbolEl.textContent = def.symbol;
+	symbolEl.style.cssText = `color:${categoryColors[def.category] ?? "#aaaaaa"};font-weight:bold;min-width:28px;`;
+
+	const nameEl = document.createElement("span");
+	nameEl.textContent = def.name;
+	nameEl.style.cssText =
+		"flex:1;color:#cccccc;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+
+	const qtyEl = document.createElement("span");
+	qtyEl.textContent = `${deposit.quantity.toLocaleString()}t`;
+	qtyEl.style.cssText = "color:#aaaaaa;white-space:nowrap;";
+
+	const barEl = document.createElement("span");
+	barEl.textContent = formatAccessibilityBar(deposit.accessibility);
+	barEl.style.cssText = "color:#888888;font-family:monospace;white-space:nowrap;";
+
+	row.appendChild(symbolEl);
+	row.appendChild(nameEl);
+	row.appendChild(qtyEl);
+	row.appendChild(barEl);
+	return row;
+}
+
+function updateResourcePanel(entry: BodyEntry): void {
+	const resourcesSection = document.getElementById("info-resources-section");
+	if (!isSurveyable(entry) || entry.survey.surveyLevel === 0) {
+		resourcesSection?.classList.add("hidden");
+		return;
+	}
+
+	resourcesSection?.classList.remove("hidden");
+
+	const surveyStatusEl = document.getElementById("info-survey-status");
+	if (surveyStatusEl) surveyStatusEl.textContent = `Surveyed (Lv.${entry.survey.surveyLevel})`;
+
+	const resourcesList = document.getElementById("info-resources-list");
+	if (!resourcesList) return;
+
+	resourcesList.innerHTML = "";
+
+	const visibleDeposits = entry.survey.deposits
+		.filter((d) => d.minSurveyLevel <= entry.survey.surveyLevel)
+		.slice()
+		.sort((a, b) => b.quantity - a.quantity);
+
+	for (const deposit of visibleDeposits) {
+		const row = buildDepositRow(deposit);
+		if (row) resourcesList.appendChild(row);
+	}
+
+	const miningValue = classifyMiningValue(entry.survey.deposits, entry.survey.surveyLevel);
+	const scoreRow = document.createElement("div");
+	scoreRow.style.cssText =
+		"padding:4px 0 2px;font-size:11px;border-top:1px solid #333;margin-top:2px;";
+	scoreRow.innerHTML = `Mining Value: <span style="color:${miningValue.color}">${miningValue.label}</span>`;
+	resourcesList.appendChild(scoreRow);
+}
+
+export function selectBody(entry: BodyEntry): void {
+	deselectCurrentBody();
 
 	state.selectedBody = entry;
 	if (isCometEntry(entry) && entry.orbitLine) {
@@ -133,215 +361,13 @@ export function selectBody(entry: BodyEntry): void {
 	}
 	animateCameraTo(entry, getZoomDistance(entry.data.type, entry.isMoon));
 
-	const panel: HTMLElement | null = document.getElementById("info-panel");
-	if (panel) {
-		panel.classList.remove("hidden");
-	}
-	const titleEl = document.getElementById("info-title");
-	if (titleEl) {
-		titleEl.textContent = entry.data.name;
-	}
-	const typeEl = document.getElementById("info-type");
-	if (typeEl) {
-		if (!isShipEntry(entry) && entry.data.distance > 0) {
-			typeEl.textContent = `${entry.data.type} — ${entry.data.distance.toFixed(2)} AU`;
-		} else {
-			typeEl.textContent = entry.data.type;
-		}
-	}
-
-	document.querySelectorAll(".body-list-item").forEach((el) => {
-		el.classList.remove("selected");
-	});
-	const items: NodeListOf<Element> = document.querySelectorAll(".body-list-item");
-	items.forEach((el) => {
-		if (el.querySelector(".body-list-name")?.textContent === entry.data.name) {
-			el.classList.add("selected");
-		}
-	});
-
-	// Ship-specific UI
-	const engineRow: HTMLElement | null = document.getElementById("info-ship-engine");
-	const fuelRow: HTMLElement | null = document.getElementById("info-ship-fuel");
-	const crewRow: HTMLElement | null = document.getElementById("info-crew-row");
-	const moraleRow: HTMLElement | null = document.getElementById("info-morale-row");
-	const leaveRow: HTMLElement | null = document.getElementById("info-leave-row");
-	const hullRow: HTMLElement | null = document.getElementById("info-hull-row");
-	const suppliesRow: HTMLElement | null = document.getElementById("info-supplies-row");
-	const actionRow: HTMLElement | null = document.getElementById("info-action-row");
-	const durationRow: HTMLElement | null = document.getElementById("info-duration-row");
-	const resourcesSection: HTMLElement | null = document.getElementById("info-resources-section");
-	const cmdContainer: HTMLElement | null = document.getElementById("command-tree-container");
+	updateBodyInfoTitle(entry);
 
 	if (isShipEntry(entry)) {
-		engineRow?.classList.remove("hidden");
-		fuelRow?.classList.remove("hidden");
-		crewRow?.classList.remove("hidden");
-		moraleRow?.classList.remove("hidden");
-		leaveRow?.classList.remove("hidden");
-		hullRow?.classList.remove("hidden");
-		suppliesRow?.classList.remove("hidden");
-		actionRow?.classList.remove("hidden");
-		durationRow?.classList.remove("hidden");
-		resourcesSection?.classList.add("hidden");
-
-		// Render command tree editor
-		if (cmdContainer) {
-			cmdContainer.classList.remove("hidden");
-			renderCommandTree(entry, cmdContainer);
-		}
-
-		// Engine info
-		const engine = ENGINE_TYPES.find((e) => e.id === entry.engineId);
-		const engineValueEl = document.getElementById("ship-engine-value");
-		if (engineValueEl) {
-			engineValueEl.textContent = engine ? engine.name : entry.engineId;
-		}
-
-		// Fuel info
-		const fuelPct: number =
-			entry.fuelCapacityKg > 0 ? Math.round((entry.fuelKg / entry.fuelCapacityKg) * 100) : 0;
-		const fuelValueEl = document.getElementById("ship-fuel-value");
-		if (fuelValueEl) {
-			fuelValueEl.textContent = `${(entry.fuelKg / 1000).toFixed(2)}t / ${(entry.fuelCapacityKg / 1000).toFixed(2)}t (${fuelPct}%)`;
-		}
-
-		// Crew
-		const crewValueEl = document.getElementById("info-crew-value");
-		if (crewValueEl) {
-			crewValueEl.textContent = `${entry.crew.count} crew`;
-		}
-
-		// Morale
-		const moraleValueEl = document.getElementById("info-morale-value");
-		if (moraleValueEl) {
-			const moralePct = Math.round(entry.crew.morale);
-			moraleValueEl.textContent = `${moralePct}%`;
-			moraleValueEl.style.color = moralePct > 70 ? "#4a6a4a" : moralePct > 40 ? "#aaaa44" : "#aa4444";
-		}
-
-		// Days since leave
-		const leaveValueEl = document.getElementById("info-leave-value");
-		if (leaveValueEl) {
-			const daysSinceLeave = Math.round(state.simTime.days - entry.crew.lastShoreLeave);
-			leaveValueEl.textContent = `${daysSinceLeave}d`;
-		}
-
-		// Hull integrity
-		const hullValueEl = document.getElementById("info-hull-value");
-		if (hullValueEl) {
-			const hullPct = Math.round(entry.maintenance.hullIntegrity);
-			hullValueEl.textContent = `${hullPct}%`;
-			hullValueEl.style.color = hullPct > 70 ? "#4a6a4a" : hullPct > 40 ? "#aaaa44" : "#aa4444";
-		}
-
-		// Supplies
-		const suppliesValueEl = document.getElementById("info-supplies-value");
-		if (suppliesValueEl) {
-			suppliesValueEl.textContent = `${Math.round(entry.maintenance.supplies)} / ${entry.maintenance.maxSupplies} MSP`;
-		}
-
-		// Action
-		const actionValueEl = document.getElementById("info-action-value");
-		if (actionValueEl) {
-			actionValueEl.textContent = formatShipAction(entry);
-		}
-
-		// Duration
-		const durationValueEl = document.getElementById("info-duration-value");
-		if (durationValueEl) {
-			durationValueEl.textContent = formatShipDuration(entry);
-		}
+		showShipPanel(entry);
 	} else {
-		engineRow?.classList.add("hidden");
-		fuelRow?.classList.add("hidden");
-		crewRow?.classList.add("hidden");
-		moraleRow?.classList.add("hidden");
-		leaveRow?.classList.add("hidden");
-		hullRow?.classList.add("hidden");
-		suppliesRow?.classList.add("hidden");
-		actionRow?.classList.add("hidden");
-		durationRow?.classList.add("hidden");
-		cmdContainer?.classList.add("hidden");
-
-		// Resource viewer for surveyed bodies
-		if (isSurveyable(entry) && entry.survey.surveyLevel > 0) {
-			resourcesSection?.classList.remove("hidden");
-
-			const surveyStatusEl = document.getElementById("info-survey-status");
-			if (surveyStatusEl) {
-				surveyStatusEl.textContent = `Surveyed (Lv.${entry.survey.surveyLevel})`;
-			}
-
-			const resourcesList = document.getElementById("info-resources-list");
-			if (resourcesList) {
-				resourcesList.innerHTML = "";
-
-				const categoryColors: Record<string, string> = {
-					metal: "#aaccaa",
-					volatile: "#88aacc",
-					industrial: "#ccaa88",
-					radioactive: "#cc8888",
-					umbral: "#aa88cc",
-				};
-
-				const visibleDeposits = entry.survey.deposits
-					.filter((d) => d.minSurveyLevel <= entry.survey.surveyLevel)
-					.slice()
-					.sort((a, b) => b.quantity - a.quantity);
-
-				for (const deposit of visibleDeposits) {
-					const def = getResourceDef(deposit.resourceId);
-					if (!def) continue;
-
-					const row = document.createElement("div");
-					row.style.cssText = "display:flex;gap:6px;align-items:baseline;font-size:11px;padding:1px 0;";
-
-					const symbolEl = document.createElement("span");
-					symbolEl.textContent = def.symbol;
-					symbolEl.style.cssText = `color:${categoryColors[def.category] ?? "#aaaaaa"};font-weight:bold;min-width:28px;`;
-
-					const nameEl = document.createElement("span");
-					nameEl.textContent = def.name;
-					nameEl.style.cssText =
-						"flex:1;color:#cccccc;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
-
-					const qtyEl = document.createElement("span");
-					qtyEl.textContent = `${deposit.quantity.toLocaleString()}t`;
-					qtyEl.style.cssText = "color:#aaaaaa;white-space:nowrap;";
-
-					// ASCII accessibility bar: 5 chars, e.g. [====.]
-					const filled = Math.round(deposit.accessibility * 5);
-					const bar = `[${"=".repeat(filled)}${".".repeat(5 - filled)}]`;
-					const barEl = document.createElement("span");
-					barEl.textContent = bar;
-					barEl.style.cssText = "color:#888888;font-family:monospace;white-space:nowrap;";
-
-					row.appendChild(symbolEl);
-					row.appendChild(nameEl);
-					row.appendChild(qtyEl);
-					row.appendChild(barEl);
-					resourcesList.appendChild(row);
-				}
-
-				// Mining value score
-				const score = entry.survey.deposits
-					.filter((d) => d.minSurveyLevel <= entry.survey.surveyLevel)
-					.reduce((sum, d) => sum + d.quantity * d.accessibility, 0);
-				const scoreLabel =
-					score > 100000 ? "High" : score > 10000 ? "Medium" : score > 0 ? "Low" : "None";
-				const scoreColor =
-					score > 100000 ? "#4a6a4a" : score > 10000 ? "#aaaa44" : score > 0 ? "#888888" : "#666666";
-
-				const scoreRow = document.createElement("div");
-				scoreRow.style.cssText =
-					"padding:4px 0 2px;font-size:11px;border-top:1px solid #333;margin-top:2px;";
-				scoreRow.innerHTML = `Mining Value: <span style="color:${scoreColor}">${scoreLabel}</span>`;
-				resourcesList.appendChild(scoreRow);
-			}
-		} else {
-			resourcesSection?.classList.add("hidden");
-		}
+		hideShipPanel();
+		updateResourcePanel(entry);
 	}
 }
 
@@ -398,54 +424,26 @@ export function updateFollow(dt = 0.033): void {
 }
 
 function updateShipStatus(entry: ShipEntry): void {
-	// Morale (live)
-	const moraleEl = document.getElementById("info-morale-value");
-	if (moraleEl) {
-		const m = Math.round(entry.crew.morale);
-		moraleEl.textContent = `${m}%`;
-		moraleEl.style.color = m > 70 ? "#4a6a4a" : m > 40 ? "#aaaa44" : "#aa4444";
-	}
+	setColoredPct("info-morale-value", Math.round(entry.crew.morale));
 
-	// Days since leave (live)
 	const leaveEl = document.getElementById("info-leave-value");
-	if (leaveEl) {
-		const daysSinceLeave = Math.round(state.simTime.days - entry.crew.lastShoreLeave);
-		leaveEl.textContent = `${daysSinceLeave}d`;
-	}
+	if (leaveEl)
+		leaveEl.textContent = `${Math.round(state.simTime.days - entry.crew.lastShoreLeave)}d`;
 
-	// Hull (live)
-	const hullEl = document.getElementById("info-hull-value");
-	if (hullEl) {
-		const h = Math.round(entry.maintenance.hullIntegrity);
-		hullEl.textContent = `${h}%`;
-		hullEl.style.color = h > 70 ? "#4a6a4a" : h > 40 ? "#aaaa44" : "#aa4444";
-	}
+	setColoredPct("info-hull-value", Math.round(entry.maintenance.hullIntegrity));
 
-	// Supplies (live)
 	const suppliesEl = document.getElementById("info-supplies-value");
 	if (suppliesEl) {
 		suppliesEl.textContent = `${Math.round(entry.maintenance.supplies)} / ${entry.maintenance.maxSupplies} MSP`;
 	}
 
-	// Fuel (live)
-	const fuelEl = document.getElementById("ship-fuel-value");
-	if (fuelEl) {
-		const pct =
-			entry.fuelCapacityKg > 0 ? Math.round((entry.fuelKg / entry.fuelCapacityKg) * 100) : 0;
-		fuelEl.textContent = `${(entry.fuelKg / 1000).toFixed(2)}t / ${(entry.fuelCapacityKg / 1000).toFixed(2)}t (${pct}%)`;
-	}
+	setFuelText(entry);
 
-	// Action (live)
 	const actionEl = document.getElementById("info-action-value");
-	if (actionEl) {
-		actionEl.textContent = formatShipAction(entry);
-	}
+	if (actionEl) actionEl.textContent = formatShipAction(entry);
 
-	// Duration (live)
 	const durationEl = document.getElementById("info-duration-value");
-	if (durationEl) {
-		durationEl.textContent = formatShipDuration(entry);
-	}
+	if (durationEl) durationEl.textContent = formatShipDuration(entry);
 
 	// Hide transfer status row during normal operation (only used for error flashes)
 	const transferStatusRow = document.getElementById("info-transfer-status");

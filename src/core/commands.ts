@@ -80,134 +80,171 @@ export const SUPPLY_RESTOCK_PER_DAY = 2.5; // +2.5 supplies/day during overhaul
 const SHORE_LEAVE_REPAIR_PER_DAY = 0.25; // +0.25% hull/day from repair crew during shore leave
 const OVERHAUL_MORALE_PER_DAY = 0.5; // +0.5 morale/day during overhaul ("working from home", ~140 days from 30% to full)
 
-export function tickShipSimulation(ship: ShipEntry, simDt: number, simTime: number): void {
-	const atColony = isAtColony(ship);
+type SimRates = {
+	moraleRate: number;
+	overhaulMoraleRate: number;
+	repairRate: number;
+	repairCrewRate: number;
+	refuelRate: number;
+	supplyRate: number;
+};
 
-	// Recovery actions only apply while orbiting (not during transfer to destination)
-	const isOrbiting = ship.shipState === "orbiting";
-
-	// Effective rates: baseRate * depotQuality / hardnessMultiplier
-	// depotQuality represents location facilities (1.0 = standard, eventually per-location)
-	// hardness multipliers are player-set difficulty (1.0 = default, higher = slower)
+function computeSimRates(): SimRates {
 	const dq = state.depotQuality;
-	const moraleRate = (MORALE_RECOVERY_PER_DAY * dq) / state.moraleMultiplier;
-	const overhaulMoraleRate = (OVERHAUL_MORALE_PER_DAY * dq) / state.moraleMultiplier;
-	const repairRate = (HULL_REPAIR_PER_DAY * dq) / state.repairMultiplier;
-	const repairCrewRate = (SHORE_LEAVE_REPAIR_PER_DAY * dq) / state.repairMultiplier;
-	const refuelRate = (REFUEL_RATE_PER_DAY * dq) / state.refuelMultiplier;
-	const supplyRate = (SUPPLY_RESTOCK_PER_DAY * dq) / state.supplyMultiplier;
+	return {
+		moraleRate: (MORALE_RECOVERY_PER_DAY * dq) / state.moraleMultiplier,
+		overhaulMoraleRate: (OVERHAUL_MORALE_PER_DAY * dq) / state.moraleMultiplier,
+		repairRate: (HULL_REPAIR_PER_DAY * dq) / state.repairMultiplier,
+		repairCrewRate: (SHORE_LEAVE_REPAIR_PER_DAY * dq) / state.repairMultiplier,
+		refuelRate: (REFUEL_RATE_PER_DAY * dq) / state.refuelMultiplier,
+		supplyRate: (SUPPLY_RESTOCK_PER_DAY * dq) / state.supplyMultiplier,
+	};
+}
 
-	// Morale: gradual recovery during shore leave or overhaul, decay when deployed
+function tickMoraleDecay(
+	ship: ShipEntry,
+	simDt: number,
+	simTime: number,
+	atColony: boolean,
+	isOrbiting: boolean,
+	rates: SimRates,
+): void {
 	if (isOrbiting && ship.action.type === "shore-leave") {
-		ship.crew.morale = Math.min(100, ship.crew.morale + moraleRate * simDt);
+		ship.crew.morale = Math.min(100, ship.crew.morale + rates.moraleRate * simDt);
 		ship.crew.lastShoreLeave = simTime;
 		// Repair crew works on hull during shore leave
 		ship.maintenance.hullIntegrity = Math.min(
 			100,
-			ship.maintenance.hullIntegrity + repairCrewRate * simDt,
+			ship.maintenance.hullIntegrity + rates.repairCrewRate * simDt,
 		);
 	} else if (isOrbiting && ship.action.type === "overhaul") {
 		// Crew recovers morale slowly during overhaul ("working from home")
-		ship.crew.morale = Math.min(100, ship.crew.morale + overhaulMoraleRate * simDt);
+		ship.crew.morale = Math.min(100, ship.crew.morale + rates.overhaulMoraleRate * simDt);
 		ship.crew.lastShoreLeave = simTime;
 	} else if (!atColony) {
 		const daysSinceLeave = simTime - ship.crew.lastShoreLeave;
 		ship.crew.morale = computeMorale(daysSinceLeave, ship.crew.deploymentLimit);
 	}
+}
 
-	// Gradual refueling during refuel action (only while orbiting)
+function tickActionRecovery(
+	ship: ShipEntry,
+	simDt: number,
+	isOrbiting: boolean,
+	rates: SimRates,
+): void {
 	if (isOrbiting && ship.action.type === "refuel") {
-		const fuelPerFrame = refuelRate * ship.fuelCapacityKg * simDt;
+		const fuelPerFrame = rates.refuelRate * ship.fuelCapacityKg * simDt;
 		ship.fuelKg = Math.min(ship.fuelCapacityKg, ship.fuelKg + fuelPerFrame);
 	}
 
-	// Gradual hull repair + supply restock during overhaul (only while orbiting)
 	if (isOrbiting && ship.action.type === "overhaul") {
 		ship.maintenance.hullIntegrity = Math.min(
 			100,
-			ship.maintenance.hullIntegrity + repairRate * simDt,
+			ship.maintenance.hullIntegrity + rates.repairRate * simDt,
 		);
 		ship.maintenance.supplies = Math.min(
 			ship.maintenance.maxSupplies,
-			ship.maintenance.supplies + supplyRate * simDt,
+			ship.maintenance.supplies + rates.supplyRate * simDt,
 		);
 	}
+}
 
-	// Colony supply shuttles: fuel + supplies only (not morale -- that's shore leave)
-	if (atColony) {
-		const dayNow = Math.floor(simTime);
-		const dayPrev = Math.floor(simTime - simDt);
-		// Cap at 30 iterations to prevent runaway loops at extreme time warp
-		const daysCrossed = Math.min(dayNow - dayPrev, 30);
-		if (daysCrossed >= dayNow - dayPrev && daysCrossed > 0) {
-			// Normal case: deliver for each day boundary crossed
-			for (let day = dayPrev + 1; day <= dayNow; day++) {
-				const fuelPerShuttle = ship.fuelCapacityKg * 0.25;
-				ship.fuelKg = Math.min(ship.fuelCapacityKg, ship.fuelKg + fuelPerShuttle);
-				const supplyPerShuttle = Math.ceil(ship.maintenance.maxSupplies * 0.25);
-				ship.maintenance.supplies = Math.min(
-					ship.maintenance.maxSupplies,
-					ship.maintenance.supplies + supplyPerShuttle,
-				);
-			}
-		} else if (daysCrossed > 0) {
-			// Capped case: fill to capacity directly
-			ship.fuelKg = ship.fuelCapacityKg;
-			ship.maintenance.supplies = ship.maintenance.maxSupplies;
+function tickColonyServices(
+	ship: ShipEntry,
+	simTime: number,
+	simDt: number,
+	atColony: boolean,
+): void {
+	if (!atColony) return;
+
+	const dayNow = Math.floor(simTime);
+	const dayPrev = Math.floor(simTime - simDt);
+	// Cap at 30 iterations to prevent runaway loops at extreme time warp
+	const daysCrossed = Math.min(dayNow - dayPrev, 30);
+	if (daysCrossed <= 0) return;
+
+	if (daysCrossed >= dayNow - dayPrev) {
+		// Normal case: deliver for each day boundary crossed
+		for (let day = dayPrev + 1; day <= dayNow; day++) {
+			const fuelPerShuttle = ship.fuelCapacityKg * 0.25;
+			ship.fuelKg = Math.min(ship.fuelCapacityKg, ship.fuelKg + fuelPerShuttle);
+			const supplyPerShuttle = Math.ceil(ship.maintenance.maxSupplies * 0.25);
+			ship.maintenance.supplies = Math.min(
+				ship.maintenance.maxSupplies,
+				ship.maintenance.supplies + supplyPerShuttle,
+			);
 		}
+	} else {
+		// Capped case: fill to capacity directly
+		ship.fuelKg = ship.fuelCapacityKg;
+		ship.maintenance.supplies = ship.maintenance.maxSupplies;
 	}
+}
 
-	// Maintenance age: only accumulates away from colony
+function tickMaintenanceAge(ship: ShipEntry, simDt: number, atColony: boolean): void {
 	if (!atColony) {
 		ship.maintenance.age += simDt;
 	}
+}
 
-	// Fuel consumption (skip during refuel action -- ship is being topped off)
-	if (!atColony && ship.action.type !== "refuel") {
-		if (ship.shipState === "transferring" && ship.transferTimeDays > 0) {
-			// Engine burn: consume transferFuelTotal proportionally over transfer duration
-			const fuelPerDay = ship.transferFuelTotal / ship.transferTimeDays;
-			ship.fuelKg = Math.max(0, ship.fuelKg - fuelPerDay * simDt);
-		} else {
-			// Station-keeping: 0.1%/day active, 0.05%/day idle (life support + thrusters)
-			const rate = ship.action.type !== null ? 0.001 : 0.0005;
-			ship.fuelKg = Math.max(0, ship.fuelKg - rate * ship.fuelCapacityKg * simDt);
-		}
+function tickFuelConsumption(ship: ShipEntry, simDt: number, atColony: boolean): void {
+	if (atColony || ship.action.type === "refuel") return;
+
+	if (ship.shipState === "transferring" && ship.transferTimeDays > 0) {
+		// Engine burn: consume transferFuelTotal proportionally over transfer duration
+		const fuelPerDay = ship.transferFuelTotal / ship.transferTimeDays;
+		ship.fuelKg = Math.max(0, ship.fuelKg - fuelPerDay * simDt);
+	} else {
+		// Station-keeping: 0.1%/day active, 0.05%/day idle (life support + thrusters)
+		const rate = ship.action.type !== null ? 0.001 : 0.0005;
+		ship.fuelKg = Math.max(0, ship.fuelKg - rate * ship.fuelCapacityKg * simDt);
 	}
+}
 
-	// Malfunction check: only during transfers (hull degrades in transit)
-	if (ship.shipState === "transferring") {
-		const checkIndex = Math.floor(ship.maintenance.age / MALFUNCTION_INTERVAL);
-		const prevCheckIndex = Math.floor((ship.maintenance.age - simDt) / MALFUNCTION_INTERVAL);
-		// Fire once per 30-day interval crossed, even if multiple intervals skipped at high warp
-		let currentCheck = prevCheckIndex;
-		while (currentCheck < checkIndex) {
-			currentCheck++;
-			const intervalAge = currentCheck * MALFUNCTION_INTERVAL;
-			const rng = seededRandom(Math.floor(intervalAge));
-			const integrity = Math.max(1, ship.maintenance.hullIntegrity);
-			const failChance = (intervalAge / (365 * 5)) * (100 / integrity);
-			const roll = rng();
-			if (roll < failChance) {
-				const damage = ship.maintenance.supplies <= 0 ? 15 : 5 + Math.floor(rng() * 11);
-				ship.maintenance.hullIntegrity = Math.max(0, ship.maintenance.hullIntegrity - damage);
-				ship.maintenance.supplies = Math.max(0, ship.maintenance.supplies - damage);
-				learnFromMalfunction(ship);
-			}
+function tickMalfunctionCheck(ship: ShipEntry, simDt: number): void {
+	if (ship.shipState !== "transferring") return;
+
+	const checkIndex = Math.floor(ship.maintenance.age / MALFUNCTION_INTERVAL);
+	const prevCheckIndex = Math.floor((ship.maintenance.age - simDt) / MALFUNCTION_INTERVAL);
+	// Fire once per 30-day interval crossed, even if multiple intervals skipped at high warp
+	let currentCheck = prevCheckIndex;
+	while (currentCheck < checkIndex) {
+		currentCheck++;
+		const intervalAge = currentCheck * MALFUNCTION_INTERVAL;
+		const rng = seededRandom(Math.floor(intervalAge));
+		const integrity = Math.max(1, ship.maintenance.hullIntegrity);
+		const failChance = (intervalAge / (365 * 5)) * (100 / integrity);
+		const roll = rng();
+		if (roll < failChance) {
+			const damage = ship.maintenance.supplies <= 0 ? 15 : 5 + Math.floor(rng() * 11);
+			ship.maintenance.hullIntegrity = Math.max(0, ship.maintenance.hullIntegrity - damage);
+			ship.maintenance.supplies = Math.max(0, ship.maintenance.supplies - damage);
+			learnFromMalfunction(ship);
 		}
 	}
 }
 
-export function selectNextSurveyTarget(ship: ShipEntry): string | null {
-	const sx = ship.mesh.position.x;
-	const sz = ship.mesh.position.z;
-	const claimed = getClaimedTargets(ship.data.name);
+export function tickShipSimulation(ship: ShipEntry, simDt: number, simTime: number): void {
+	const atColony = isAtColony(ship);
+	const isOrbiting = ship.shipState === "orbiting";
+	const rates = computeSimRates();
 
-	// Collect body candidates with distance
+	tickMoraleDecay(ship, simDt, simTime, atColony, isOrbiting, rates);
+	tickActionRecovery(ship, simDt, isOrbiting, rates);
+	tickColonyServices(ship, simTime, simDt, atColony);
+	tickMaintenanceAge(ship, simDt, atColony);
+	tickFuelConsumption(ship, simDt, atColony);
+	tickMalfunctionCheck(ship, simDt);
+}
+
+function collectBodyCandidates(
+	sx: number,
+	sz: number,
+	claimed: Set<string>,
+): { name: string; distSq: number }[] {
 	const candidates: { name: string; distSq: number }[] = [];
-
 	for (const body of state.bodyMeshes) {
-		if (body === (ship as unknown)) continue;
 		if (isShipEntry(body)) continue;
 		if (!isSurveyable(body)) continue;
 		if (body.survey.surveyLevel !== 0) continue;
@@ -218,8 +255,15 @@ export function selectNextSurveyTarget(ship: ShipEntry): string | null {
 		const dz = body.mesh.position.z - sz;
 		candidates.push({ name: body.data.name, distSq: dx * dx + dz * dz });
 	}
+	return candidates;
+}
 
-	// Collect unsurveyed asteroids
+function collectAsteroidCandidates(
+	sx: number,
+	sz: number,
+	claimed: Set<string>,
+): { name: string; distSq: number }[] {
+	const candidates: { name: string; distSq: number }[] = [];
 	for (const beltEntry of state.asteroidBelts) {
 		for (const asteroid of beltEntry.asteroids) {
 			if (asteroid.survey.surveyLevel !== 0) continue;
@@ -230,6 +274,18 @@ export function selectNextSurveyTarget(ship: ShipEntry): string | null {
 			candidates.push({ name: asteroid.designation, distSq: ax * ax + az * az });
 		}
 	}
+	return candidates;
+}
+
+export function selectNextSurveyTarget(ship: ShipEntry): string | null {
+	const sx = ship.mesh.position.x;
+	const sz = ship.mesh.position.z;
+	const claimed = getClaimedTargets(ship.data.name);
+
+	const candidates = [
+		...collectBodyCandidates(sx, sz, claimed),
+		...collectAsteroidCandidates(sx, sz, claimed),
+	];
 
 	if (candidates.length === 0) return null;
 

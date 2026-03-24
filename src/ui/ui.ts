@@ -16,6 +16,19 @@ import { recenterOnStar, selectBody } from "./selection";
 
 // --- Body list panel ---
 
+function handleBodyItemClick(e: MouseEvent, item: HTMLElement, entry: BodyEntry): void {
+	if ((e.target as HTMLElement).classList.contains("moon-toggle")) {
+		const moonList = item.nextElementSibling;
+		if (moonList?.classList.contains("moon-sublist")) {
+			const collapsed = (moonList as HTMLElement).style.display === "none";
+			(moonList as HTMLElement).style.display = collapsed ? "" : "none";
+			(e.target as HTMLElement).textContent = collapsed ? "[-]" : "[+]";
+		}
+		return;
+	}
+	selectBody(entry);
+}
+
 const bodyListEl = document.getElementById("body-list") as HTMLElement;
 
 export function buildBodyList(): void {
@@ -71,18 +84,7 @@ export function buildBodyList(): void {
 			item.innerHTML = `<span class="body-color-dot" style="background:${entry.data.color}"></span>
                 <span class="body-list-name">${entry.data.name}</span>${toggleSpan}`;
 
-			item.addEventListener("click", (e) => {
-				if ((e.target as HTMLElement).classList.contains("moon-toggle")) {
-					const moonList = item.nextElementSibling;
-					if (moonList?.classList.contains("moon-sublist")) {
-						const collapsed = (moonList as HTMLElement).style.display === "none";
-						(moonList as HTMLElement).style.display = collapsed ? "" : "none";
-						(e.target as HTMLElement).textContent = collapsed ? "[-]" : "[+]";
-					}
-					return;
-				}
-				selectBody(entry);
-			});
+			item.addEventListener("click", (e) => handleBodyItemClick(e, item, entry));
 			list.appendChild(item);
 
 			if (hasMoons) {
@@ -155,6 +157,235 @@ function discoverSystem(seed: number): void {
 }
 
 // --- Labels ---
+
+interface LabelUpdateCtx {
+	cv: ReturnType<typeof state.categoryVisibility.valueOf>;
+	moonsVisible: boolean;
+	needsScaleUpdate: boolean;
+	scaleFactor: number;
+	needsLodUpdate: boolean;
+	camDist: number;
+	fov: number;
+	screenH: number;
+	screenW: number;
+	surveyTargets: Set<string>;
+	orbitingShipsAtBody: Map<string, ShipEntry[]>;
+	shouldUpdateTransforms: boolean;
+}
+
+function setLabelDisplay(entry: BodyEntry, display: string): void {
+	if (entry.labelDisplay !== display) {
+		entry.labelDiv.style.display = display;
+		entry.labelDisplay = display;
+	}
+}
+
+function updateBodyLabelContent(
+	entry: BodyEntry,
+	surveyTargets: Set<string>,
+	orbitingShipsAtBody: Map<string, ShipEntry[]>,
+): void {
+	if (entry.isShip) return;
+	let suffix = "";
+	if (isSurveyable(entry) && entry.survey.surveyLevel > 0) suffix = " ✓";
+	else if (surveyTargets.has(entry.data.name)) suffix = " *";
+	const bodyName = entry.data.name + suffix;
+	const orbitingShips = orbitingShipsAtBody.get(entry.data.name) || [];
+	let labelHtml = `<div style="line-height:1.2">${bodyName}`;
+	for (const ship of orbitingShips) {
+		labelHtml += `<div style="font-size:9px; color:#7a9a7a; margin-top:2px">${ship.data.name}</div>`;
+	}
+	labelHtml += "</div>";
+	if (entry.labelDiv.innerHTML !== labelHtml) {
+		entry.labelDiv.innerHTML = labelHtml;
+	}
+}
+
+function updateBodyScale(entry: BodyEntry, needsScaleUpdate: boolean, scaleFactor: number): void {
+	if (entry.isMoon || entry.isComet || entry.isShip || !("baseSize" in entry)) return;
+	if (!needsScaleUpdate) return;
+	const scaledSize = entry.baseSize + scaleFactor * (entry.realisticSize - entry.baseSize);
+	const s = scaledSize / entry.baseSize;
+	entry.mesh.scale.set(s, s, s);
+	entry.screenSize = scaledSize;
+}
+
+function updateBodyLod(entry: BodyEntry, sr: number, needsLodUpdate: boolean): void {
+	if (needsLodUpdate && entry.geomLevels) {
+		const level = lodLevel(sr);
+		if (level !== entry.lodLevel) {
+			entry.mesh.geometry = entry.geomLevels[level];
+			entry.lodLevel = level;
+		}
+	}
+	if ("planetRing" in entry && entry.planetRing) entry.planetRing.visible = sr > 15;
+	if ("cloudMesh" in entry && entry.cloudMesh) entry.cloudMesh.visible = sr > 15;
+}
+
+function updateBodyLabelTransform(
+	entry: BodyEntry,
+	cx: number,
+	cy: number,
+	sr: number,
+	screenW: number,
+	screenH: number,
+	margin: number,
+	shouldUpdateTransforms: boolean,
+	camDist: number,
+	dist: number,
+): void {
+	const labelOpacity = Math.max(0.3, Math.min(1.0, 1.0 - dist / (camDist * 3)));
+	const prevOpacity = Number.parseFloat(entry.labelDiv.style.opacity || "1");
+	if (Math.abs(labelOpacity - prevOpacity) > 0.05) {
+		entry.labelDiv.style.opacity = labelOpacity.toFixed(2);
+	}
+	if (!shouldUpdateTransforms) return;
+	const pos = computeLabelPosition(cx, cy, sr, screenW, screenH, margin);
+	const lx = pos.x;
+	const ly = pos.y;
+	if (
+		entry.labelX === undefined ||
+		entry.labelY === undefined ||
+		Math.abs(lx - entry.labelX) > 0.5 ||
+		Math.abs(ly - entry.labelY) > 0.5
+	) {
+		entry.labelDiv.style.transform = `translate(${lx}px, ${ly}px)`;
+		entry.labelX = lx;
+		entry.labelY = ly;
+	}
+}
+
+function isOutsideViewport(
+	cx: number,
+	cy: number,
+	screenW: number,
+	screenH: number,
+	margin: number,
+): boolean {
+	return cx < -margin || cx > screenW + margin || cy < -margin || cy > screenH + margin;
+}
+
+function updateBodyLabelEntry(entry: BodyEntry, ctx: LabelUpdateCtx): void {
+	const {
+		cv,
+		moonsVisible,
+		needsScaleUpdate,
+		scaleFactor,
+		needsLodUpdate,
+		camDist,
+		fov,
+		screenH,
+		screenW,
+		surveyTargets,
+		orbitingShipsAtBody,
+		shouldUpdateTransforms,
+	} = ctx;
+	if (entry.isMoon && entry.parentMesh) {
+		entry.mesh.visible = moonsVisible;
+		if (entry.orbitLine) entry.orbitLine.visible = moonsVisible && cv.Moon.orbits;
+		if (!moonsVisible) {
+			setLabelDisplay(entry, "none");
+			return;
+		}
+	}
+	updateBodyScale(entry, needsScaleUpdate, scaleFactor);
+	tempVec.copy(entry.mesh.position);
+	tempVec.project(camera);
+	if (tempVec.z > 1) {
+		setLabelDisplay(entry, "none");
+		return;
+	}
+	const margin = 100;
+	const cx = (tempVec.x * 0.5 + 0.5) * screenW;
+	const cy = (-tempVec.y * 0.5 + 0.5) * screenH;
+	if (isOutsideViewport(cx, cy, screenW, screenH, margin)) {
+		setLabelDisplay(entry, "none");
+		return;
+	}
+	const catKey = (entry.isMoon ? "Moon" : entry.data.type) as CategoryKey;
+	const showLabels = cv[catKey]?.labels ?? true;
+	const orbitingShipHidden = isShipEntry(entry) && entry.shipState === "orbiting";
+	setLabelDisplay(entry, showLabels && !orbitingShipHidden ? "" : "none");
+	updateBodyLabelContent(entry, surveyTargets, orbitingShipsAtBody);
+	const radius = entry.screenSize || 0.3;
+	const dist = edgeVec.copy(entry.mesh.position).sub(camera.position).length();
+	const sr = calcScreenRadius(radius, dist, fov, screenH);
+	updateBodyLod(entry, sr, needsLodUpdate);
+	updateBodyLabelTransform(
+		entry,
+		cx,
+		cy,
+		sr,
+		screenW,
+		screenH,
+		margin,
+		shouldUpdateTransforms,
+		camDist,
+		dist,
+	);
+}
+
+function getOrCreateAsteroidLabel(name: string): HTMLDivElement {
+	let label = asteroidLabels.get(name);
+	if (!label) {
+		label = document.createElement("div");
+		label.style.cssText =
+			"position:absolute;color:#8899aa;font-family:'Courier New',monospace;" +
+			"font-size:10px;white-space:nowrap;text-shadow:0 0 4px #000,0 0 2px #000;opacity:0.85;";
+		labelContainer.appendChild(label);
+		asteroidLabels.set(name, label);
+	}
+	return label;
+}
+
+function positionAsteroidLabel(
+	label: HTMLDivElement,
+	ax: number,
+	ay: number,
+	az: number,
+	screenW: number,
+	screenH: number,
+): void {
+	astLabelVec.set(ax, ay, az);
+	astLabelVec.project(camera);
+	if (astLabelVec.z > 1) {
+		label.style.display = "none";
+	} else {
+		const lx = (astLabelVec.x * 0.5 + 0.5) * screenW + 8;
+		const ly = (-astLabelVec.y * 0.5 + 0.5) * screenH - 6;
+		label.style.transform = `translate(${lx}px, ${ly}px)`;
+	}
+}
+
+function updateAsteroidLabels(
+	orbitingShipsAtBody: Map<string, ShipEntry[]>,
+	screenW: number,
+	screenH: number,
+): void {
+	const activeAsteroids = new Set<string>();
+	for (const entry of state.bodyMeshes) {
+		if (!isShipEntry(entry) || entry.shipState !== "orbiting") continue;
+		const hit = findAsteroidEntity(entry.hostPlanetName);
+		if (!hit) continue;
+		activeAsteroids.add(entry.hostPlanetName);
+		const idx = hit.asteroid.beltIndex ?? 0;
+		const ax = hit.beltEntry.positions[idx * 3];
+		const ay = hit.beltEntry.positions[idx * 3 + 1];
+		const az = hit.beltEntry.positions[idx * 3 + 2];
+		const label = getOrCreateAsteroidLabel(entry.hostPlanetName);
+		const shipsAtAsteroid = orbitingShipsAtBody.get(entry.hostPlanetName) || [];
+		let asteroidHtml = entry.hostPlanetName;
+		for (const ship of shipsAtAsteroid) {
+			asteroidHtml += `<div style="font-size:9px; color:#7a9a7a; margin-top:2px">${ship.data.name}</div>`;
+		}
+		label.innerHTML = asteroidHtml;
+		label.style.display = "";
+		positionAsteroidLabel(label, ax, ay, az, screenW, screenH);
+	}
+	for (const [name, label] of asteroidLabels) {
+		if (!activeAsteroids.has(name)) label.style.display = "none";
+	}
+}
 
 export function computeLabelPosition(
 	cx: number,
@@ -237,214 +468,45 @@ export function updateLabels(camDist: number): void {
 		}
 	}
 
+	const ctx: LabelUpdateCtx = {
+		cv,
+		moonsVisible,
+		needsScaleUpdate,
+		scaleFactor,
+		needsLodUpdate,
+		camDist,
+		fov,
+		screenH,
+		screenW,
+		surveyTargets,
+		orbitingShipsAtBody,
+		shouldUpdateTransforms,
+	};
 	state.bodyMeshes.forEach((entry) => {
-		if (entry.isMoon && entry.parentMesh) {
-			entry.mesh.visible = moonsVisible;
-			if (entry.orbitLine) entry.orbitLine.visible = moonsVisible && cv.Moon.orbits;
-			if (!moonsVisible) {
-				const targetDisplay = "none";
-				if (entry.labelDisplay !== targetDisplay) {
-					entry.labelDiv.style.display = targetDisplay;
-					entry.labelDisplay = targetDisplay;
-				}
-				return;
-			}
-		}
-
-		if (!entry.isMoon && !entry.isComet && !entry.isShip && "baseSize" in entry) {
-			if (needsScaleUpdate) {
-				const scaledSize = entry.baseSize + scaleFactor * (entry.realisticSize - entry.baseSize);
-				const s = scaledSize / entry.baseSize;
-				entry.mesh.scale.set(s, s, s);
-				entry.screenSize = scaledSize;
-			}
-		}
-
-		tempVec.copy(entry.mesh.position);
-		tempVec.project(camera);
-
-		if (tempVec.z > 1) {
-			const targetDisplay = "none";
-			if (entry.labelDisplay !== targetDisplay) {
-				entry.labelDiv.style.display = targetDisplay;
-				entry.labelDisplay = targetDisplay;
-			}
-			return;
-		}
-
-		const cx = (tempVec.x * 0.5 + 0.5) * screenW;
-		const cy = (-tempVec.y * 0.5 + 0.5) * screenH;
-
-		const margin = 100;
-		if (cx < -margin || cx > screenW + margin || cy < -margin || cy > screenH + margin) {
-			const targetDisplay = "none";
-			if (entry.labelDisplay !== targetDisplay) {
-				entry.labelDiv.style.display = targetDisplay;
-				entry.labelDisplay = targetDisplay;
-			}
-			return;
-		}
-
-		const catKey = (entry.isMoon ? "Moon" : entry.data.type) as CategoryKey;
-		const showLabels = cv[catKey]?.labels ?? true;
-		// Orbiting ships: label hidden (name shown under host body label)
-		const orbitingShipHidden = isShipEntry(entry) && entry.shipState === "orbiting";
-		const targetDisplay = showLabels && !orbitingShipHidden ? "" : "none";
-		if (entry.labelDisplay !== targetDisplay) {
-			entry.labelDiv.style.display = targetDisplay;
-			entry.labelDisplay = targetDisplay;
-		}
-
-		// Survey suffix: ✓ if surveyed, * if currently being surveyed
-		if (!entry.isShip) {
-			let suffix = "";
-			if (isSurveyable(entry) && entry.survey.surveyLevel > 0) suffix = " \u2713";
-			else if (surveyTargets.has(entry.data.name)) suffix = " *";
-			const bodyName = entry.data.name + suffix;
-
-			// Build label with body name and list of orbiting ships
-			const orbitingShips = orbitingShipsAtBody.get(entry.data.name) || [];
-			let labelHtml = `<div style="line-height:1.2">${bodyName}`;
-			if (orbitingShips.length > 0) {
-				for (const ship of orbitingShips) {
-					labelHtml += `<div style="font-size:9px; color:#7a9a7a; margin-top:2px">${ship.data.name}</div>`;
-				}
-			}
-			labelHtml += `</div>`;
-
-			if (entry.labelDiv.innerHTML !== labelHtml) {
-				entry.labelDiv.innerHTML = labelHtml;
-			}
-		}
-
-		const radius = entry.screenSize || 0.3;
-		const dist = edgeVec.copy(entry.mesh.position).sub(camera.position).length();
-		const sr = calcScreenRadius(radius, dist, fov, screenH);
-
-		// LOD: swap sphere geometry based on screen size
-		if (needsLodUpdate && entry.geomLevels) {
-			const level = lodLevel(sr);
-			if (level !== entry.lodLevel) {
-				entry.mesh.geometry = entry.geomLevels[level];
-				entry.lodLevel = level;
-			}
-		}
-
-		if ("planetRing" in entry && entry.planetRing) {
-			entry.planetRing.visible = sr > 15;
-		}
-		if ("cloudMesh" in entry && entry.cloudMesh) {
-			entry.cloudMesh.visible = sr > 15;
-		}
-
-		// Depth-based label dimming: farther objects fade out
-		const labelOpacity = Math.max(0.3, Math.min(1.0, 1.0 - dist / (camDist * 3)));
-		const prevOpacity = Number.parseFloat(entry.labelDiv.style.opacity || "1");
-		if (Math.abs(labelOpacity - prevOpacity) > 0.05) {
-			entry.labelDiv.style.opacity = labelOpacity.toFixed(2);
-		}
-
-		// Only update label transforms every 2 frames
-		if (shouldUpdateTransforms) {
-			const pos = computeLabelPosition(cx, cy, sr, screenW, screenH, margin);
-			const lx = pos.x;
-			const ly = pos.y;
-			if (
-				entry.labelX === undefined ||
-				entry.labelY === undefined ||
-				Math.abs(lx - entry.labelX) > 0.5 ||
-				Math.abs(ly - entry.labelY) > 0.5
-			) {
-				entry.labelDiv.style.transform = `translate(${lx}px, ${ly}px)`;
-				entry.labelX = lx;
-				entry.labelY = ly;
-			}
-		}
+		updateBodyLabelEntry(entry, ctx);
 	});
 
 	if (needsScaleUpdate) lastScaleFactor = scaleFactor;
 	if (needsLodUpdate) lastLodCamDist = camDist;
 
-	// Asteroid station-keeping labels: show asteroid name when a ship is there
-	const activeAsteroids = new Set<string>();
-	for (const entry of state.bodyMeshes) {
-		if (!isShipEntry(entry) || entry.shipState !== "orbiting") continue;
-		const hit = findAsteroidEntity(entry.hostPlanetName);
-		if (!hit) continue;
-		activeAsteroids.add(entry.hostPlanetName);
-
-		const idx = hit.asteroid.beltIndex ?? 0;
-		const ax = hit.beltEntry.positions[idx * 3];
-		const ay = hit.beltEntry.positions[idx * 3 + 1];
-		const az = hit.beltEntry.positions[idx * 3 + 2];
-
-		let label = asteroidLabels.get(entry.hostPlanetName);
-		if (!label) {
-			label = document.createElement("div");
-			label.style.cssText =
-				"position:absolute;color:#8899aa;font-family:'Courier New',monospace;" +
-				"font-size:10px;white-space:nowrap;text-shadow:0 0 4px #000,0 0 2px #000;opacity:0.85;";
-			labelContainer.appendChild(label);
-			asteroidLabels.set(entry.hostPlanetName, label);
-		}
-		const shipsAtAsteroid = orbitingShipsAtBody.get(entry.hostPlanetName) || [];
-		let asteroidHtml = entry.hostPlanetName;
-		if (shipsAtAsteroid.length > 0) {
-			for (const ship of shipsAtAsteroid) {
-				asteroidHtml += `<div style="font-size:9px; color:#7a9a7a; margin-top:2px">${ship.data.name}</div>`;
-			}
-		}
-		label.innerHTML = asteroidHtml;
-		label.style.display = "";
-
-		astLabelVec.set(ax, ay, az);
-		astLabelVec.project(camera);
-		if (astLabelVec.z > 1) {
-			label.style.display = "none";
-		} else {
-			const lx = (astLabelVec.x * 0.5 + 0.5) * screenW + 8;
-			const ly = (-astLabelVec.y * 0.5 + 0.5) * screenH - 6;
-			label.style.transform = `translate(${lx}px, ${ly}px)`;
-		}
-	}
-	// Hide labels for asteroids no longer occupied
-	for (const [name, label] of asteroidLabels) {
-		if (!activeAsteroids.has(name)) {
-			label.style.display = "none";
-		}
-	}
+	updateAsteroidLabels(orbitingShipsAtBody, screenW, screenH);
 }
 
 // --- HUD ---
 
-const timeEl = document.getElementById("time-display") as HTMLElement;
-const zoomEl = document.getElementById("zoom-display") as HTMLElement;
-const surveyEl = document.getElementById("survey-display") as HTMLElement;
-let lastTimeText = "";
-let lastZoomText = "";
-let lastSurveyText = "";
-let lastHudSimTime = -1;
-let lastHudTimeSpeed = -1;
-
-export function updateHUD(camDist: number): void {
-	if (state.simTime.days !== lastHudSimTime || state.timeSpeed !== lastHudTimeSpeed) {
-		lastHudSimTime = state.simTime.days;
-		lastHudTimeSpeed = state.timeSpeed;
-		const d = truncateDate(simTimeToDate(state.simTime.days), state.timeSpeed);
-		const timeText = formatDateTime(d);
-		if (timeText !== lastTimeText) {
-			timeEl.textContent = timeText;
-			lastTimeText = timeText;
-		}
+function updateTimeDisplay(): void {
+	if (state.simTime.days === lastHudSimTime && state.timeSpeed === lastHudTimeSpeed) return;
+	lastHudSimTime = state.simTime.days;
+	lastHudTimeSpeed = state.timeSpeed;
+	const d = truncateDate(simTimeToDate(state.simTime.days), state.timeSpeed);
+	const timeText = formatDateTime(d);
+	if (timeText !== lastTimeText) {
+		timeEl.textContent = timeText;
+		lastTimeText = timeText;
 	}
+}
 
-	const zoomText = formatZoomText(camDist, ZOOM_BASE);
-	if (zoomText !== lastZoomText) {
-		zoomEl.textContent = zoomText;
-		lastZoomText = zoomText;
-	}
-
-	// Survey percentage — count surveyable bodies + asteroids
+function updateSurveyDisplay(): void {
 	let total = 0;
 	let surveyed = 0;
 	for (const entry of state.bodyMeshes) {
@@ -465,17 +527,38 @@ export function updateHUD(camDist: number): void {
 		surveyEl.textContent = surveyText;
 		lastSurveyText = surveyText;
 	}
+}
 
+function updateNotifBadge(): void {
 	const badge = document.getElementById("notif-badge");
-	if (badge) {
-		const count = getUnreadCount();
-		if (count > 0) {
-			badge.textContent = String(count);
-			badge.style.display = "";
-		} else {
-			badge.style.display = "none";
-		}
+	if (!badge) return;
+	const count = getUnreadCount();
+	if (count > 0) {
+		badge.textContent = String(count);
+		badge.style.display = "";
+	} else {
+		badge.style.display = "none";
 	}
+}
+
+const timeEl = document.getElementById("time-display") as HTMLElement;
+const zoomEl = document.getElementById("zoom-display") as HTMLElement;
+const surveyEl = document.getElementById("survey-display") as HTMLElement;
+let lastTimeText = "";
+let lastZoomText = "";
+let lastSurveyText = "";
+let lastHudSimTime = -1;
+let lastHudTimeSpeed = -1;
+
+export function updateHUD(camDist: number): void {
+	updateTimeDisplay();
+	const zoomText = formatZoomText(camDist, ZOOM_BASE);
+	if (zoomText !== lastZoomText) {
+		zoomEl.textContent = zoomText;
+		lastZoomText = zoomText;
+	}
+	updateSurveyDisplay();
+	updateNotifBadge();
 }
 
 // --- Perf timing overlay ---
@@ -545,6 +628,29 @@ export function updatePerfDisplay(timings: PerfTimings): void {
 }
 
 // --- Setup all UI event listeners ---
+
+function handleDebugStepKey(
+	e: KeyboardEvent,
+	getActiveSpeed: () => number,
+	setUnpaused: () => void,
+): void {
+	const backward = e.key === "b" || e.key === "B";
+	const speed = getActiveSpeed() * (backward ? -1 : 1);
+	state.debugStepFrames = 15;
+	state.timeSpeed = speed;
+	setUnpaused();
+	state.renderNeeded = true;
+	window.dispatchEvent(new Event("wake-render"));
+	const ship = findShip();
+	const elapsed = ship ? state.simTime.days - ship.transferStartTime : 0;
+	const t = ship && ship.transferTimeDays > 0 ? elapsed / ship.transferTimeDays : 0;
+	gameLog(`DEBUG STEP [${backward ? "B" : "N"}]:`, {
+		speed,
+		simTime: state.simTime.days.toFixed(3),
+		shipState: ship?.shipState,
+		t: t.toFixed(4),
+	});
+}
 
 export function setupUI(loadSystem: (systemData: SystemData) => void): void {
 	_loadSystem = loadSystem;
@@ -691,23 +797,14 @@ export function setupUI(loadSystem: (systemData: SystemData) => void): void {
 		} else if (e.key === "n" || e.key === "N" || e.key === "b" || e.key === "B") {
 			if (onFormElement) return;
 			e.preventDefault();
-			const backward = e.key === "b" || e.key === "B";
-			const speed = TIME_SCALES[activeScaleIndex].speed * (backward ? -1 : 1);
-			state.debugStepFrames = 15;
-			state.timeSpeed = speed;
-			paused = false;
-			updateSpeedBtn();
-			state.renderNeeded = true;
-			window.dispatchEvent(new Event("wake-render"));
-			const ship = findShip();
-			const elapsed = ship ? state.simTime.days - ship.transferStartTime : 0;
-			const t = ship && ship.transferTimeDays > 0 ? elapsed / ship.transferTimeDays : 0;
-			gameLog(`DEBUG STEP [${backward ? "B" : "N"}]:`, {
-				speed,
-				simTime: state.simTime.days.toFixed(3),
-				shipState: ship?.shipState,
-				t: t.toFixed(4),
-			});
+			handleDebugStepKey(
+				e,
+				() => TIME_SCALES[activeScaleIndex].speed,
+				() => {
+					paused = false;
+					updateSpeedBtn();
+				},
+			);
 		}
 	});
 

@@ -196,12 +196,13 @@ export function createTrail(color: string, maxPoints: number): TrailState {
 	};
 }
 
-function createBody(data: BodyData, parentMesh: THREE.Mesh | null): PlanetEntry {
-	const isStar = data.type === "Star";
-	const isMoon = !!parentMesh;
-
-	const size = isMoon ? MOON_SIZE : bodySize(data.radius, isStar);
-
+/** Create geometry levels and material for a body. */
+function createGeometryAndMaterial(
+	data: BodyData,
+	size: number,
+	isStar: boolean,
+	isMoon: boolean,
+): { geomLevels: THREE.SphereGeometry[]; mat: THREE.Material } {
 	const segs = isStar ? STAR_LOD_SEGS : LOD_SEGS;
 	const geomLevels = isMoon
 		? sharedMoonGeoms
@@ -217,72 +218,116 @@ function createBody(data: BodyData, parentMesh: THREE.Mesh | null): PlanetEntry 
 			metalness: 0.1,
 		});
 	}
+	return { geomLevels, mat };
+}
+
+/** Create planetary rings if the body has ring data. */
+function createPlanetRings(data: BodyData, size: number, mesh: THREE.Mesh): THREE.Mesh | null {
+	if (!data.rings) return null;
+
+	const innerR = size * data.rings.inner;
+	const outerR = size * data.rings.outer;
+	const opacity = data.rings.opacity || 1;
+	const ringGeom = new THREE.RingGeometry(innerR, outerR, 64);
+	const canvas = document.createElement("canvas");
+	canvas.width = 256;
+	canvas.height = 1;
+	const ctx = canvas.getContext("2d");
+	if (!ctx) throw new Error("Failed to get 2D context");
+	const grad = ctx.createLinearGradient(0, 0, 256, 0);
+	const a = (v: number): number => Math.round(v * opacity * 255);
+	grad.addColorStop(0.0, `rgba(180,160,120,${a(0.1) / 255})`);
+	grad.addColorStop(0.15, `rgba(200,180,140,${a(0.5) / 255})`);
+	grad.addColorStop(0.3, `rgba(160,140,100,${a(0.15) / 255})`);
+	grad.addColorStop(0.45, `rgba(210,190,150,${a(0.6) / 255})`);
+	grad.addColorStop(0.65, `rgba(190,170,130,${a(0.4) / 255})`);
+	grad.addColorStop(0.85, `rgba(170,150,110,${a(0.3) / 255})`);
+	grad.addColorStop(1.0, `rgba(150,130,100,${a(0.05) / 255})`);
+	ctx.fillStyle = grad;
+	ctx.fillRect(0, 0, 256, 1);
+	const ringTex = new THREE.CanvasTexture(canvas);
+	const uvAttr = ringGeom.attributes.uv as THREE.BufferAttribute;
+	const posAttr = ringGeom.attributes.position as THREE.BufferAttribute;
+	for (let i = 0; i < uvAttr.count; i++) {
+		const x = posAttr.getX(i);
+		const z = posAttr.getY(i);
+		const dist = Math.sqrt(x * x + z * z);
+		uvAttr.setXY(i, (dist - innerR) / (outerR - innerR), 0.5);
+	}
+	const ringMat = new THREE.MeshBasicMaterial({
+		map: ringTex,
+		side: THREE.DoubleSide,
+		transparent: true,
+		depthWrite: false,
+	});
+	const planetRing = new THREE.Mesh(ringGeom, ringMat);
+	const tiltRad = ((data.rings.tilt || 0) * Math.PI) / 180;
+	planetRing.rotation.x = -Math.PI / 2 + tiltRad;
+	planetRing.visible = false;
+	mesh.add(planetRing);
+	return planetRing;
+}
+
+/** Create cloud layer if applicable. */
+function createCloudLayer(
+	data: BodyData,
+	size: number,
+	isStar: boolean,
+	isMoon: boolean,
+	mesh: THREE.Mesh,
+): THREE.Mesh | null {
+	if (isStar || isMoon) return null;
+
+	const cloudTex = generateCloudTextureForBody(data, false);
+	if (!cloudTex) return null;
+
+	const cloudGeom = new THREE.SphereGeometry(size * 1.02, 48, 48);
+	const cloudMat = new THREE.MeshStandardMaterial({
+		map: cloudTex,
+		transparent: true,
+		depthWrite: false,
+		roughness: 1,
+		metalness: 0,
+	});
+	const cloudMesh = new THREE.Mesh(cloudGeom, cloudMat);
+	cloudMesh.visible = false;
+	mesh.add(cloudMesh);
+	return cloudMesh;
+}
+
+/** Create orbit ring for the body. */
+function createOrbitRingIfNeeded(
+	data: BodyData,
+	isMoon: boolean,
+): { orbitLine: THREE.Line | null; orbitRadius: number } {
+	if (data.distance <= 0) return { orbitLine: null, orbitRadius: 0 };
+
+	const ecc = data.e || 0;
+	const toScreen = isMoon ? (d: number) => d * MOON_DIST_SCALE : scaleDist;
+	const orbitRadius = toScreen(data.distance);
+	const orbitLine = createOrbitRing(
+		data.distance,
+		ecc,
+		toScreen,
+		isMoon ? sharedMoonOrbitMat : sharedPlanetOrbitMat,
+	);
+	if (isMoon) orbitLine.visible = false;
+	scene.add(orbitLine);
+	return { orbitLine, orbitRadius };
+}
+
+function createBody(data: BodyData, parentMesh: THREE.Mesh | null): PlanetEntry {
+	const isStar = data.type === "Star";
+	const isMoon = !!parentMesh;
+
+	const size = isMoon ? MOON_SIZE : bodySize(data.radius, isStar);
+
+	const { geomLevels, mat } = createGeometryAndMaterial(data, size, isStar, isMoon);
 	const mesh = new THREE.Mesh(geomLevels[0], mat);
 	mesh.userData.baseSize = size;
 
-	// Planetary rings (e.g., Saturn, Jupiter, Uranus, Neptune)
-	let planetRing: THREE.Mesh | null = null;
-	if (data.rings) {
-		const innerR = size * data.rings.inner;
-		const outerR = size * data.rings.outer;
-		const opacity = data.rings.opacity || 1;
-		const ringGeom = new THREE.RingGeometry(innerR, outerR, 64);
-		const canvas = document.createElement("canvas");
-		canvas.width = 256;
-		canvas.height = 1;
-		const ctx = canvas.getContext("2d");
-		if (!ctx) throw new Error("Failed to get 2D context");
-		const grad = ctx.createLinearGradient(0, 0, 256, 0);
-		const a = (v: number): number => Math.round(v * opacity * 255);
-		grad.addColorStop(0.0, `rgba(180,160,120,${a(0.1) / 255})`);
-		grad.addColorStop(0.15, `rgba(200,180,140,${a(0.5) / 255})`);
-		grad.addColorStop(0.3, `rgba(160,140,100,${a(0.15) / 255})`);
-		grad.addColorStop(0.45, `rgba(210,190,150,${a(0.6) / 255})`);
-		grad.addColorStop(0.65, `rgba(190,170,130,${a(0.4) / 255})`);
-		grad.addColorStop(0.85, `rgba(170,150,110,${a(0.3) / 255})`);
-		grad.addColorStop(1.0, `rgba(150,130,100,${a(0.05) / 255})`);
-		ctx.fillStyle = grad;
-		ctx.fillRect(0, 0, 256, 1);
-		const ringTex = new THREE.CanvasTexture(canvas);
-		const uvAttr = ringGeom.attributes.uv as THREE.BufferAttribute;
-		const posAttr = ringGeom.attributes.position as THREE.BufferAttribute;
-		for (let i = 0; i < uvAttr.count; i++) {
-			const x = posAttr.getX(i);
-			const z = posAttr.getY(i);
-			const dist = Math.sqrt(x * x + z * z);
-			uvAttr.setXY(i, (dist - innerR) / (outerR - innerR), 0.5);
-		}
-		const ringMat = new THREE.MeshBasicMaterial({
-			map: ringTex,
-			side: THREE.DoubleSide,
-			transparent: true,
-			depthWrite: false,
-		});
-		planetRing = new THREE.Mesh(ringGeom, ringMat);
-		const tiltRad = ((data.rings.tilt || 0) * Math.PI) / 180;
-		planetRing.rotation.x = -Math.PI / 2 + tiltRad;
-		planetRing.visible = false;
-		mesh.add(planetRing);
-	}
-
-	// Cloud layer
-	let cloudMesh: THREE.Mesh | null = null;
-	if (!isStar && !isMoon) {
-		const cloudTex = generateCloudTextureForBody(data, false);
-		if (cloudTex) {
-			const cloudGeom = new THREE.SphereGeometry(size * 1.02, 48, 48);
-			const cloudMat = new THREE.MeshStandardMaterial({
-				map: cloudTex,
-				transparent: true,
-				depthWrite: false,
-				roughness: 1,
-				metalness: 0,
-			});
-			cloudMesh = new THREE.Mesh(cloudGeom, cloudMat);
-			cloudMesh.visible = false;
-			mesh.add(cloudMesh);
-		}
-	}
+	const planetRing = createPlanetRings(data, size, mesh);
+	const cloudMesh = createCloudLayer(data, size, isStar, isMoon, mesh);
 
 	const selGeom = new THREE.RingGeometry(
 		size * SEL_RING_INNER,
@@ -301,21 +346,7 @@ function createBody(data: BodyData, parentMesh: THREE.Mesh | null): PlanetEntry 
 
 	scene.add(mesh);
 
-	let orbitLine: THREE.Line | null = null;
-	let orbitRadius = 0;
-	const ecc = data.e || 0;
-	if (data.distance > 0) {
-		const toScreen = isMoon ? (d: number) => d * MOON_DIST_SCALE : scaleDist;
-		orbitRadius = toScreen(data.distance);
-		orbitLine = createOrbitRing(
-			data.distance,
-			ecc,
-			toScreen,
-			isMoon ? sharedMoonOrbitMat : sharedPlanetOrbitMat,
-		);
-		if (isMoon) orbitLine.visible = false;
-		scene.add(orbitLine);
-	}
+	const { orbitLine, orbitRadius } = createOrbitRingIfNeeded(data, isMoon);
 
 	const labelDiv = createLabel(data.name, isMoon ? "#4a6a4a" : data.color, isMoon);
 	const trail = createTrail(data.color, TRAIL_MAX_POINTS);
