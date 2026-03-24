@@ -169,31 +169,39 @@ export function tickShipSimulation(ship: ShipEntry, simDt: number, simTime: numb
 }
 
 export function selectNextSurveyTarget(ship: ShipEntry): string | null {
-	const shipPos = ship.mesh.position;
+	const sx = ship.mesh.position.x;
+	const sz = ship.mesh.position.z;
 
-	const candidates = state.bodyMeshes.filter((body) => {
-		if (body === (ship as unknown)) return false;
-		if (isShipEntry(body)) return false;
-		if (!isSurveyable(body)) return false;
-		if (body.survey.surveyLevel !== 0) return false;
-		if (body.data.type === "Star") return false;
-		if (body.isMoon) return false;
-		return true;
-	});
+	// Collect body candidates with distance
+	const candidates: { name: string; distSq: number }[] = [];
+
+	for (const body of state.bodyMeshes) {
+		if (body === (ship as unknown)) continue;
+		if (isShipEntry(body)) continue;
+		if (!isSurveyable(body)) continue;
+		if (body.survey.surveyLevel !== 0) continue;
+		if (body.data.type === "Star") continue;
+		if (body.isMoon) continue;
+		const dx = body.mesh.position.x - sx;
+		const dz = body.mesh.position.z - sz;
+		candidates.push({ name: body.data.name, distSq: dx * dx + dz * dz });
+	}
+
+	// Collect unsurveyed asteroids
+	for (const beltEntry of state.asteroidBelts) {
+		for (const asteroid of beltEntry.asteroids) {
+			if (asteroid.survey.surveyLevel !== 0) continue;
+			const idx = asteroid.beltIndex ?? 0;
+			const ax = beltEntry.positions[idx * 3] - sx;
+			const az = beltEntry.positions[idx * 3 + 2] - sz;
+			candidates.push({ name: asteroid.designation, distSq: ax * ax + az * az });
+		}
+	}
 
 	if (candidates.length === 0) return null;
 
-	candidates.sort((a, b) => {
-		const da = a.mesh.position.distanceToSquared(shipPos);
-		const db = b.mesh.position.distanceToSquared(shipPos);
-		return da - db;
-	});
-
-	const nearest = candidates[0];
-	if ("data" in nearest) {
-		return (nearest as { data: { name: string } }).data.name;
-	}
-	return null;
+	candidates.sort((a, b) => a.distSq - b.distSq);
+	return candidates[0].name;
 }
 
 export function getUnsurvevedMoonsOfHost(ship: ShipEntry): BodyEntry[] {

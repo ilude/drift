@@ -1,8 +1,15 @@
 import * as THREE from "three";
 import { state } from "../core/state";
-import { DIST_SCALE } from "../math/orbit";
+import { DIST_SCALE, orbitSpeed } from "../math/orbit";
 import { AU_TO_KM, checkTransferKm, ENGINE_TYPES } from "../math/ship-physics";
-import type { BodyEntry, MoonData, ShipEntry, Vector3Like } from "../types";
+import type {
+	AsteroidBeltEntry,
+	AsteroidInfo,
+	BodyEntry,
+	MoonData,
+	ShipEntry,
+	Vector3Like,
+} from "../types";
 import { isCometEntry } from "../types";
 import {
 	buildPlanetMap,
@@ -478,7 +485,21 @@ export function completeTransfer(entry: ShipEntry, entryAngle = 0): void {
 			);
 		}
 	} else {
-		entry.angle = 0;
+		// Check if target is an asteroid
+		const hit = findAsteroid(transferTarget);
+		if (hit) {
+			const proxy = asteroidProxy(hit.asteroid, hit.beltEntry);
+			entry.data.distance = hit.asteroid.au;
+			entry.orbitA = hit.asteroid.au;
+			entry.angle = entryAngle;
+			entry.mesh.position.set(
+				proxy.mesh.position.x + Math.cos(entry.angle) * SHIP_LOCAL_ORBIT,
+				0,
+				proxy.mesh.position.z + Math.sin(entry.angle) * SHIP_LOCAL_ORBIT,
+			);
+		} else {
+			entry.angle = 0;
+		}
 	}
 
 	if (onTransferCompleteHook) onTransferCompleteHook(entry);
@@ -571,6 +592,47 @@ export function distanceKmBetween(a: BodyEntry, b: BodyEntry): number {
 	const bxAU = Math.cos(angleB) * auB;
 	const bzAU = Math.sin(angleB) * auB;
 	return Math.hypot(bxAU - axAU, bzAU - azAU) * AU_TO_KM;
+}
+
+/**
+ * Find an asteroid by designation across all belts.
+ * Returns the asteroid info and its parent belt entry, or null.
+ */
+export function findAsteroid(
+	designation: string,
+): { asteroid: AsteroidInfo; beltEntry: AsteroidBeltEntry } | null {
+	for (const beltEntry of state.asteroidBelts) {
+		const asteroid = beltEntry.asteroids.find((a) => a.designation === designation);
+		if (asteroid) return { asteroid, beltEntry };
+	}
+	return null;
+}
+
+/** Scratch object reused by asteroidProxy to avoid allocation. */
+const _proxyPos = { x: 0, y: 0, z: 0 };
+
+/**
+ * Build a lightweight BodyEntry-compatible proxy for an asteroid.
+ * The proxy reads its position from the belt's Float32Array so it stays current.
+ * WARNING: Returns a shared object — copy values before calling again.
+ */
+export function asteroidProxy(asteroid: AsteroidInfo, beltEntry: AsteroidBeltEntry): BodyEntry {
+	const idx = asteroid.beltIndex ?? 0;
+	_proxyPos.x = beltEntry.positions[idx * 3];
+	_proxyPos.y = beltEntry.positions[idx * 3 + 1];
+	_proxyPos.z = beltEntry.positions[idx * 3 + 2];
+	return {
+		mesh: { position: _proxyPos },
+		data: {
+			name: asteroid.designation,
+			distance: asteroid.au,
+			type: "Asteroid",
+		},
+		speed: orbitSpeed(asteroid.period),
+		isMoon: false,
+		isShip: false,
+		isComet: false,
+	} as unknown as BodyEntry;
 }
 
 export function initiateTransfer(entry: ShipEntry, targetEntry: BodyEntry): boolean {

@@ -592,6 +592,7 @@ export function createAsteroidBelts(): AsteroidBeltEntry[] {
 				diameter,
 				mass: estimateMass(diameter / 2, 3000),
 				survey: { surveyLevel: 0, deposits: [] },
+				beltIndex: i,
 			});
 		}
 

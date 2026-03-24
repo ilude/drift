@@ -392,6 +392,13 @@ function updateShipStatus(entry: ShipEntry): void {
 		moraleEl.style.color = m > 70 ? "#4a6a4a" : m > 40 ? "#aaaa44" : "#aa4444";
 	}
 
+	// Days since leave (live)
+	const leaveEl = document.getElementById("info-leave-value");
+	if (leaveEl) {
+		const daysSinceLeave = Math.round(state.simTime - entry.crew.lastShoreLeave);
+		leaveEl.textContent = `${daysSinceLeave}d`;
+	}
+
 	// Hull (live)
 	const hullEl = document.getElementById("info-hull-value");
 	if (hullEl) {

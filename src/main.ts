@@ -25,7 +25,12 @@ import {
 	updatePositions,
 } from "./rendering/rendering";
 import { camera, cometGroup, controls, renderer, scene, trailGroups } from "./rendering/scene";
-import { initiateTransfer, setOnTransferComplete } from "./rendering/ship-transfer";
+import {
+	asteroidProxy,
+	findAsteroid,
+	initiateTransfer,
+	setOnTransferComplete,
+} from "./rendering/ship-transfer";
 import type {
 	BodyEntry,
 	CommandResult,
@@ -268,6 +273,8 @@ function mkAction(
 
 function completeSurvey(ship: ShipEntry): void {
 	const bodyName = ship.action.target ?? ship.hostPlanetName;
+
+	// Try body first, then asteroid
 	const body = state.bodyMeshes.find((e) => e.data.name === bodyName);
 	if (body && isSurveyable(body)) {
 		const deposits = generateDeposits(
@@ -288,6 +295,28 @@ function completeSurvey(ship: ShipEntry): void {
 			`Surveyed ${body.data.name} — ${summary}`,
 			body.data.name,
 		);
+	} else {
+		const hit = findAsteroid(bodyName);
+		if (hit) {
+			const deposits = generateDeposits(
+				getSystemSeed(),
+				hit.asteroid.designation,
+				"Asteroid",
+				hit.asteroid.diameter / 2,
+			);
+			hit.asteroid.survey = { surveyLevel: 1, deposits };
+
+			const names = deposits
+				.map((d) => d.resourceId)
+				.slice(0, 3)
+				.join(", ");
+			const summary = deposits.length > 0 ? `${deposits.length} deposits (${names})` : "no deposits";
+			addCoalescedNotification(
+				"survey-complete",
+				`Surveyed ${hit.asteroid.designation} — ${summary}`,
+				hit.asteroid.designation,
+			);
+		}
 	}
 	ship.action = noAction();
 	ship.stationTarget = null;
@@ -296,6 +325,15 @@ function completeSurvey(ship: ShipEntry): void {
 /** Find any body in the simulation by name. */
 function findBodyByName(name: string): BodyEntry | undefined {
 	return state.bodyMeshes.find((e) => e.data.name === name);
+}
+
+/** Resolve a body by name, falling back to asteroid belt entries. Returns null if not found. */
+function resolveBody(name: string): { body: BodyEntry; mass: number } | null {
+	const body = findBodyByName(name);
+	if (body) return { body, mass: body.data.mass };
+	const hit = findAsteroid(name);
+	if (hit) return { body: asteroidProxy(hit.asteroid, hit.beltEntry), mass: hit.asteroid.mass };
+	return null;
 }
 
 function findColony(): PlanetEntry | undefined {
@@ -316,8 +354,9 @@ function bodyDistanceKm(a: BodyEntry, b: BodyEntry): number {
 
 /** Check if ship has enough fuel for a hop to target AND return to nearest colony. */
 function canAffordRoundTrip(ship: ShipEntry, target: BodyEntry): boolean {
-	const host = findBodyByName(ship.hostPlanetName);
-	if (!host) return false;
+	const hostResolved = resolveBody(ship.hostPlanetName);
+	if (!hostResolved) return false;
+	const host = hostResolved.body;
 	const colony = findColony();
 	if (!colony) return false;
 
@@ -359,20 +398,23 @@ function dispatchCommand(ship: ShipEntry, result: CommandResult): void {
 
 			const target = selectNextSurveyTarget(ship);
 			if (target) {
-				const targetBody = findBodyByName(target);
-				if (!targetBody) break;
+				// Resolve target — could be a body or an asteroid
+				const resolved = resolveBody(target);
+				if (!resolved) break;
+				const targetBody = resolved.body;
+				const targetMass = resolved.mass;
 
 				// Check if already at the target or its parent planet (for moons)
 				const isAtTarget = target === ship.hostPlanetName;
 				const isMoonOfHost =
 					targetBody.isMoon &&
 					targetBody.parentMesh &&
-					state.bodyMeshes.find((e) => e.mesh === targetBody.parentMesh)?.data.name ===
+					state.bodyMeshes.find((e) => e.mesh === targetBody?.parentMesh)?.data.name ===
 						ship.hostPlanetName;
 				const alreadyThere = isAtTarget || isMoonOfHost;
 
 				if (alreadyThere) {
-					const dur = getSurveyDuration(targetBody.data.mass, ship);
+					const dur = getSurveyDuration(targetMass, ship);
 					ship.action = mkAction("survey-nearest", "survey", state.simTime, dur, target);
 					ship.stationTarget = null;
 				} else if (!canAffordRoundTrip(ship, targetBody)) {
@@ -514,8 +556,9 @@ export function onTransferComplete(ship: ShipEntry): void {
 	const actionType = ship.action.type;
 	if (actionType === "survey-nearest") {
 		const surveyTarget = ship.action.target;
-		const targetBody = surveyTarget ? findBodyByName(surveyTarget) : null;
-		const mass = targetBody?.data.mass ?? EARTH_MASS_KG;
+		const resolved = surveyTarget ? resolveBody(surveyTarget) : null;
+		const targetBody = resolved?.body ?? null;
+		const mass = resolved?.mass ?? EARTH_MASS_KG;
 		const dur = getSurveyDuration(mass, ship);
 		ship.action.startTime = state.simTime;
 		ship.action.duration = dur;

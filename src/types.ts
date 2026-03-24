@@ -378,6 +378,7 @@ export interface AsteroidInfo extends Surveyable {
 	period: number;
 	diameter: number;
 	mass: number;
+	beltIndex?: number;
 }
 
 export interface AsteroidBeltEntry {

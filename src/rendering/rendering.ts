@@ -14,7 +14,9 @@ import { isCometEntry, isShipEntry } from "../types";
 import { COMET_TRAIL_STEP_ARC, findBodyEntry, orbitToWorld } from "./bodies";
 import { ZOOM_BASE } from "./scene";
 import {
+	asteroidProxy,
 	completeTransfer,
+	findAsteroid,
 	SHIP_LOCAL_ORBIT,
 	transferPosition,
 	updateTransferPath,
@@ -53,97 +55,21 @@ export {
 } from "./bodies";
 export { createShip, initiateTransfer } from "./ship-transfer";
 
-// Inner belts (< Jupiter): alternate even/odd halves each frame
-let innerParity = 0;
-let innerAccumDt0 = 0;
-let innerAccumDt1 = 0;
-// Outer belts (>= Jupiter): update 1 of 6 slices per frame
-const OUTER_SLICES = 6;
-let outerSlice = 0;
-const outerAccumDt: number[] = Array.from({ length: OUTER_SLICES }, () => 0);
-const JUPITER_AU = 5.2;
-
 export function updateAsteroids(dt: number): void {
 	const simDt = dt * state.timeSpeed;
 	if (simDt === 0) return;
 
-	// Accumulate dt for inner belt halves
-	innerAccumDt0 += simDt;
-	innerAccumDt1 += simDt;
-	// Accumulate dt for all outer slices
-	for (let s = 0; s < OUTER_SLICES; s++) outerAccumDt[s] += simDt;
-
-	// Inner: alternate even/odd each frame
-	const parity = innerParity;
-	innerParity = 1 - innerParity;
-	const innerDt = parity === 0 ? innerAccumDt0 : innerAccumDt1;
-	if (parity === 0) innerAccumDt0 = 0;
-	else innerAccumDt1 = 0;
-
-	// Outer: cycle through 1 of 6 slices per frame
-	const slice = outerSlice;
-	outerSlice = (outerSlice + 1) % OUTER_SLICES;
-	const outerDt = outerAccumDt[slice];
-	outerAccumDt[slice] = 0;
-
-	function updateBeltSlice(
-		positions: Float32Array,
-		angles: Float32Array,
-		radii: Float32Array,
-		speeds: Float32Array,
-		cosInc: Float32Array,
-		sinInc: Float32Array,
-		cosNode: Float32Array,
-		sinNode: Float32Array,
-		count: number,
-		start: number,
-		stride: number,
-		dt: number,
-	): void {
-		for (let i = start; i < count; i += stride) {
-			angles[i] += speeds[i] * dt;
-			const r = radii[i];
-			const x = Math.cos(angles[i]) * r;
-			const z = Math.sin(angles[i]) * r;
-			const p = inclinedPosition(x, z, cosNode[i], sinNode[i], cosInc[i], sinInc[i]);
-			positions[i * 3] = p.x;
-			positions[i * 3 + 1] = p.y;
-			positions[i * 3 + 2] = p.z;
-		}
-	}
-
 	state.asteroidBelts.forEach(
-		({ belt, positions, angles, radii, speeds, cosInc, sinInc, cosNode, sinNode, count, points }) => {
-			if (belt.minAU < JUPITER_AU) {
-				updateBeltSlice(
-					positions,
-					angles,
-					radii,
-					speeds,
-					cosInc,
-					sinInc,
-					cosNode,
-					sinNode,
-					count,
-					parity,
-					2,
-					innerDt,
-				);
-			} else {
-				updateBeltSlice(
-					positions,
-					angles,
-					radii,
-					speeds,
-					cosInc,
-					sinInc,
-					cosNode,
-					sinNode,
-					count,
-					slice,
-					OUTER_SLICES,
-					outerDt,
-				);
+		({ positions, angles, radii, speeds, cosInc, sinInc, cosNode, sinNode, count, points }) => {
+			for (let i = 0; i < count; i++) {
+				angles[i] += speeds[i] * simDt;
+				const r = radii[i];
+				const x = Math.cos(angles[i]) * r;
+				const z = Math.sin(angles[i]) * r;
+				const p = inclinedPosition(x, z, cosNode[i], sinNode[i], cosInc[i], sinInc[i]);
+				positions[i * 3] = p.x;
+				positions[i * 3 + 1] = p.y;
+				positions[i * 3 + 2] = p.z;
 			}
 			points.geometry.attributes.position.needsUpdate = true;
 		},
@@ -180,10 +106,15 @@ export function updatePositions(dt: number, camDist: number): void {
 			if (entry.shipState === "orbiting") {
 				// Station-keeping: hold position near host body with slow visual drift
 				entry.angle += entry.speed * simDt;
-				const host = findBodyEntry(entry.hostPlanetName);
+				let host = findBodyEntry(entry.hostPlanetName);
+				// Fall back to asteroid lookup if host is not a regular body
+				if (!host) {
+					const hit = findAsteroid(entry.hostPlanetName);
+					if (hit) host = asteroidProxy(hit.asteroid, hit.beltEntry);
+				}
 				if (host) {
 					// Offset scales with host's visual size so ship doesn't clip inside large bodies
-					const hostSize = host.mesh.userData.baseSize ?? 0.02;
+					const hostSize = host.mesh.userData?.baseSize ?? 0.02;
 					const offset = Math.max(SHIP_LOCAL_ORBIT * 0.5, hostSize * 1.5);
 					const ox = Math.cos(entry.angle) * offset;
 					const oz = Math.sin(entry.angle) * offset;
@@ -202,7 +133,11 @@ export function updatePositions(dt: number, camDist: number): void {
 				entry.mesh.position.set(p.x, 0, p.z);
 
 				// Complete when time is up or ship is within station-keeping distance
-				const tgt = findBodyEntry(entry.transferTarget ?? "");
+				let tgt = findBodyEntry(entry.transferTarget ?? "");
+				if (!tgt) {
+					const hit = findAsteroid(entry.transferTarget ?? "");
+					if (hit) tgt = asteroidProxy(hit.asteroid, hit.beltEntry);
+				}
 				const distToTarget = tgt
 					? Math.hypot(p.x - tgt.mesh.position.x, p.z - tgt.mesh.position.z)
 					: Number.POSITIVE_INFINITY;

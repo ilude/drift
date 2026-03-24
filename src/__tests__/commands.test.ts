@@ -393,6 +393,95 @@ describe("selectNextSurveyTarget", () => {
 	});
 });
 
+// --- selectNextSurveyTarget — asteroids ---
+
+describe("selectNextSurveyTarget — asteroids", () => {
+	beforeEach(() => {
+		state.bodyMeshes = [];
+		state.asteroidBelts = [];
+	});
+
+	function makeBeltEntry(
+		asteroids: {
+			designation: string;
+			beltIndex: number;
+			surveyLevel: number;
+			x: number;
+			z: number;
+		}[],
+	) {
+		// 3 floats per asteroid: x, y, z
+		const positions = new Float32Array(asteroids.length * 3);
+		for (const a of asteroids) {
+			positions[a.beltIndex * 3] = a.x;
+			positions[a.beltIndex * 3 + 1] = 0;
+			positions[a.beltIndex * 3 + 2] = a.z;
+		}
+		return {
+			belt: {
+				name: "Main Belt",
+				minAU: 2.0,
+				maxAU: 3.5,
+				count: asteroids.length,
+				color: "#aaa",
+				size: 1,
+				maxInc: 5,
+			},
+			positions,
+			count: asteroids.length,
+			asteroids: asteroids.map((a) => ({
+				designation: a.designation,
+				au: 2.5,
+				period: 3.95,
+				diameter: 100,
+				mass: 1e15,
+				beltIndex: a.beltIndex,
+				survey: { surveyLevel: a.surveyLevel, deposits: [] },
+			})),
+		} as unknown as (typeof state.asteroidBelts)[number];
+	}
+
+	function shipAt(x: number, z: number): ShipEntry {
+		return mockShip({
+			mesh: { position: { x, z, distanceToSquared: () => 1 } } as unknown as ShipEntry["mesh"],
+		});
+	}
+
+	it("returns asteroid designation when it is the nearest unsurveyed target", () => {
+		// No planet bodies; one unsurveyed asteroid nearby
+		state.asteroidBelts = [
+			makeBeltEntry([{ designation: "MB-0001", beltIndex: 0, surveyLevel: 0, x: 10, z: 10 }]),
+		];
+		const ship = shipAt(0, 0);
+		expect(selectNextSurveyTarget(ship)).toBe("MB-0001");
+	});
+
+	it("skips already-surveyed asteroids", () => {
+		state.asteroidBelts = [
+			makeBeltEntry([
+				{ designation: "MB-0001", beltIndex: 0, surveyLevel: 1, x: 5, z: 5 },
+				{ designation: "MB-0002", beltIndex: 1, surveyLevel: 0, x: 20, z: 20 },
+			]),
+		];
+		const ship = shipAt(0, 0);
+		// MB-0001 is surveyed (level 1), so the result should be MB-0002
+		expect(selectNextSurveyTarget(ship)).toBe("MB-0002");
+	});
+
+	it("returns a planet when it is closer than any asteroid", () => {
+		// Planet very close; asteroid far away
+		const planet = mockBodyEntry("Venus", {
+			mesh: { position: { x: 1, z: 1, distanceToSquared: () => 2 } },
+		});
+		state.bodyMeshes = [planet] as BodyEntry[];
+		state.asteroidBelts = [
+			makeBeltEntry([{ designation: "MB-0001", beltIndex: 0, surveyLevel: 0, x: 1000, z: 1000 }]),
+		];
+		const ship = shipAt(0, 0);
+		expect(selectNextSurveyTarget(ship)).toBe("Venus");
+	});
+});
+
 // --- getUnsurvevedMoonsOfHost ---
 
 describe("getUnsurvevedMoonsOfHost", () => {
