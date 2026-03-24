@@ -87,7 +87,7 @@ export const state: AppState = {
 			{
 				labels: true,
 				orbits: k !== "Comet",
-				trails: k === "Comet",
+				trails: k === "Comet" || k === "Ship",
 			},
 		]),
 	) as Record<CategoryKey, CategoryVisibility>,
