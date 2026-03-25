@@ -333,6 +333,12 @@ function completeSurvey(ship: ShipEntry): void {
 			body.data.name,
 			body.data.type,
 			body.data.radius,
+			{
+				distanceAU: body.data.distance,
+				parentDistanceAU: body.parentMesh
+					? state.bodyMeshes.find((e) => e.mesh === body.parentMesh)?.data.distance
+					: undefined,
+			},
 		);
 		body.survey = { surveyLevel: 1, deposits };
 
@@ -354,6 +360,11 @@ function completeSurvey(ship: ShipEntry): void {
 				hit.asteroid.designation,
 				"Asteroid",
 				hit.asteroid.diameter / 2,
+				{
+					distanceAU: hit.asteroid.au,
+					beltMinAU: hit.beltEntry.belt.minAU,
+					beltMaxAU: hit.beltEntry.belt.maxAU,
+				},
 			);
 			hit.asteroid.survey = { surveyLevel: 1, deposits };
 

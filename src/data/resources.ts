@@ -333,131 +333,278 @@ function surveyLevelFromAccess(accessibility: number): number {
 	return 3; // deep — advanced sensors
 }
 
-function buildPool(bodyType: string, radius: number): WeightedResource[] {
-	const isGasGiant = bodyType === "Planet" && radius > 30000;
-	// In practice with Sol data: Jupiter=69911, Saturn=58232 (gas), Uranus=25362, Neptune=24622 (ice)
+// Frost line: ~2.7 AU for water in a Sol-like system. Bodies inside are rocky,
+// bodies outside retain volatile ices. Scales with star luminosity in procedural systems.
+const FROST_LINE_AU = 2.7;
 
-	if (isGasGiant) {
-		// Jupiter/Saturn: hydrogen/helium atmosphere, metallic hydrogen core
-		// Rich in He-3 (solar wind implantation), deuterium, atmospheric hydrocarbons
+interface PoolContext {
+	distanceAU: number; // distance from star
+	parentDistanceAU?: number; // parent planet's distance (for moons)
+	beltMinAU?: number; // belt inner edge (for asteroids)
+	beltMaxAU?: number; // belt outer edge (for asteroids)
+}
+
+function planetPool(radius: number, dist: number): WeightedResource[] {
+	if (radius > 30000) {
+		// Gas giant (Jupiter/Saturn): H/He atmosphere, metallic hydrogen core
 		return [
 			{ id: "helium-3", weight: 30 },
 			{ id: "deuterium", weight: 20 },
 			{ id: "hydrocarbons", weight: 15 },
 			{ id: "nitrogen", weight: 10 },
 			{ id: "water", weight: 5 },
-			// Deep core: metals under extreme pressure
 			{ id: "iron", weight: 3 },
-			// Umbral: formed under immense gravitational pressure
 			{ id: "ortheum", weight: 6 },
 			{ id: "cadrine", weight: 5 },
 			{ id: "heliate", weight: 4 },
 			{ id: "nemorin", weight: 2 },
 		];
 	}
-
-	if (bodyType === "Comet") {
-		// "Dirty snowballs": water ice, frozen gases, dust (silicates, carbon)
-		return [
-			{ id: "water", weight: 40 },
-			{ id: "nitrogen", weight: 15 },
-			{ id: "hydrocarbons", weight: 15 },
-			{ id: "carbon", weight: 10 },
-			{ id: "deuterium", weight: 5 },
-			{ id: "silicon", weight: 5 },
-			// Trace metals in dust
-			{ id: "iron", weight: 5 },
-			{ id: "phosphorus", weight: 3 },
-			// Rare umbral traces from deep space
-			{ id: "vantine", weight: 2 },
-		];
-	}
-
-	if (bodyType === "Centaur") {
-		// Icy bodies from outer solar system, mix of comet and KBO composition
-		// More volatile-rich than asteroids, some rocky core material
+	if (radius > 15000) {
+		// Ice giant (Uranus/Neptune): water/ammonia/methane ices, less H/He
 		return [
 			{ id: "water", weight: 25 },
 			{ id: "nitrogen", weight: 15 },
-			{ id: "hydrocarbons", weight: 12 },
-			{ id: "carbon", weight: 10 },
-			{ id: "deuterium", weight: 8 },
-			{ id: "helium-3", weight: 5 },
-			// Rocky component
+			{ id: "hydrocarbons", weight: 15 },
+			{ id: "deuterium", weight: 10 },
+			{ id: "helium-3", weight: 8 },
+			{ id: "carbon", weight: 5 },
 			{ id: "iron", weight: 5 },
-			{ id: "silicon", weight: 5 },
-			// Outer system umbral deposits
-			{ id: "ortheum", weight: 6 },
-			{ id: "nemorin", weight: 4 },
-			{ id: "vantine", weight: 3 },
-			{ id: "tessarene", weight: 2 },
-		];
-	}
-
-	if (bodyType === "Asteroid") {
-		// Three real classes: C-type (carbonaceous), S-type (silicate), M-type (metallic)
-		// Pool represents a blend; individual asteroid composition varies by seed
-		return [
-			{ id: "iron", weight: 22 },
-			{ id: "platinum", weight: 10 },
-			{ id: "titanium", weight: 8 },
-			{ id: "copper", weight: 8 },
-			{ id: "aluminum", weight: 7 },
-			{ id: "silicon", weight: 10 },
-			{ id: "carbon", weight: 8 },
-			{ id: "rare-earth", weight: 5 },
-			{ id: "phosphorus", weight: 3 },
-			// Some asteroids have water (C-type)
-			{ id: "water", weight: 5 },
-			// Trace radioactives
-			{ id: "uranium", weight: 2 },
-			{ id: "thorium", weight: 2 },
-		];
-	}
-
-	if (bodyType === "Dwarf Planet") {
-		// Pluto, Eris, Ceres, etc: icy/rocky mix, differentiated cores
-		// More volatiles than rocky planets, some deep umbral
-		return [
-			{ id: "water", weight: 20 },
-			{ id: "iron", weight: 12 },
-			{ id: "silicon", weight: 8 },
-			{ id: "nitrogen", weight: 10 },
-			{ id: "carbon", weight: 8 },
-			{ id: "aluminum", weight: 5 },
-			{ id: "rare-earth", weight: 3 },
-			{ id: "hydrocarbons", weight: 8 },
-			{ id: "uranium", weight: 3 },
-			{ id: "thorium", weight: 3 },
-			// Deep ice/rock boundary umbral
 			{ id: "ortheum", weight: 5 },
-			{ id: "caritene", weight: 3 },
-			{ id: "istrium", weight: 2 },
+			{ id: "nemorin", weight: 4 },
+			{ id: "cadrine", weight: 3 },
+			{ id: "tessarene", weight: 3 },
+			{ id: "vantine", weight: 2 },
 		];
 	}
-
-	// Rocky Planet or Moon — default
-	// Differentiated bodies: iron core, silicate mantle, varied surface
+	if (dist > FROST_LINE_AU) {
+		// Cold rocky (Mars-like beyond frost line): trapped water ice
+		return [
+			{ id: "iron", weight: 18 },
+			{ id: "silicon", weight: 10 },
+			{ id: "aluminum", weight: 8 },
+			{ id: "copper", weight: 6 },
+			{ id: "titanium", weight: 5 },
+			{ id: "water", weight: 15 },
+			{ id: "carbon", weight: 8 },
+			{ id: "nitrogen", weight: 5 },
+			{ id: "rare-earth", weight: 3 },
+			{ id: "phosphorus", weight: 3 },
+			{ id: "uranium", weight: 4 },
+			{ id: "thorium", weight: 3 },
+			{ id: "caritene", weight: 2 },
+		];
+	}
+	// Hot/warm rocky (Mercury/Venus/Earth): metals, silicates, radioactives
 	return [
-		{ id: "iron", weight: 20 },
-		{ id: "copper", weight: 10 },
+		{ id: "iron", weight: 22 },
+		{ id: "copper", weight: 12 },
 		{ id: "aluminum", weight: 10 },
 		{ id: "titanium", weight: 8 },
-		{ id: "platinum", weight: 4 },
+		{ id: "platinum", weight: 5 },
 		{ id: "silicon", weight: 10 },
-		{ id: "carbon", weight: 6 },
 		{ id: "rare-earth", weight: 5 },
-		{ id: "phosphorus", weight: 4 },
-		// Volatiles (trapped water, atmospheric nitrogen)
-		{ id: "water", weight: 8 },
-		{ id: "nitrogen", weight: 4 },
-		// Radioactives in crust/mantle
-		{ id: "uranium", weight: 4 },
-		{ id: "thorium", weight: 3 },
-		// Deep mantle umbral (only at low accessibility)
+		{ id: "phosphorus", weight: 5 },
+		{ id: "water", weight: 4 },
+		{ id: "nitrogen", weight: 3 },
+		{ id: "uranium", weight: 5 },
+		{ id: "thorium", weight: 4 },
+		{ id: "carbon", weight: 3 },
+		{ id: "heliate", weight: 2 },
 		{ id: "caritene", weight: 2 },
+	];
+}
+
+function moonPool(parentDist: number): WeightedResource[] {
+	if (parentDist > 5) {
+		// Icy moon of outer giant (Europa/Enceladus/Titan)
+		return [
+			{ id: "water", weight: 30 },
+			{ id: "nitrogen", weight: 12 },
+			{ id: "hydrocarbons", weight: 12 },
+			{ id: "carbon", weight: 8 },
+			{ id: "silicon", weight: 5 },
+			{ id: "iron", weight: 5 },
+			{ id: "deuterium", weight: 5 },
+			{ id: "phosphorus", weight: 3 },
+			{ id: "ortheum", weight: 4 },
+			{ id: "nemorin", weight: 3 },
+			{ id: "vantine", weight: 3 },
+		];
+	}
+	if (parentDist > FROST_LINE_AU) {
+		// Mid-system moon: mix of rock and ice
+		return [
+			{ id: "iron", weight: 15 },
+			{ id: "water", weight: 15 },
+			{ id: "silicon", weight: 10 },
+			{ id: "carbon", weight: 8 },
+			{ id: "aluminum", weight: 7 },
+			{ id: "copper", weight: 5 },
+			{ id: "nitrogen", weight: 5 },
+			{ id: "rare-earth", weight: 3 },
+			{ id: "uranium", weight: 3 },
+			{ id: "thorium", weight: 2 },
+			{ id: "caritene", weight: 2 },
+		];
+	}
+	// Inner system moon (Luna/Phobos): rocky, metal-rich, very little water
+	return [
+		{ id: "iron", weight: 22 },
+		{ id: "aluminum", weight: 12 },
+		{ id: "silicon", weight: 12 },
+		{ id: "titanium", weight: 8 },
+		{ id: "copper", weight: 6 },
+		{ id: "platinum", weight: 4 },
+		{ id: "rare-earth", weight: 4 },
+		{ id: "water", weight: 2 },
+		{ id: "uranium", weight: 3 },
+		{ id: "thorium", weight: 3 },
 		{ id: "heliate", weight: 2 },
 	];
+}
+
+function asteroidPool(dist: number, ctx: PoolContext): WeightedResource[] {
+	const beltMid =
+		ctx.beltMinAU != null && ctx.beltMaxAU != null
+			? (ctx.beltMinAU + ctx.beltMaxAU) / 2
+			: FROST_LINE_AU;
+	const relPos = beltMid > 0 ? dist / beltMid : 0.5;
+
+	if (relPos > 1.1 || dist > FROST_LINE_AU * 1.5) {
+		// C-type (carbonaceous) — outer belt: water, carbon, organics
+		return [
+			{ id: "carbon", weight: 20 },
+			{ id: "water", weight: 20 },
+			{ id: "silicon", weight: 10 },
+			{ id: "phosphorus", weight: 8 },
+			{ id: "nitrogen", weight: 8 },
+			{ id: "iron", weight: 8 },
+			{ id: "hydrocarbons", weight: 6 },
+			{ id: "rare-earth", weight: 3 },
+			{ id: "ortheum", weight: 3 },
+		];
+	}
+	if (relPos < 0.9 || dist < FROST_LINE_AU * 0.7) {
+		// S-type (silicate) — inner belt: silicates, iron-magnesium
+		return [
+			{ id: "iron", weight: 20 },
+			{ id: "silicon", weight: 18 },
+			{ id: "aluminum", weight: 10 },
+			{ id: "titanium", weight: 8 },
+			{ id: "copper", weight: 8 },
+			{ id: "rare-earth", weight: 5 },
+			{ id: "platinum", weight: 5 },
+			{ id: "phosphorus", weight: 3 },
+			{ id: "uranium", weight: 2 },
+		];
+	}
+	// M-type (metallic) — mid belt: core fragments of shattered protoplanets
+	return [
+		{ id: "iron", weight: 30 },
+		{ id: "platinum", weight: 15 },
+		{ id: "copper", weight: 10 },
+		{ id: "titanium", weight: 10 },
+		{ id: "aluminum", weight: 8 },
+		{ id: "rare-earth", weight: 8 },
+		{ id: "uranium", weight: 3 },
+		{ id: "thorium", weight: 3 },
+		{ id: "caritene", weight: 3 },
+	];
+}
+
+function dwarfPlanetPool(dist: number): WeightedResource[] {
+	if (dist > 10) {
+		// Outer dwarf (Pluto/Eris): nitrogen ice dominated
+		return [
+			{ id: "nitrogen", weight: 25 },
+			{ id: "water", weight: 15 },
+			{ id: "hydrocarbons", weight: 12 },
+			{ id: "carbon", weight: 10 },
+			{ id: "iron", weight: 5 },
+			{ id: "silicon", weight: 5 },
+			{ id: "deuterium", weight: 5 },
+			{ id: "ortheum", weight: 6 },
+			{ id: "caritene", weight: 4 },
+			{ id: "tessarene", weight: 3 },
+			{ id: "istrium", weight: 3 },
+			{ id: "vantine", weight: 2 },
+		];
+	}
+	// Inner dwarf (Ceres): water ice, silicates, salts, carbon
+	return [
+		{ id: "water", weight: 22 },
+		{ id: "silicon", weight: 12 },
+		{ id: "iron", weight: 10 },
+		{ id: "carbon", weight: 10 },
+		{ id: "aluminum", weight: 6 },
+		{ id: "rare-earth", weight: 5 },
+		{ id: "phosphorus", weight: 5 },
+		{ id: "nitrogen", weight: 5 },
+		{ id: "uranium", weight: 3 },
+		{ id: "thorium", weight: 3 },
+		{ id: "ortheum", weight: 4 },
+		{ id: "caritene", weight: 3 },
+	];
+}
+
+const COMET_POOL: WeightedResource[] = [
+	{ id: "water", weight: 40 },
+	{ id: "nitrogen", weight: 15 },
+	{ id: "hydrocarbons", weight: 15 },
+	{ id: "carbon", weight: 10 },
+	{ id: "deuterium", weight: 5 },
+	{ id: "silicon", weight: 5 },
+	{ id: "iron", weight: 5 },
+	{ id: "phosphorus", weight: 3 },
+	{ id: "vantine", weight: 2 },
+];
+
+const CENTAUR_POOL: WeightedResource[] = [
+	{ id: "water", weight: 25 },
+	{ id: "nitrogen", weight: 15 },
+	{ id: "hydrocarbons", weight: 12 },
+	{ id: "carbon", weight: 10 },
+	{ id: "deuterium", weight: 8 },
+	{ id: "helium-3", weight: 5 },
+	{ id: "iron", weight: 5 },
+	{ id: "silicon", weight: 5 },
+	{ id: "ortheum", weight: 6 },
+	{ id: "nemorin", weight: 4 },
+	{ id: "vantine", weight: 3 },
+	{ id: "tessarene", weight: 2 },
+];
+
+const FALLBACK_POOL: WeightedResource[] = [
+	{ id: "iron", weight: 20 },
+	{ id: "silicon", weight: 12 },
+	{ id: "aluminum", weight: 10 },
+	{ id: "copper", weight: 8 },
+	{ id: "titanium", weight: 6 },
+	{ id: "water", weight: 6 },
+	{ id: "carbon", weight: 5 },
+	{ id: "rare-earth", weight: 4 },
+	{ id: "uranium", weight: 3 },
+	{ id: "thorium", weight: 3 },
+];
+
+function buildPool(bodyType: string, radius: number, ctx: PoolContext): WeightedResource[] {
+	switch (bodyType) {
+		case "Planet":
+			return planetPool(radius, ctx.distanceAU);
+		case "Moon":
+			return moonPool(ctx.parentDistanceAU ?? ctx.distanceAU);
+		case "Asteroid":
+			return asteroidPool(ctx.distanceAU, ctx);
+		case "Dwarf Planet":
+			return dwarfPlanetPool(ctx.distanceAU);
+		case "Comet":
+			return COMET_POOL;
+		case "Centaur":
+			return CENTAUR_POOL;
+		default:
+			return FALLBACK_POOL;
+	}
 }
 
 export function generateDeposits(
@@ -465,6 +612,7 @@ export function generateDeposits(
 	bodyName: string,
 	bodyType: string,
 	radius: number,
+	ctx?: Partial<PoolContext>,
 ): ResourceDeposit[] {
 	const rng = seededRandom(systemSeed ^ nameHash(bodyName));
 
@@ -475,7 +623,7 @@ export function generateDeposits(
 	// 30-40% chance of no deposits
 	if (rng() < 0.35) return [];
 
-	const pool = buildPool(bodyType, radius);
+	const pool = buildPool(bodyType, radius, { distanceAU: 1, ...ctx });
 	const isComet = bodyType === "Comet";
 
 	// Base quantity scales with body radius; comets are small so use a fixed base
