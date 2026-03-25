@@ -56,6 +56,7 @@ import type {
 	SystemData,
 } from "./types";
 import { isCometEntry, isShipEntry, isSurveyable } from "./types";
+import { pushResourceUpdate } from "./ui/resource-viewer";
 import {
 	selectBody,
 	setupClickHandlers,
@@ -360,6 +361,7 @@ function completeSurvey(ship: ShipEntry): void {
 	}
 	ship.action = noAction();
 	ship.stationTarget = null;
+	pushResourceUpdate();
 }
 
 function findColony(): PlanetEntry | undefined {
@@ -578,7 +580,12 @@ function handleOverhaulCommand(ship: ShipEntry): void {
 		"overhaul",
 		`Ship stranded at ${ship.hostPlanetName} -- insufficient fuel for overhaul`,
 		() => {
-			ship.action = mkAction("overhaul", "overhaul", state.simTime.days, computeOverhaulDuration(ship));
+			ship.action = mkAction(
+				"overhaul",
+				"overhaul",
+				state.simTime.days,
+				computeOverhaulDuration(ship),
+			);
 		},
 	);
 	publishIntent(ship.data.name, {

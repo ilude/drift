@@ -12,6 +12,7 @@ import {
 import { camera, labelContainer, setAntialias, ZOOM_BASE } from "../rendering/scene";
 import type { BodyEntry, CategoryKey, CategoryVisibility, ShipEntry, SystemData } from "../types";
 import { isShipEntry, isSurveyable } from "../types";
+import { closeResourceViewer, isResourceViewerOpen, openResourceViewer } from "./resource-viewer";
 import { recenterOnStar, selectBody } from "./selection";
 
 // --- Body list panel ---
@@ -661,6 +662,19 @@ export function setupUI(loadSystem: (systemData: SystemData) => void): void {
 		dropdown.classList.toggle("hidden");
 		if (!dropdown.classList.contains("hidden")) rebuildSystemList();
 	});
+
+	// Resource viewer popout
+	document.getElementById("btn-resources")?.addEventListener("click", () => {
+		if (isResourceViewerOpen()) closeResourceViewer();
+		else openResourceViewer();
+	});
+
+	// Handle body selection from resource viewer popout
+	window.addEventListener("rv-select-body", ((e: CustomEvent<string>) => {
+		const name = e.detail;
+		const body = findBody(name);
+		if (body) selectBody(body);
+	}) as EventListener);
 
 	document.getElementById("btn-discover")?.addEventListener("click", () => {
 		const seedStr = (document.getElementById("seed-input") as HTMLInputElement).value.trim();

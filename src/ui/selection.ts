@@ -16,6 +16,7 @@ import type {
 } from "../types";
 import { isCometEntry, isShipEntry, isSurveyable } from "../types";
 import { renderCommandTree } from "./commands";
+import { pushBodySelected } from "./resource-viewer";
 
 /** Format a ship's current action as display text. Single source of truth for action display. */
 export function formatShipAction(entry: import("../types").ShipEntry): string {
@@ -356,6 +357,7 @@ export function selectBody(entry: BodyEntry): void {
 	deselectCurrentBody();
 
 	state.selectedBody = entry;
+	pushBodySelected(entry.data.name);
 	if (isCometEntry(entry) && entry.orbitLine) {
 		(entry.orbitLine.material as THREE.LineBasicMaterial).opacity = COMET_ORBIT_SELECTED_OPACITY;
 	}
