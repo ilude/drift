@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="64" fill="#0d0d14"/>
+  <circle cx="256" cy="256" r="120" fill="none" stroke="#2a3a2a" stroke-width="2"/>
+  <circle cx="256" cy="256" r="180" fill="none" stroke="#1a2a1a" stroke-width="1"/>
+  <circle cx="256" cy="256" r="60" fill="none" stroke="#3a5a3a" stroke-width="1.5"/>
+  <circle cx="256" cy="256" r="8" fill="#88cc88"/>
+  <circle cx="376" cy="256" r="5" fill="#aaccaa"/>
+  <circle cx="196" cy="152" r="4" fill="#6a9a6a"/>
+  <ellipse cx="256" cy="256" rx="220" ry="40" fill="none" stroke="#1a2a1a" stroke-width="0.8" transform="rotate(-20 256 256)"/>
+  <text x="256" y="440" text-anchor="middle" font-family="Courier New,monospace" font-size="72" font-weight="bold" fill="#88cc88">DRIFT</text>
+</svg>
