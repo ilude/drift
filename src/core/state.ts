@@ -62,7 +62,7 @@ export function speedLabel(timeSpeed: number): string {
 
 export const MASTER_SEED: number = 42;
 const SAVE_KEY = "solar-sim-state";
-const SAVE_VERSION = 5;
+const SAVE_VERSION = 6;
 
 export const state: AppState = {
 	bodyMeshes: [],
@@ -201,6 +201,15 @@ export function loadSavedState(): SavedStateData | null {
 			// v4 → v5: transfer fields added as optional; no structural change needed
 			data.version = 5;
 		}
+		if (data.version === 5) {
+			// v5 → v6: add totalAge and lastRefitAge to maintenance
+			for (const ship of data.ships) {
+				const m = ship.maintenance as unknown as Record<string, unknown>;
+				if (m.totalAge === undefined) m.totalAge = m.age;
+				if (m.lastRefitAge === undefined) m.lastRefitAge = 0;
+			}
+			data.version = 6;
+		}
 		if (data.version !== SAVE_VERSION) return null;
 		return data;
 	} catch (_) {
@@ -212,7 +221,12 @@ function restoreShipFields(ship: ShipEntry, saved: SavedShipData): void {
 	ship.fuelKg = saved.fuelKg;
 	ship.engineId = saved.engineId;
 	if (saved.crew) ship.crew = saved.crew;
-	if (saved.maintenance) ship.maintenance = saved.maintenance;
+	if (saved.maintenance) {
+		ship.maintenance = saved.maintenance;
+		// Ensure new fields exist (forward compat)
+		ship.maintenance.totalAge ??= ship.maintenance.age;
+		ship.maintenance.lastRefitAge ??= 0;
+	}
 	if (saved.commandTree) ship.commandTree = saved.commandTree;
 	if (saved.commander) ship.commander = saved.commander;
 }
