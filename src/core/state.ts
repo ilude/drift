@@ -84,7 +84,7 @@ export const state: AppState = {
 				"Star",
 				"Planet",
 				"Dwarf Planet",
-				"Detached Object",
+				"Centaur",
 				"Moon",
 				"Comet",
 				"Asteroid",
@@ -111,6 +111,7 @@ export const state: AppState = {
 	shipIntents: new Map(),
 	notifications: [],
 	notificationPauseConfig: {
+		info: false,
 		"survey-complete": false,
 		"low-fuel": false,
 		"low-morale": false,
@@ -164,7 +165,7 @@ export function saveState(): void {
 
 	const data: SavedStateData = {
 		version: SAVE_VERSION,
-		simTime: state.simTime,
+		simTime: state.simTime.days,
 		currentSystemKey: state.currentSystemKey,
 		randomClickCount: state.randomClickCount,
 		discoveredSystems: systems,

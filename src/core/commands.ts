@@ -3,7 +3,7 @@
 // The commander (commander.ts) interprets these results and applies judgment overrides.
 
 import type { BodyEntry, CommandCondition, CommandResult, ShipEntry } from "../types";
-import { isShipEntry, isSurveyable } from "../types";
+import { isCometEntry, isShipEntry, isSurveyable } from "../types";
 import { isAtColony, learnFromMalfunction } from "./commander";
 import { findBody } from "./entities";
 import { getClaimedTargets } from "./intents";
@@ -246,6 +246,7 @@ function collectBodyCandidates(
 	const candidates: { name: string; distSq: number }[] = [];
 	for (const body of state.bodyMeshes) {
 		if (isShipEntry(body)) continue;
+		if (isCometEntry(body)) continue;
 		if (!isSurveyable(body)) continue;
 		if (body.survey.surveyLevel !== 0) continue;
 		if (body.data.type === "Star") continue;

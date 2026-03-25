@@ -61,7 +61,7 @@ export function resolveEntity(name: string): ResolvedEntity | null {
 			type: bodyEntry.data.type,
 			position: { x: p.x, y: p.y, z: p.z },
 			distance: bodyEntry.data.distance,
-			mass: bodyEntry.data.mass,
+			mass: (bodyEntry.data as { mass: number }).mass,
 			speed: bodyEntry.speed,
 			isMoon: bodyEntry.isMoon,
 			survey: (bodyEntry as { survey?: SurveyState }).survey,

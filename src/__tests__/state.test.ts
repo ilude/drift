@@ -515,7 +515,7 @@ describe("transfer state persistence", () => {
 		state.discoveredSystems = new Map([
 			["sol", { name: "Sol", seed: 0, systemData: null }],
 			["alpha-centauri", { name: "Alpha Centauri", seed: 12345, systemData: null }],
-		]) as typeof state.discoveredSystems;
+		]) as unknown as typeof state.discoveredSystems;
 
 		saveState();
 		const loaded = loadSavedState();

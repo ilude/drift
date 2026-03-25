@@ -58,9 +58,8 @@ function buildTransferSubMenu(
 	const r1 = hostEntry ? hostEntry.data.distance : ship.data.distance;
 	const accelMS2 = engine ? engine.accelG * G_ACCEL : 0;
 
-	const destinations = state.bodyMeshes.filter(
-		(e) => e.data.type === "Planet" || e.data.type === "Dwarf Planet",
-	);
+	const transferTypes = new Set(["Planet", "Dwarf Planet", "Centaur", "Asteroid"]);
+	const destinations = state.bodyMeshes.filter((e) => transferTypes.has(e.data.type));
 
 	for (const dest of destinations) {
 		const item = document.createElement("div");
@@ -272,7 +271,7 @@ function buildRow(
 			input.type = "number";
 			input.min = "1";
 			input.max = "99";
-			input.value = String(entry.condition.threshold as number);
+			input.value = String("threshold" in entry.condition ? entry.condition.threshold : 0);
 			input.style.width = "36px";
 			input.style.fontSize = "9px";
 			input.style.background = "#141420";

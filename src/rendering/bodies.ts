@@ -520,7 +520,7 @@ export function createComets(): void {
 		t.line.visible = true;
 
 		// Hide orbit line since comets default to trails
-		entry.orbitLine.visible = false;
+		if (entry.orbitLine) entry.orbitLine.visible = false;
 
 		state.bodyMeshes.push(entry);
 	});

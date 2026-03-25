@@ -56,7 +56,7 @@ export interface RingData {
 
 export interface BodyData {
 	name: string;
-	type: "Star" | "Planet" | "Dwarf Planet" | "Detached Object" | "Moon";
+	type: "Star" | "Planet" | "Dwarf Planet" | "Centaur" | "Asteroid" | "Moon";
 	distance: number;
 	e: number;
 	period: number;
@@ -194,6 +194,7 @@ export interface ShipAction {
 // --- Notification types ---
 
 export type NotificationType =
+	| "info"
 	| "survey-complete"
 	| "low-fuel"
 	| "low-morale"
@@ -442,7 +443,7 @@ export type CategoryKey =
 	| "Star"
 	| "Planet"
 	| "Dwarf Planet"
-	| "Detached Object"
+	| "Centaur"
 	| "Moon"
 	| "Comet"
 	| "Asteroid"
@@ -451,6 +452,7 @@ export type CategoryKey =
 // --- App state ---
 
 export interface NotificationPauseConfig {
+	info: boolean;
 	"survey-complete": boolean;
 	"low-fuel": boolean;
 	"low-morale": boolean;

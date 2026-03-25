@@ -34,8 +34,7 @@ interface RawPlanetEntry {
 	moons: MoonData[];
 	_radiusEarths: number;
 	_category: PlanetCategory;
-	_isDwarf?: boolean;
-	_isDetached?: boolean;
+	_assignedType: "Planet" | "Dwarf Planet" | "Centaur" | "Asteroid";
 }
 
 interface StarResult {
@@ -189,6 +188,26 @@ const COMET_COLORS: string[] = [
 	"#ddeeff",
 	"#aa9988",
 	"#998877",
+];
+
+const CENTAUR_COLORS: string[] = [
+	"#887766",
+	"#776655",
+	"#998877",
+	"#aa6644",
+	"#777788",
+	"#666666",
+	"#885544",
+];
+
+const ASTEROID_COLORS: string[] = [
+	"#aaaaaa",
+	"#888888",
+	"#777766",
+	"#999988",
+	"#666655",
+	"#bbaa99",
+	"#998888",
 ];
 
 const CATALOG_PREFIXES: CatalogPrefix[] = [
@@ -350,8 +369,8 @@ function generatePlanets(
 	let dwarfDist = outermost * rngFloat(rng, 1.8, 3.0);
 	const dwarfCount = rngInt(rng, 2, 5);
 	for (let i = 0; i < dwarfCount; i++) {
-		const p = makePlanetEntry(rng, dwarfDist, rngFloat(rng, 0.05, 0.35), starMass);
-		p._isDwarf = true;
+		const p = makePlanetEntry(rng, dwarfDist, rngFloat(rng, 0.05, 0.35), starMass, "Dwarf Planet");
+		p.e = dwarfEccentricity(rng, dwarfDist, outermost);
 		planets.push(p);
 		dwarfDist *= rngFloat(rng, 1.3, 2.0);
 	}
@@ -359,8 +378,8 @@ function generatePlanets(
 	// Chance of a detached object (Sedna-like) far out
 	if (rng() < 0.4) {
 		const detachedDist = dwarfDist * rngFloat(rng, 3, 10);
-		const p = makePlanetEntry(rng, detachedDist, rngFloat(rng, 0.03, 0.15), starMass);
-		p._isDetached = true;
+		const p = makePlanetEntry(rng, detachedDist, rngFloat(rng, 0.03, 0.15), starMass, "Dwarf Planet");
+		p.e = dwarfEccentricity(rng, detachedDist, outermost);
 		planets.push(p);
 	}
 
@@ -382,6 +401,7 @@ function makePlanetEntry(
 	distAU: number,
 	radiusEarths: number,
 	starMass: number,
+	assignedType: "Planet" | "Dwarf Planet" | "Centaur" | "Asteroid" = "Planet",
 ): RawPlanetEntry {
 	const cat = categorizePlanet(radiusEarths);
 	const color = rngPick(rng, PLANET_COLORS[cat]);
@@ -400,7 +420,15 @@ function makePlanetEntry(
 		moons: [],
 		_radiusEarths: radiusEarths,
 		_category: cat,
+		_assignedType: assignedType,
 	};
+}
+
+function dwarfEccentricity(rng: () => number, distAU: number, outerPlanetDist: number): number {
+	const ratio = distAU / outerPlanetDist;
+	if (ratio < 2) return Math.round(rngFloat(rng, 0.01, 0.15) * 1000) / 1000;
+	if (ratio < 5) return Math.round(rngFloat(rng, 0.05, 0.3) * 1000) / 1000;
+	return Math.round(rngFloat(rng, 0.2, 0.85) * 1000) / 1000;
 }
 
 function applyBinaryConstraints(planets: RawPlanetEntry[], binary: BinaryConfig): RawPlanetEntry[] {
@@ -569,6 +597,84 @@ function generateGiantDominated(
 	const filtered = applyBinaryConstraints(planets, binary);
 	planets.length = 0;
 	planets.push(...filtered);
+}
+
+function generateCentaurs(
+	rng: () => number,
+	planets: RawPlanetEntry[],
+	starMass: number,
+): RawPlanetEntry[] {
+	const giants = planets.filter((p) => p._radiusEarths > 4 && p._assignedType === "Planet");
+	if (giants.length === 0) return [];
+
+	const innerGiant = Math.min(...giants.map((g) => g.distance));
+	const outerGiant = Math.max(...giants.map((g) => g.distance));
+	const minDist = innerGiant * 0.8;
+	const maxDist = outerGiant * 1.2;
+	if (maxDist - minDist < 1) return [];
+
+	const count = rngInt(rng, 1, 5);
+	const centaurs: RawPlanetEntry[] = [];
+	for (let i = 0; i < count; i++) {
+		const dist = rngFloat(rng, minDist, maxDist);
+		const radiusKm = rngInt(rng, 10, 130);
+		centaurs.push({
+			distance: Math.round(dist * 1000) / 1000,
+			e: Math.round(rngFloat(rng, 0.1, 0.6) * 1000) / 1000,
+			period: Math.round(keplerPeriod(dist, starMass) * 1000) / 1000,
+			radius: radiusKm,
+			mass: estimateMass(radiusKm, 1000),
+			color: rngPick(rng, CENTAUR_COLORS),
+			moons: [],
+			_radiusEarths: radiusKm / EARTH_RADIUS_KM,
+			_category: "rocky",
+			_assignedType: "Centaur",
+		});
+	}
+	return centaurs;
+}
+
+function generateNamedAsteroids(
+	rng: () => number,
+	belts: AsteroidBeltData[],
+	starMass: number,
+): RawPlanetEntry[] {
+	if (belts.length === 0) return [];
+	const asteroids: RawPlanetEntry[] = [];
+	for (const belt of belts) {
+		const count = rngInt(rng, 2, 4);
+		for (let i = 0; i < count; i++) {
+			const dist = rngFloat(rng, belt.minAU, belt.maxAU);
+			const maxR = i === 0 ? 300 : i === 1 ? 200 : 100;
+			const radiusKm = rngInt(rng, 5, maxR);
+			const moons: MoonData[] = [];
+			if (rng() < 0.15) {
+				const moonR = rngInt(rng, 1, Math.max(2, Math.round(radiusKm * 0.1)));
+				moons.push({
+					name: "",
+					distance: 0.02,
+					e: Math.round(rngFloat(rng, 0.0, 0.05) * 1000) / 1000,
+					period: Math.round(0.001 * (0.5 + rng()) * 100000) / 100000,
+					radius: moonR,
+					mass: estimateMass(moonR, 3000),
+					color: rngPick(rng, MOON_COLORS),
+				});
+			}
+			asteroids.push({
+				distance: Math.round(dist * 1000) / 1000,
+				e: Math.round(rngFloat(rng, 0.01, 0.35) * 1000) / 1000,
+				period: Math.round(keplerPeriod(dist, starMass) * 1000) / 1000,
+				radius: radiusKm,
+				mass: estimateMass(radiusKm, 4000),
+				color: rngPick(rng, ASTEROID_COLORS),
+				moons,
+				_radiusEarths: radiusKm / EARTH_RADIUS_KM,
+				_category: "rocky",
+				_assignedType: "Asteroid",
+			});
+		}
+	}
+	return asteroids;
 }
 
 // --- Moon Generation ---
@@ -772,14 +878,14 @@ export function generateSystem(seed: number): SystemData {
 	rawPlanets.forEach((p, i) => {
 		const letter = planetLetter(i);
 		const name = `${systemName} ${letter}`;
-		const type: BodyData["type"] = p._isDetached
-			? "Detached Object"
-			: p._isDwarf
-				? "Dwarf Planet"
-				: "Planet";
+		const type = p._assignedType;
+		const densityByType: Record<string, number> = {
+			"Dwarf Planet": 2000,
+			Centaur: 1000,
+			Asteroid: 4000,
+		};
+		const mass = type in densityByType ? estimateMass(p.radius, densityByType[type]) : p.mass;
 		const moons = generateMoons(rng, name, p._radiusEarths, p._category);
-		// Dwarf planets and detached objects use lower density (icy bodies)
-		const mass = p._isDwarf || p._isDetached ? estimateMass(p.radius, 2000) : p.mass;
 
 		bodies.push({
 			name,
@@ -797,6 +903,40 @@ export function generateSystem(seed: number): SystemData {
 	// Asteroid belts
 	const outerEdge = rawPlanets.length > 0 ? rawPlanets[rawPlanets.length - 1].distance : 5;
 	const asteroidBelts = generateAsteroidBelts(rng, rawPlanets, primary.mass, systemName);
+
+	// Centaurs
+	const centaurs = generateCentaurs(rng, rawPlanets, primary.mass);
+	centaurs.forEach((c, i) => {
+		bodies.push({
+			name: `${systemName}-Cn${i + 1}`,
+			type: "Centaur",
+			distance: c.distance,
+			e: c.e,
+			period: c.period,
+			radius: c.radius,
+			mass: c.mass,
+			color: c.color,
+			moons: [],
+		});
+	});
+
+	// Named asteroids
+	const namedAsteroids = generateNamedAsteroids(rng, asteroidBelts, primary.mass);
+	namedAsteroids.forEach((a, i) => {
+		const name = `${systemName}-A${i + 1}`;
+		const moons = a.moons.map((m, mi) => ({ ...m, name: `${name} ${ROMAN[mi]}` }));
+		bodies.push({
+			name,
+			type: "Asteroid",
+			distance: a.distance,
+			e: a.e,
+			period: a.period,
+			radius: a.radius,
+			mass: a.mass,
+			color: a.color,
+			moons,
+		});
+	});
 
 	// Comets
 	const comets = generateComets(rng, outerEdge, primary.mass, systemName);

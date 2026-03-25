@@ -17,6 +17,7 @@ function resetState() {
 	state.simTime = new GameClock(100);
 	state.timeSpeed = 1;
 	state.notificationPauseConfig = {
+		info: false,
 		"survey-complete": false,
 		"low-fuel": false,
 		"low-morale": false,

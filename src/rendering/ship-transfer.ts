@@ -158,7 +158,9 @@ export function predictTargetWorld(
 
 	// Stationary bodies (star), ships, or entities without orbital elements (asteroid proxies)
 	if (targetEntry.speed === 0 || isShipEntry(targetEntry) || targetEntry.angle === undefined) {
-		return predictStationaryOrLinearTarget(targetEntry, px, py, pz, daysFromNow);
+		return (
+			predictStationaryOrLinearTarget(targetEntry, px, py, pz, daysFromNow) ?? { x: px, y: py, z: pz }
+		);
 	}
 
 	// Comets: full 3D inclined Kepler orbit
@@ -288,8 +290,8 @@ export function createShip(config: ShipConfig): ShipEntry | undefined {
 	if (!hostPlanetEntry && (!planets || planets.length === 0)) return undefined;
 	const homePlanetData = hostPlanetEntry
 		? hostPlanetEntry.data
-		: (planets.find((b) => b.name === config.hostPlanetName) ??
-			planets.reduce((best, b) =>
+		: (planets?.find((b) => b.name === config.hostPlanetName) ??
+			planets?.reduce((best, b) =>
 				Math.abs(b.distance - 1) < Math.abs(best.distance - 1) ? b : best,
 			));
 	if (!homePlanetData) return undefined;

@@ -320,7 +320,7 @@ function updateCometPosition(
 /** Update mesh position for a regular (non-comet, non-ship) body. */
 function updateBodyPosition(entry: BodyEntry, simDt: number, moonScale: number): void {
 	entry.angle += entry.speed * simDt;
-	const ecc = entry.data.e || 0;
+	const ecc = (entry.data as { e: number }).e || 0;
 	const theta = meanToTrue(entry.angle, ecc);
 	const kr = keplerRadius(entry.data.distance, ecc, theta);
 	const r = entry.isMoon ? kr * MOON_DIST_SCALE * moonScale : scaleDist(kr);
@@ -524,7 +524,8 @@ function updateSingleBody(
 
 	// Cloud rotation
 	if (!isShipEntry(entry) && !isCometEntry(entry) && (entry as PlanetEntry).cloudMesh?.visible) {
-		(entry as PlanetEntry).cloudMesh.rotation.y += simDt * 0.002;
+		const cloud = (entry as PlanetEntry).cloudMesh;
+		if (cloud) cloud.rotation.y += simDt * 0.002;
 	}
 
 	// Trail recording -- skip if trails hidden for this category
