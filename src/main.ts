@@ -4,8 +4,10 @@ import { commanderDecide, incrementExperience, learnFromEmergencyReturn } from "
 import {
 	getUnsurvevedMoonsOfHost,
 	HULL_REPAIR_PER_DAY,
+	hullCeiling,
 	invalidateRefuelTargetCache,
 	invalidateSurveyTargetCache,
+	REFIT_BASE_DAYS,
 	SUPPLY_RESTOCK_PER_DAY,
 	selectNextRefuelTarget,
 	selectNextSurveyTarget,
@@ -623,6 +625,34 @@ function handleOverhaulCommand(ship: ShipEntry): void {
 	});
 }
 
+function computeRefitDuration(ship: ShipEntry): number {
+	const ageDays = ship.maintenance.totalAge * 0.01;
+	const baseDays = REFIT_BASE_DAYS + ageDays;
+	return Math.max(30, Math.ceil((baseDays / state.depotQuality) * state.repairMultiplier));
+}
+
+function handleMajorRefitCommand(ship: ShipEntry): void {
+	const yard = findColony();
+	routeToColony(
+		ship,
+		"major-refit",
+		`Ship stranded at ${ship.hostPlanetName} -- insufficient fuel for major refit`,
+		() => {
+			ship.action = mkAction(
+				"major-refit",
+				"major-refit",
+				state.simTime.days,
+				computeRefitDuration(ship),
+			);
+		},
+	);
+	publishIntent(ship.data.name, {
+		type: "refitting",
+		location: yard?.data.name ?? ship.hostPlanetName,
+		shipName: ship.data.name,
+	});
+}
+
 function computeRefuelShipDuration(target: ShipEntry): number {
 	const deficit = target.fuelCapacityKg - target.fuelKg;
 	return Math.max(1, Math.ceil(deficit / 10_000)); // 10,000 kg/day transfer rate
@@ -708,6 +738,9 @@ function dispatchCommand(ship: ShipEntry, result: CommandResult): void {
 		case "overhaul":
 			handleOverhaulCommand(ship);
 			break;
+		case "major-refit":
+			handleMajorRefitCommand(ship);
+			break;
 		case "refuel-ship":
 			handleRefuelShipCommand(ship);
 			break;
@@ -746,6 +779,15 @@ function completeAction(ship: ShipEntry): void {
 		addCoalescedNotification(
 			"action-complete",
 			`${ship.data.name}: Overhaul completed`,
+			ship.data.name,
+		);
+	} else if (actionType === "major-refit") {
+		ship.maintenance.age = 0;
+		ship.maintenance.lastRefitAge = ship.maintenance.totalAge;
+		ship.action = noAction();
+		addCoalescedNotification(
+			"action-complete",
+			`${ship.data.name}: Major refit completed`,
 			ship.data.name,
 		);
 	} else if (actionType === "refuel") {
@@ -825,7 +867,8 @@ function startActionTimer(ship: ShipEntry, duration: number): void {
 }
 
 function computeOverhaulDuration(ship: ShipEntry): number {
-	const hullDeficit = 100 - ship.maintenance.hullIntegrity;
+	const ceiling = hullCeiling(ship.maintenance.totalAge, ship.maintenance.lastRefitAge);
+	const hullDeficit = Math.max(0, ceiling - ship.maintenance.hullIntegrity);
 	const supplyDeficit = ship.maintenance.maxSupplies - ship.maintenance.supplies;
 	const dq = state.depotQuality;
 	const hullDays = hullDeficit / ((HULL_REPAIR_PER_DAY * dq) / state.repairMultiplier);
@@ -885,6 +928,8 @@ export function onTransferComplete(ship: ShipEntry): void {
 		startActionTimer(ship, 30);
 	} else if (actionType === "overhaul") {
 		startActionTimer(ship, computeOverhaulDuration(ship));
+	} else if (actionType === "major-refit") {
+		startActionTimer(ship, computeRefitDuration(ship));
 	} else if (actionType === "refuel-ship") {
 		const targetShip = findShip(ship.action.target ?? undefined);
 		if (targetShip) {

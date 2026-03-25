@@ -410,6 +410,13 @@ export function createShip(config: ShipConfig): ShipEntry | undefined {
 					origin: "ship" as const,
 				},
 				{
+					id: "refit-check",
+					command: "major-refit" as const,
+					condition: { type: "hull-below" as const, threshold: 60 },
+					enabled: true,
+					origin: "ship" as const,
+				},
+				{
 					id: "morale-check",
 					command: "shore-leave" as const,
 					condition: { type: "morale-below" as const, threshold: 40 },
@@ -435,7 +442,14 @@ export function createShip(config: ShipConfig): ShipEntry | undefined {
 		immediateCommand: null,
 		crew: { count: 50, morale: 100, lastShoreLeave: 0, deploymentLimit: 180 },
 		commander: { judgment: 0.3, experience: 0 },
-		maintenance: { age: 0, supplies: 100, maxSupplies: 100, hullIntegrity: 100 },
+		maintenance: {
+			age: 0,
+			totalAge: 0,
+			lastRefitAge: 0,
+			supplies: 100,
+			maxSupplies: 100,
+			hullIntegrity: 100,
+		},
 		action: { type: null, commandId: null, startTime: 0, duration: 0, progress: 0 },
 		stationTarget: null,
 	} as ShipEntry;
