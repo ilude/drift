@@ -123,7 +123,10 @@ function tickMoraleDecay(
 		// Crew recovers morale slowly during overhaul ("working from home")
 		ship.crew.morale = Math.min(100, ship.crew.morale + rates.overhaulMoraleRate * simDt);
 		ship.crew.lastShoreLeave = simTime;
-	} else if (!atColony) {
+	} else if (atColony) {
+		// Crew is at port -- deployment clock doesn't tick
+		ship.crew.lastShoreLeave = simTime;
+	} else {
 		const daysSinceLeave = simTime - ship.crew.lastShoreLeave;
 		ship.crew.morale = computeMorale(daysSinceLeave, ship.crew.deploymentLimit);
 	}
