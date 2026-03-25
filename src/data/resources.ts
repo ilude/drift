@@ -306,19 +306,29 @@ function buildPool(bodyType: string, radius: number): WeightedResource[] {
 		];
 	}
 
-	if (bodyType === "Detached Object") {
+	if (bodyType === "Centaur") {
 		return [
-			{ id: "iron", weight: 10 },
-			{ id: "water", weight: 10 },
-			{ id: "nitrogen", weight: 8 },
-			{ id: "carbon", weight: 8 },
-			{ id: "ortheum", weight: 15 },
-			{ id: "cadrine", weight: 12 },
-			{ id: "vantine", weight: 10 },
-			{ id: "nemorin", weight: 10 },
-			{ id: "caritene", weight: 8 },
-			{ id: "heliate", weight: 5 },
-			{ id: "uranium", weight: 4 },
+			{ id: "water", weight: 30 },
+			{ id: "nitrogen", weight: 20 },
+			{ id: "hydrocarbons", weight: 15 },
+			{ id: "carbon", weight: 10 },
+			{ id: "helium-3", weight: 8 },
+			{ id: "ortheum", weight: 7 },
+			{ id: "nemorin", weight: 5 },
+			{ id: "vantine", weight: 5 },
+		];
+	}
+
+	if (bodyType === "Asteroid") {
+		return [
+			{ id: "iron", weight: 25 },
+			{ id: "nickel-iron", weight: 20 },
+			{ id: "platinum", weight: 12 },
+			{ id: "titanium", weight: 10 },
+			{ id: "silicon", weight: 10 },
+			{ id: "copper", weight: 8 },
+			{ id: "aluminum", weight: 8 },
+			{ id: "rare-earth", weight: 7 },
 		];
 	}
 

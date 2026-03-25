@@ -168,14 +168,14 @@ describe("generateDeposits", () => {
 		}
 	});
 
-	it("detached object body type uses detached object pool", () => {
-		// Detached Object pool includes unique resources like cadrine and caritene
-		// that don't appear in the rocky planet pool
+	it("centaur body type uses centaur pool", () => {
+		// Centaur pool includes unique resources like helium-3 and hydrocarbons
+		// with high weights, distinctive from rocky planets
 		let foundUniqueResource = false;
-		const uniqueResources = new Set(["caritene", "heliate", "cadrine"]);
-		// Search through multiple seeds to find deposits with unique detached object resources
+		const uniqueResources = new Set(["helium-3", "hydrocarbons"]);
+		// Search through multiple seeds to find deposits with unique centaur resources
 		for (let seed = 1; seed < 100 && !foundUniqueResource; seed++) {
-			const deposits = generateDeposits(seed, `DetachedObject${seed}`, "Detached Object", 500);
+			const deposits = generateDeposits(seed, `Centaur${seed}`, "Centaur", 500);
 			for (const d of deposits) {
 				if (uniqueResources.has(d.resourceId)) {
 					foundUniqueResource = true;
@@ -183,31 +183,28 @@ describe("generateDeposits", () => {
 				}
 			}
 		}
-		// At least one unique detached object resource should appear
+		// At least one unique centaur resource should appear
 		expect(foundUniqueResource).toBe(true);
 	});
 
-	it("detached object deposits have valid resource ids from detached object pool", () => {
-		const validDetachedObjectIds = new Set([
+	it("asteroid deposits have valid resource ids from asteroid pool", () => {
+		const validAsteroidIds = new Set([
 			"iron",
-			"water",
-			"nitrogen",
-			"carbon",
-			"ortheum",
-			"cadrine",
-			"vantine",
-			"nemorin",
-			"caritene",
-			"heliate",
-			"uranium",
+			"nickel-iron",
+			"platinum",
+			"titanium",
+			"silicon",
+			"copper",
+			"aluminum",
+			"rare-earth",
 		]);
 		let testedCount = 0;
 		for (let seed = 1; seed < 100 && testedCount < 10; seed++) {
-			const deposits = generateDeposits(seed, `DetachedObject${seed}`, "Detached Object", 500);
+			const deposits = generateDeposits(seed, `Asteroid${seed}`, "Asteroid", 500);
 			if (deposits.length === 0) continue;
 			testedCount++;
 			for (const d of deposits) {
-				expect(validDetachedObjectIds.has(d.resourceId)).toBe(true);
+				expect(validAsteroidIds.has(d.resourceId)).toBe(true);
 			}
 		}
 		expect(testedCount).toBeGreaterThan(0);
