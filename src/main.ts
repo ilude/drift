@@ -20,19 +20,10 @@ import {
 import { GameClock } from "./core/game-clock";
 import { publishIntent } from "./core/intents";
 import { addCoalescedNotification, addNotification } from "./core/notifications";
-import {
-	gameLog,
-	gameWarn,
-	loadSavedState,
-	MASTER_SEED,
-	restoreShipState,
-	saveState,
-	state,
-} from "./core/state";
+import { gameLog, gameWarn, MASTER_SEED, state } from "./core/state";
 import { seededRandom } from "./core/utils";
 import { generateDeposits } from "./data/resources";
 import { getSolSystem } from "./data/sol-data";
-import { generateSystem } from "./data/system-generator";
 import { DIST_SCALE } from "./math/orbit";
 import { AU_TO_KM, checkTransferKm } from "./math/ship-physics";
 import { SURVEYED_ASTEROID_COLOR } from "./rendering/bodies";
@@ -47,14 +38,7 @@ import {
 } from "./rendering/rendering";
 import { camera, cometGroup, controls, renderer, scene, trailGroups } from "./rendering/scene";
 import { asteroidProxy, initiateTransfer, setOnTransferComplete } from "./rendering/ship-transfer";
-import type {
-	BodyEntry,
-	CommandResult,
-	PlanetEntry,
-	SavedStateData,
-	ShipEntry,
-	SystemData,
-} from "./types";
+import type { BodyEntry, CommandResult, PlanetEntry, ShipEntry, SystemData } from "./types";
 import { isCometEntry, isShipEntry, isSurveyable } from "./types";
 import { pushResourceUpdate } from "./ui/resource-viewer";
 import {
@@ -85,40 +69,10 @@ state.discoveredSystems.set("sol", {
 	systemData: sol,
 });
 
-// Restore saved state if available
-const saved: SavedStateData | null = loadSavedState();
-if (saved) {
-	// Advance masterRng to match previous random discovery count
-	for (let i = 0; i < saved.randomClickCount; i++) state.masterRng?.();
-	state.randomClickCount = saved.randomClickCount;
-
-	// Regenerate discovered systems from saved seeds
-	saved.discoveredSystems.forEach(({ key, name, seed }) => {
-		const systemData: SystemData = generateSystem(seed);
-		state.discoveredSystems.set(key, { name, seed, systemData });
-	});
-
-	// Load the active system
-	const active = state.discoveredSystems.get(saved.currentSystemKey);
-	if (active) {
-		state.currentSystemKey = saved.currentSystemKey;
-		state.BODIES = active.systemData.bodies;
-		state.COMETS = active.systemData.comets;
-		state.ASTEROID_BELTS = active.systemData.asteroidBelts;
-		state.simTime = new GameClock(saved.simTime);
-		(document.querySelector(".system-name") as HTMLElement).textContent =
-			`${active.systemData.name} \u25be`;
-		document.title = `Drift - ${active.systemData.name}`;
-	} else {
-		state.BODIES = sol.bodies;
-		state.COMETS = sol.comets;
-		state.ASTEROID_BELTS = sol.asteroidBelts;
-	}
-} else {
-	state.BODIES = sol.bodies;
-	state.COMETS = sol.comets;
-	state.ASTEROID_BELTS = sol.asteroidBelts;
-}
+// Always start fresh — manual save via header menu
+state.BODIES = sol.bodies;
+state.COMETS = sol.comets;
+state.ASTEROID_BELTS = sol.asteroidBelts;
 
 createBodies();
 createComets();
@@ -127,7 +81,6 @@ updatePositions(1e-10, 300);
 createShip({ name: "ISS Explorer", hostPlanetName: "Earth" });
 createShip({ name: "ISS Magellan", hostPlanetName: "Mars" });
 createShip({ name: "ISS Kepler", hostPlanetName: "Jupiter" });
-if (saved) restoreShipState(saved);
 state.asteroidBelts = createAsteroidBelts();
 rebuildEntityMaps();
 
@@ -149,9 +102,6 @@ if (shipEntry) selectBody(shipEntry);
 
 // Register transfer completion hook for command dispatch
 setOnTransferComplete(onTransferComplete);
-
-// Auto-save on page unload
-window.addEventListener("beforeunload", saveState);
 
 // Dismiss splash screen and reveal game UI
 const splash = document.getElementById("splash-screen");

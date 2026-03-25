@@ -1,7 +1,14 @@
 import * as THREE from "three";
 import { findAsteroidEntity, findBody, findShip } from "../core/entities";
-import { getUnreadCount, markAllRead, markRead } from "../core/notifications";
-import { formatDateTime, gameLog, simTimeToDate, state, truncateDate } from "../core/state";
+import { addNotification, getUnreadCount, markAllRead, markRead } from "../core/notifications";
+import {
+	formatDateTime,
+	gameLog,
+	saveState,
+	simTimeToDate,
+	state,
+	truncateDate,
+} from "../core/state";
 import { generateSystem } from "../data/system-generator";
 import {
 	bodyScaleFactor,
@@ -668,6 +675,12 @@ export function setupUI(loadSystem: (systemData: SystemData) => void): void {
 	document.getElementById("btn-resources")?.addEventListener("click", () => {
 		if (isResourceViewerOpen()) closeResourceViewer();
 		else openResourceViewer();
+	});
+
+	// Manual save
+	document.getElementById("btn-save")?.addEventListener("click", () => {
+		saveState();
+		addNotification("info", "Game saved.");
 	});
 
 	// Handle body selection from resource viewer popout
