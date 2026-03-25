@@ -61,6 +61,8 @@ function commandToResult(
 			return { action: "shore-leave" };
 		case "overhaul":
 			return { action: "overhaul" };
+		case "major-refit":
+			return { action: "major-refit" };
 		case "refuel-ship":
 			return { action: "refuel-ship" };
 		case "return-to-base":
@@ -124,7 +126,12 @@ function getConditionMetrics(
 }
 
 function isMaintenanceAction(action: CommandResult["action"]): boolean {
-	return action === "refuel" || action === "overhaul" || action === "shore-leave";
+	return (
+		action === "refuel" ||
+		action === "overhaul" ||
+		action === "major-refit" ||
+		action === "shore-leave"
+	);
 }
 
 // "Finish the job before heading home" — defer maintenance when already at an unsurveyed
