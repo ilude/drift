@@ -17,8 +17,6 @@ interface DepositCell {
 interface BodyRow {
 	bodyName: string;
 	bodyType: string;
-	distanceAU: number;
-	surveyLevel: number;
 	totalValue: number;
 	deposits: Record<string, DepositCell>; // keyed by resourceId
 }
@@ -86,8 +84,6 @@ export function collectBodyRows(): BodyRow[] {
 		rows.push({
 			bodyName: entry.data.name,
 			bodyType: entry.isMoon ? "Moon" : entry.data.type,
-			distanceAU: entry.data.distance,
-			surveyLevel: entry.survey.surveyLevel,
 			totalValue,
 			deposits,
 		});
@@ -118,8 +114,6 @@ function addAsteroidRow(rows: BodyRow[], asteroid: AsteroidInfo): void {
 	rows.push({
 		bodyName: asteroid.designation,
 		bodyType: "Asteroid",
-		distanceAU: asteroid.au,
-		surveyLevel: asteroid.survey.surveyLevel,
 		totalValue,
 		deposits,
 	});
@@ -319,8 +313,6 @@ thead th .sort-ind { color: #4a6a4a; font-size: 9px; margin-left: 2px; }
 thead th.sorted .sort-ind { color: #88cc88; }
 th.col-body { text-align: left; min-width: 120px; position: sticky; left: 0; z-index: 3; }
 th.col-type { text-align: left; min-width: 65px; }
-th.col-dist { text-align: right; min-width: 55px; }
-th.col-lv { text-align: center; min-width: 30px; }
 th.col-total { text-align: right; min-width: 70px; }
 th.col-res { min-width: 80px; padding: 4px 8px; font-size: 10px; text-align: right; }
 
@@ -330,8 +322,6 @@ td.cell-body {
 	text-align: left; max-width: 150px; overflow: hidden; text-overflow: ellipsis;
 }
 td.cell-type { text-align: left; color: #6a9a6a; }
-td.cell-dist { text-align: right; color: #6a9a6a; }
-td.cell-lv { text-align: center; color: #6a9a6a; }
 td.cell-total { text-align: right; font-weight: bold; }
 td.cell-dep { text-align: right; font-size: 10px; }
 td.cell-dep.empty { color: #222; }
@@ -436,7 +426,7 @@ function saveState() {
 }
 
 function visibleResCols() {
-	if (activeTab === "all") return [];
+	if (activeTab === "all") return resCols;
 	return resCols.filter(rc => rc.category === activeTab);
 }
 
@@ -479,8 +469,6 @@ function sortBodies(arr) {
 		let av, bv;
 		if (sortCol === "bodyName") { av = a.bodyName; bv = b.bodyName; }
 		else if (sortCol === "bodyType") { av = a.bodyType; bv = b.bodyType; }
-		else if (sortCol === "distanceAU") { av = a.distanceAU; bv = b.distanceAU; }
-		else if (sortCol === "surveyLevel") { av = a.surveyLevel; bv = b.surveyLevel; }
 		else if (sortCol === "totalValue") { av = a.totalValue; bv = b.totalValue; }
 		else {
 			// Sort by a resource column
@@ -500,8 +488,6 @@ function buildHeader() {
 	let h = "";
 	h += '<th class="col-body" data-col="bodyName">Body<span class="sort-ind"></span></th>';
 	h += '<th class="col-type" data-col="bodyType">Type<span class="sort-ind"></span></th>';
-	h += '<th class="col-dist" data-col="distanceAU">Dist<span class="sort-ind"></span></th>';
-	h += '<th class="col-lv" data-col="surveyLevel">Lv<span class="sort-ind"></span></th>';
 	h += '<th class="col-total" data-col="totalValue">Total<span class="sort-ind"></span></th>';
 	for (const rc of vrc) {
 		h += '<th class="col-res cat-' + rc.category + '" data-col="' + rc.id + '" title="' + rc.symbol + ' — ' + rc.category + '">' + rc.name + '<span class="sort-ind"></span></th>';
@@ -539,8 +525,6 @@ function render() {
 		let row = '<tr class="' + sel.trim() + '">';
 		row += '<td class="cell-body"><a class="body-link" data-name="' + r.bodyName.replace(/"/g,"&quot;") + '">' + r.bodyName + '</a></td>';
 		row += '<td class="cell-type">' + r.bodyType + '</td>';
-		row += '<td class="cell-dist">' + r.distanceAU.toFixed(2) + '</td>';
-		row += '<td class="cell-lv">' + r.surveyLevel + '</td>';
 		row += '<td class="cell-total">' + fmtK(r.totalValue) + '</td>';
 		for (const rc of vrc) {
 			const dep = r.deposits[rc.id];

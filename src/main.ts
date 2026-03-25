@@ -24,7 +24,7 @@ import { publishIntent } from "./core/intents";
 import { addCoalescedNotification, addNotification } from "./core/notifications";
 import { gameLog, gameWarn, MASTER_SEED, state } from "./core/state";
 import { seededRandom } from "./core/utils";
-import { generateDeposits } from "./data/resources";
+import { generateDeposits, generateEarthDeposits } from "./data/resources";
 import { getSolSystem } from "./data/sol-data";
 import { DIST_SCALE } from "./math/orbit";
 import { AU_TO_KM, checkTransferKm } from "./math/ship-physics";
@@ -134,12 +134,12 @@ createShip({
 state.asteroidBelts = createAsteroidBelts();
 rebuildEntityMaps();
 
-// Mark Earth as pre-surveyed (home world)
+// Mark Earth as fully surveyed (home world — all resources available)
 const earthEntry = findBody("Earth");
 if (earthEntry && isSurveyable(earthEntry)) {
 	earthEntry.survey = {
-		surveyLevel: 1,
-		deposits: generateDeposits(42, "Earth", "Planet", 6371),
+		surveyLevel: 3,
+		deposits: generateEarthDeposits(),
 	};
 }
 

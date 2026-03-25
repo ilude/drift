@@ -258,6 +258,56 @@ export function getMinableResources(): readonly ResourceDef[] {
 	return RESOURCES.filter((r) => r.minable);
 }
 
+// --- Earth homeworld deposits (all resources available) ---
+
+const EARTH_QUANTITIES: Record<string, { qty: number; access: number }> = {
+	// Metals — abundant
+	iron: { qty: 50000, access: 0.9 },
+	copper: { qty: 25000, access: 0.85 },
+	titanium: { qty: 15000, access: 0.7 },
+	aluminum: { qty: 35000, access: 0.9 },
+	tungsten: { qty: 8000, access: 0.6 },
+	// Volatiles — abundant
+	water: { qty: 80000, access: 0.95 },
+	"helium-3": { qty: 500, access: 0.3 },
+	nitrogen: { qty: 40000, access: 0.9 },
+	hydrocarbons: { qty: 30000, access: 0.8 },
+	carbon: { qty: 20000, access: 0.85 },
+	// Industrial — moderate
+	silicates: { qty: 60000, access: 0.9 },
+	"rare-earths": { qty: 3000, access: 0.5 },
+	lithium: { qty: 5000, access: 0.6 },
+	germanium: { qty: 1000, access: 0.4 },
+	platinum: { qty: 800, access: 0.35 },
+	// Radioactive — scarce
+	uranium: { qty: 2000, access: 0.5 },
+	thorium: { qty: 3000, access: 0.55 },
+	plutonium: { qty: 200, access: 0.2 },
+	tritium: { qty: 100, access: 0.15 },
+	radium: { qty: 500, access: 0.3 },
+	// Umbral — rare (deep earth / exotic)
+	ortheum: { qty: 50, access: 0.1 },
+	cadrine: { qty: 30, access: 0.1 },
+	vantine: { qty: 20, access: 0.05 },
+	nemorin: { qty: 40, access: 0.1 },
+	synthex: { qty: 10, access: 0.05 },
+	prothite: { qty: 15, access: 0.05 },
+	eclarium: { qty: 5, access: 0.03 },
+};
+
+export function generateEarthDeposits(): ResourceDeposit[] {
+	return RESOURCES.map((r) => {
+		const eq = EARTH_QUANTITIES[r.id] ?? { qty: 100, access: 0.1 };
+		return {
+			resourceId: r.id,
+			quantity: eq.qty,
+			accessibility: eq.access,
+			mined: 0,
+			minSurveyLevel: surveyLevelFromAccess(eq.access),
+		};
+	});
+}
+
 // --- Deposit generation ---
 
 interface WeightedResource {
@@ -275,10 +325,12 @@ function pickWeighted(rng: () => number, pool: WeightedResource[]): string {
 	return pool[pool.length - 1].id;
 }
 
-function surveyLevel(category: ResourceCategory): number {
-	if (category === "metal" || category === "volatile") return 1;
-	if (category === "industrial" || category === "radioactive") return 2;
-	return 3; // umbral
+/** Survey level = scan depth. High accessibility = near surface (level 1).
+ *  Low accessibility = deep deposits requiring advanced sensors. */
+function surveyLevelFromAccess(accessibility: number): number {
+	if (accessibility >= 0.5) return 1; // surface/shallow — basic sensors
+	if (accessibility >= 0.2) return 2; // mid-depth — improved sensors
+	return 3; // deep — advanced sensors
 }
 
 function buildPool(bodyType: string, radius: number): WeightedResource[] {
@@ -374,8 +426,6 @@ export function generateDeposits(
 
 	for (let i = 0; i < count; i++) {
 		const resourceId = pickWeighted(rng, pool);
-		const def = getResourceDef(resourceId);
-		const category = def?.category ?? "metal";
 
 		const quantity = Math.max(1, Math.floor(rng() * baseQuantity));
 		const accessibility = isComet
@@ -387,7 +437,7 @@ export function generateDeposits(
 			quantity,
 			accessibility,
 			mined: 0,
-			minSurveyLevel: surveyLevel(category),
+			minSurveyLevel: surveyLevelFromAccess(accessibility),
 		});
 	}
 

@@ -50,7 +50,6 @@ describe("collectBodyRows", () => {
 		expect(rows).toHaveLength(1);
 		expect(rows[0].bodyName).toBe("Mars");
 		expect(rows[0].bodyType).toBe("Planet");
-		expect(rows[0].distanceAU).toBe(1.52);
 		expect(rows[0].deposits.iron.quantity).toBe(5000);
 		expect(rows[0].deposits.iron.accessibility).toBe(0.8);
 		expect(rows[0].deposits.iron.miningValue).toBe(4000);
@@ -113,7 +112,6 @@ describe("collectBodyRows", () => {
 		expect(rows).toHaveLength(1);
 		expect(rows[0].bodyName).toBe("2003 AZ84");
 		expect(rows[0].bodyType).toBe("Asteroid");
-		expect(rows[0].distanceAU).toBe(3.5);
 		expect(rows[0].deposits.water.quantity).toBe(8000);
 		expect(rows[0].deposits.water.miningValue).toBe(7200);
 	});
