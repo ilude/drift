@@ -124,6 +124,7 @@ export type CommandType =
 	| "refuel-ship"
 	| "shore-leave"
 	| "overhaul"
+	| "major-refit"
 	| "return-to-base"
 	| "idle";
 
@@ -148,7 +149,15 @@ export interface CommandTree {
 }
 
 export interface CommandResult {
-	action: "transfer" | "survey" | "refuel" | "refuel-ship" | "overhaul" | "shore-leave" | "idle";
+	action:
+		| "transfer"
+		| "survey"
+		| "refuel"
+		| "refuel-ship"
+		| "overhaul"
+		| "major-refit"
+		| "shore-leave"
+		| "idle";
 	target?: string;
 }
 
@@ -161,7 +170,8 @@ export type ShipIntent =
 	| { type: "overhauling"; location: string; shipName: string }
 	| { type: "shore-leave"; location: string; shipName: string }
 	| { type: "idle"; location: string; shipName: string }
-	| { type: "tanking"; target: string; shipName: string };
+	| { type: "tanking"; target: string; shipName: string }
+	| { type: "refitting"; location: string; shipName: string };
 
 // --- Ship sub-interfaces ---
 
@@ -179,6 +189,8 @@ export interface Commander {
 
 export interface ShipMaintenance {
 	age: number;
+	totalAge: number;
+	lastRefitAge: number;
 	supplies: number;
 	maxSupplies: number;
 	hullIntegrity: number;
