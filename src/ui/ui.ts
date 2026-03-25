@@ -70,11 +70,13 @@ export function buildBodyList(): void {
 
 		const header = document.createElement("div");
 		header.className = "body-group-header";
-		header.innerHTML = `<span class="body-group-toggle">[-]</span> ${groupLabels[type] || type} <span class="body-group-count">(${entries.length})</span>`;
+		const startCollapsed = type === "Centaur" || type === "Asteroid";
+		header.innerHTML = `<span class="body-group-toggle">${startCollapsed ? "[+]" : "[-]"}</span> ${groupLabels[type] || type} <span class="body-group-count">(${entries.length})</span>`;
 		section.appendChild(header);
 
 		const list = document.createElement("div");
 		list.className = "body-group-list";
+		if (startCollapsed) list.style.display = "none";
 		section.appendChild(list);
 
 		header.addEventListener("click", () => {
