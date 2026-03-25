@@ -233,6 +233,16 @@ function updateBodyLod(entry: BodyEntry, sr: number, needsLodUpdate: boolean): v
 	if ("cloudMesh" in entry && entry.cloudMesh) entry.cloudMesh.visible = sr > 15;
 }
 
+const OPACITY_TIERS = ["label-hidden", "label-far", "label-mid", "label-near"] as const;
+type OpacityTier = (typeof OPACITY_TIERS)[number];
+
+function opacityTier(opacity: number): OpacityTier {
+	if (opacity < 0.15) return "label-hidden";
+	if (opacity < 0.45) return "label-far";
+	if (opacity < 0.75) return "label-mid";
+	return "label-near";
+}
+
 function updateBodyLabelTransform(
 	entry: BodyEntry,
 	cx: number,
@@ -246,9 +256,10 @@ function updateBodyLabelTransform(
 	dist: number,
 ): void {
 	const labelOpacity = Math.max(0.3, Math.min(1.0, 1.0 - dist / (camDist * 3)));
-	const prevOpacity = Number.parseFloat(entry.labelDiv.style.opacity || "1");
-	if (Math.abs(labelOpacity - prevOpacity) > 0.05) {
-		entry.labelDiv.style.opacity = labelOpacity.toFixed(2);
+	const tier = opacityTier(labelOpacity);
+	if (tier !== entry.labelOpacityTier) {
+		for (const t of OPACITY_TIERS) entry.labelDiv.classList.toggle(t, t === tier);
+		entry.labelOpacityTier = tier;
 	}
 	if (!shouldUpdateTransforms) return;
 	const pos = computeLabelPosition(cx, cy, sr, screenW, screenH, margin);
@@ -341,7 +352,7 @@ function getOrCreateAsteroidLabel(name: string): HTMLDivElement {
 	if (!label) {
 		label = document.createElement("div");
 		label.style.cssText =
-			"position:absolute;color:#8899aa;font-family:'Courier New',monospace;" +
+			"position:absolute;color:#8899aa;font-family:'Exo 2',sans-serif;" +
 			"font-size:10px;white-space:nowrap;text-shadow:0 0 4px #000,0 0 2px #000;opacity:0.85;";
 		labelContainer.appendChild(label);
 		asteroidLabels.set(name, label);
@@ -443,6 +454,36 @@ let labelFrameCounter = 0;
 const asteroidLabels = new Map<string, HTMLDivElement>();
 const astLabelVec = new THREE.Vector3();
 
+let _surveyTargets = new Set<string>();
+let _surveyTargetsDirty = true;
+
+export function markSurveyTargetsDirty(): void {
+	_surveyTargetsDirty = true;
+}
+
+function refreshSurveyTargets(): void {
+	if (!_surveyTargetsDirty) return;
+	_surveyTargets = new Set<string>();
+	for (const e of state.bodyMeshes) {
+		if (isShipEntry(e) && e.action.type === "survey-nearest" && e.action.target) {
+			_surveyTargets.add(e.action.target);
+		}
+	}
+	_surveyTargetsDirty = false;
+}
+
+function buildOrbitingShipsMap(): Map<string, ShipEntry[]> {
+	const map = new Map<string, ShipEntry[]>();
+	for (const entry of state.bodyMeshes) {
+		if (isShipEntry(entry) && entry.shipState === "orbiting") {
+			const host = entry.hostPlanetName;
+			if (!map.has(host)) map.set(host, []);
+			map.get(host)?.push(entry);
+		}
+	}
+	return map;
+}
+
 export function updateLabels(camDist: number): void {
 	const cv = state.categoryVisibility;
 	const zoomFactor = ZOOM_BASE / camDist;
@@ -452,12 +493,8 @@ export function updateLabels(camDist: number): void {
 	const screenH = window.innerHeight;
 	const screenW = window.innerWidth;
 
-	const surveyTargets = new Set<string>();
-	for (const e of state.bodyMeshes) {
-		if (isShipEntry(e) && e.action.type === "survey-nearest" && e.action.target) {
-			surveyTargets.add(e.action.target);
-		}
-	}
+	refreshSurveyTargets();
+	const surveyTargets = _surveyTargets;
 
 	const needsScaleUpdate = scaleFactor !== lastScaleFactor;
 	const needsLodUpdate =
@@ -467,17 +504,7 @@ export function updateLabels(camDist: number): void {
 	labelFrameCounter = (labelFrameCounter + 1) % 2;
 	const shouldUpdateTransforms = labelFrameCounter === 0;
 
-	// Build map of body names to orbiting ships (for grouping under body labels)
-	const orbitingShipsAtBody = new Map<string, ShipEntry[]>();
-	for (const entry of state.bodyMeshes) {
-		if (isShipEntry(entry) && entry.shipState === "orbiting") {
-			const host = entry.hostPlanetName;
-			if (!orbitingShipsAtBody.has(host)) {
-				orbitingShipsAtBody.set(host, []);
-			}
-			orbitingShipsAtBody.get(host)?.push(entry);
-		}
-	}
+	const orbitingShipsAtBody = buildOrbitingShipsMap();
 
 	const ctx: LabelUpdateCtx = {
 		cv,

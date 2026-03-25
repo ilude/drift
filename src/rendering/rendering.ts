@@ -13,7 +13,7 @@ import { moonOrbitScale } from "../math/visual";
 import type { CategoryKey, PlanetEntry, ShipEntry } from "../types";
 import { isCometEntry, isShipEntry } from "../types";
 import { COMET_TRAIL_STEP_ARC, orbitToWorld } from "./bodies";
-import { ZOOM_BASE } from "./scene";
+import { camera, ZOOM_BASE } from "./scene";
 import {
 	asteroidProxy,
 	completeTransfer,
@@ -59,8 +59,19 @@ export function updateAsteroids(dt: number): void {
 	const simDt = dt * state.timeSpeed;
 	if (simDt === 0) return;
 
+	// Precompute camera frustum scale for screen-size estimation.
+	// tan(fov/2) * 2 gives the ratio of world units to screen height at distance 1.
+	const fovScale = 2 * Math.tan(((camera.fov * Math.PI) / 180) * 0.5);
+
 	state.asteroidBelts.forEach(
-		({ positions, angles, radii, speeds, cosInc, sinInc, cosNode, sinNode, count, points }) => {
+		({ belt, positions, angles, radii, speeds, cosInc, sinInc, cosNode, sinNode, count, points }) => {
+			// Estimate belt screen-space diameter: belt radius in world units / camera distance.
+			const midAU = (belt.minAU + belt.maxAU) * 0.5;
+			const beltWorldR = scaleDist(midAU);
+			const camDist = camera.position.length(); // belt is centered at origin
+			const screenPixels = (beltWorldR / (camDist * fovScale)) * window.innerHeight;
+			if (screenPixels < 2) return; // belt is sub-pixel; skip update, keep cached positions
+
 			for (let i = 0; i < count; i++) {
 				angles[i] += speeds[i] * simDt;
 				const r = radii[i];
@@ -115,6 +126,16 @@ function maybeResplineTransfer(
 	tEased: number,
 	elapsed: number,
 ): void {
+	const t = Math.min(elapsed / entry.transferTimeDays, 1);
+	if (t >= 0.8) {
+		// In capture-blend zone — just track target position lightly, skip expensive respline check.
+		const tgtY = tgt.mesh.position.y ?? 0;
+		entry.p1x = tgt.mesh.position.x;
+		entry.p1y = tgtY;
+		entry.p1z = tgt.mesh.position.z;
+		return;
+	}
+
 	const offset = stationKeepingOffset(tgt);
 	const approachAngle = Math.atan2(
 		entry.mesh.position.z - tgt.mesh.position.z,
@@ -124,21 +145,18 @@ function maybeResplineTransfer(
 	const newP1y = tgt.mesh.position.y ?? 0;
 	const newP1z = tgt.mesh.position.z + Math.sin(approachAngle) * offset;
 
-	const endpointDelta = Math.sqrt(
-		(newP1x - entry.p1x) ** 2 + (newP1y - entry.p1y) ** 2 + (newP1z - entry.p1z) ** 2,
-	);
-	const remainingDist = Math.sqrt(
+	const endpointDeltaSq =
+		(newP1x - entry.p1x) ** 2 + (newP1y - entry.p1y) ** 2 + (newP1z - entry.p1z) ** 2;
+	const remainingDistSq =
 		(newP1x - entry.mesh.position.x) ** 2 +
-			(newP1y - entry.mesh.position.y) ** 2 +
-			(newP1z - entry.mesh.position.z) ** 2,
-	);
+		(newP1y - entry.mesh.position.y) ** 2 +
+		(newP1z - entry.mesh.position.z) ** 2;
 
-	const t = Math.min(elapsed / entry.transferTimeDays, 1);
-	const shouldRespline = t < 0.8 && endpointDelta > Math.max(0.5, remainingDist * 0.1);
+	const shouldRespline = endpointDeltaSq > Math.max(0.25, remainingDistSq * 0.01);
 
 	if (shouldRespline) {
 		gameLog(
-			`[re-spline] ${entry.data.name}: delta=${endpointDelta.toFixed(3)} t=${t.toFixed(4)} remaining=${(entry.transferTimeDays - elapsed).toFixed(1)}d fuel=${entry.fuelKg.toFixed(0)}kg fuelBudget=${entry.transferFuelTotal.toFixed(0)}kg`,
+			`[re-spline] ${entry.data.name}: deltaSq=${endpointDeltaSq.toFixed(3)} t=${t.toFixed(4)} remaining=${(entry.transferTimeDays - elapsed).toFixed(1)}d fuel=${entry.fuelKg.toFixed(0)}kg fuelBudget=${entry.transferFuelTotal.toFixed(0)}kg`,
 		);
 		const curPos = transferPosition(entry, tEased);
 		const curDeriv = hermiteDerivative(
@@ -211,13 +229,14 @@ function captureBlend(
 	};
 }
 
-/** Inject sub-step trail points for high-warp transfers to avoid gaps. */
-function injectSubstepTrail(entry: ShipEntry, simDt: number, tNow: number): void {
+/** Inject sub-step trail points for high-warp transfers to avoid gaps.
+ * Returns true if any points were injected; caller must apply fade + flush. */
+function injectSubstepTrail(entry: ShipEntry, simDt: number, tNow: number): boolean {
 	const tr = entry.trail;
-	if (tr.count === 0 || entry.transferTimeDays === 0) return;
+	if (tr.count === 0 || entry.transferTimeDays === 0) return false;
 
 	const tStep = simDt / entry.transferTimeDays;
-	if (tStep <= 1 / 30) return;
+	if (tStep <= 1 / 30) return false;
 
 	const tPrev = Math.max(0, tNow - tStep);
 	const nSteps = Math.ceil(tStep * 30);
@@ -236,10 +255,8 @@ function injectSubstepTrail(entry: ShipEntry, simDt: number, tNow: number): void
 		if (tr.count < tr.maxPoints) tr.count++;
 	}
 	tr.sampleAccum = 0;
-
 	buildTrailIndices(tr.head, tr.count, tr.maxPoints, tr.indices);
-	applyTrailFade(tr);
-	flushTrailGeometry(tr);
+	return true;
 }
 
 /** Check if the transfer is done and finalize it if so. */
@@ -296,7 +313,11 @@ function updateTransferringShip(entry: ShipEntry, simDt: number): void {
 	const final = tgt ? captureBlend(tgt, p, tNow) : p;
 	entry.mesh.position.set(final.x, final.y, final.z);
 
-	injectSubstepTrail(entry, simDt, tNow);
+	const substepsInjected = injectSubstepTrail(entry, simDt, tNow);
+	if (substepsInjected) {
+		applyTrailFade(entry.trail);
+		flushTrailGeometry(entry.trail);
+	}
 	checkTransferCompletion(entry, tgt, elapsedNow, tNow);
 }
 

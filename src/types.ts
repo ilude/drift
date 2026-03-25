@@ -249,6 +249,7 @@ interface BaseEntry {
 	labelX?: number;
 	labelY?: number;
 	labelDisplay?: string;
+	labelOpacityTier?: string;
 	labelUpdateFrame?: number;
 	trail: TrailState;
 	angle: number;

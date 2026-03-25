@@ -4,6 +4,8 @@ import { commanderDecide, incrementExperience, learnFromEmergencyReturn } from "
 import {
 	getUnsurvevedMoonsOfHost,
 	HULL_REPAIR_PER_DAY,
+	invalidateRefuelTargetCache,
+	invalidateSurveyTargetCache,
 	SUPPLY_RESTOCK_PER_DAY,
 	selectNextRefuelTarget,
 	selectNextSurveyTarget,
@@ -58,7 +60,14 @@ import {
 	updateSelectedBody,
 } from "./ui/selection";
 import type { PerfTimings } from "./ui/ui";
-import { buildBodyList, setupUI, updateHUD, updateLabels, updatePerfDisplay } from "./ui/ui";
+import {
+	buildBodyList,
+	markSurveyTargetsDirty,
+	setupUI,
+	updateHUD,
+	updateLabels,
+	updatePerfDisplay,
+} from "./ui/ui";
 
 // ---------------------------------------------------------------------------
 // Initialize
@@ -313,6 +322,7 @@ function mkAction(
 }
 
 function completeSurvey(ship: ShipEntry): void {
+	invalidateSurveyTargetCache();
 	const bodyName = ship.action.target ?? ship.hostPlanetName;
 
 	// Try body first, then asteroid
@@ -649,6 +659,8 @@ function handleRefuelShipCommand(ship: ShipEntry): void {
 	}
 }
 
+const _lastCommandEval = new Map<string, number>();
+
 let _dispatchDepth = 0;
 function dispatchCommand(ship: ShipEntry, result: CommandResult): void {
 	_dispatchDepth++;
@@ -697,12 +709,15 @@ function dispatchCommand(ship: ShipEntry, result: CommandResult): void {
 			});
 			break;
 	}
+	markSurveyTargetsDirty();
 	_dispatchDepth = 0;
 }
 
 function completeAction(ship: ShipEntry): void {
 	gameLog(`[completeAction] ${ship.data.name}: ${ship.action.type} completed`);
 	incrementExperience(ship);
+	_lastCommandEval.delete(ship.data.name);
+	markSurveyTargetsDirty();
 	const actionType = ship.action.type;
 	if (actionType === "survey-nearest") {
 		completeSurvey(ship);
@@ -743,6 +758,33 @@ function completeAction(ship: ShipEntry): void {
 	if (decision) dispatchCommand(ship, decision);
 }
 
+/** Tick the active action timer for a ship. Returns true if action completed or still running. */
+function tickActionTimer(ship: ShipEntry, simDt: number): boolean {
+	// Ship-to-ship fuel transfer: pump fuel each frame
+	if (ship.action.type === "refuel-ship") {
+		if (tickTankerTransfer(ship, simDt)) {
+			completeAction(ship);
+			return true;
+		}
+	}
+	const elapsed = state.simTime.days - ship.action.startTime;
+	ship.action.progress = Math.min(1, elapsed / ship.action.duration);
+	if (ship.action.progress >= 1) {
+		completeAction(ship);
+	}
+	return true;
+}
+
+/** Evaluate the command tree for an idle ship, throttled to every 0.5 sim-days. */
+function tickIdleCommander(ship: ShipEntry): void {
+	const lastEval = _lastCommandEval.get(ship.data.name) ?? 0;
+	if (state.simTime.days - lastEval < 0.5) return;
+	_lastCommandEval.set(ship.data.name, state.simTime.days);
+	gameLog(`[tickShip] ${ship.data.name}: idle, commander deciding`);
+	const decision = commanderDecide(ship);
+	if (decision) dispatchCommand(ship, decision);
+}
+
 /** Called each frame for every ship. Handles simulation + action timers. */
 function tickShip(ship: ShipEntry, simDt: number): void {
 	tickShipSimulation(ship, simDt, state.simTime.days);
@@ -754,29 +796,14 @@ function tickShip(ship: ShipEntry, simDt: number): void {
 		ship.action.startTime > 0 &&
 		ship.action.duration > 0;
 	if (hasActiveAction) {
-		// Ship-to-ship fuel transfer: pump fuel each frame, abort if target moved
-		if (ship.action.type === "refuel-ship") {
-			const done = tickTankerTransfer(ship, simDt);
-			if (done) {
-				completeAction(ship);
-				return;
-			}
-		}
-
-		const elapsed = state.simTime.days - ship.action.startTime;
-		ship.action.progress = Math.min(1, elapsed / ship.action.duration);
-
-		if (ship.action.progress >= 1) {
-			completeAction(ship);
-		}
+		tickActionTimer(ship, simDt);
+		return;
 	}
 
 	// Auto-evaluate command tree when idle and orbiting (kicks off autonomous behavior)
 	// Skip until positions have been computed (simTime > 0.1 ensures at least a few frames)
 	if (ship.shipState === "orbiting" && !ship.action.type && state.simTime.days > 0.1) {
-		gameLog(`[tickShip] ${ship.data.name}: idle, commander deciding`);
-		const decision = commanderDecide(ship);
-		if (decision) dispatchCommand(ship, decision);
+		tickIdleCommander(ship);
 	}
 }
 
@@ -826,6 +853,9 @@ function startSurveyOnArrival(ship: ShipEntry): void {
 
 /** Called when a ship arrives at a planet after transfer. */
 export function onTransferComplete(ship: ShipEntry): void {
+	_lastCommandEval.delete(ship.data.name);
+	invalidateSurveyTargetCache();
+	invalidateRefuelTargetCache();
 	gameLog(
 		`[transferComplete] ${ship.data.name}: arrived at ${ship.hostPlanetName}`,
 		`action=${ship.action.type} target=${ship.action.target}`,

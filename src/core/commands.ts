@@ -6,7 +6,7 @@ import type { BodyEntry, CommandCondition, CommandResult, ShipEntry } from "../t
 import { isCometEntry, isShipEntry, isSurveyable } from "../types";
 import { isAtColony, learnFromMalfunction } from "./commander";
 import { findBody, findShip } from "./entities";
-import { getClaimedTargets } from "./intents";
+import { getClaimedTargets, onIntentChange } from "./intents";
 import { state } from "./state";
 import { seededRandom } from "./utils";
 
@@ -91,16 +91,28 @@ type SimRates = {
 	supplyRate: number;
 };
 
+const _cachedRates: SimRates = {
+	moraleRate: 0,
+	overhaulMoraleRate: 0,
+	repairRate: 0,
+	repairCrewRate: 0,
+	refuelRate: 0,
+	supplyRate: 0,
+};
+let _ratesKey = "";
+
 function computeSimRates(): SimRates {
+	const key = `${state.depotQuality}|${state.moraleMultiplier}|${state.repairMultiplier}|${state.refuelMultiplier}|${state.supplyMultiplier}`;
+	if (key === _ratesKey) return _cachedRates;
+	_ratesKey = key;
 	const dq = state.depotQuality;
-	return {
-		moraleRate: (MORALE_RECOVERY_PER_DAY * dq) / state.moraleMultiplier,
-		overhaulMoraleRate: (OVERHAUL_MORALE_PER_DAY * dq) / state.moraleMultiplier,
-		repairRate: (HULL_REPAIR_PER_DAY * dq) / state.repairMultiplier,
-		repairCrewRate: (SHORE_LEAVE_REPAIR_PER_DAY * dq) / state.repairMultiplier,
-		refuelRate: (REFUEL_RATE_PER_DAY * dq) / state.refuelMultiplier,
-		supplyRate: (SUPPLY_RESTOCK_PER_DAY * dq) / state.supplyMultiplier,
-	};
+	_cachedRates.moraleRate = (MORALE_RECOVERY_PER_DAY * dq) / state.moraleMultiplier;
+	_cachedRates.overhaulMoraleRate = (OVERHAUL_MORALE_PER_DAY * dq) / state.moraleMultiplier;
+	_cachedRates.repairRate = (HULL_REPAIR_PER_DAY * dq) / state.repairMultiplier;
+	_cachedRates.repairCrewRate = (SHORE_LEAVE_REPAIR_PER_DAY * dq) / state.repairMultiplier;
+	_cachedRates.refuelRate = (REFUEL_RATE_PER_DAY * dq) / state.refuelMultiplier;
+	_cachedRates.supplyRate = (SUPPLY_RESTOCK_PER_DAY * dq) / state.supplyMultiplier;
+	return _cachedRates;
 }
 
 function tickMoraleDecay(
@@ -248,13 +260,18 @@ const FLEET_FUEL_THRESHOLD = 50; // ships below this % are candidates
 const TANKER_TRANSFER_RATE_PER_DAY = 10_000; // kg/day ship-to-ship
 const TANKER_RESERVE_FLOOR = 0.15; // keep 15% for return trip
 
+const _refuelTargetCache = new Map<string, string | null>();
+
 export function selectNextRefuelTarget(tanker: ShipEntry): string | null {
-	const claimed = getClaimedTargets(tanker.data.name);
+	const shipName = tanker.data.name;
+	if (_refuelTargetCache.has(shipName)) return _refuelTargetCache.get(shipName) ?? null;
+
+	const claimed = getClaimedTargets(shipName);
 	const candidates: { name: string; fuelPct: number }[] = [];
 
 	for (const entry of state.bodyMeshes) {
 		if (!isShipEntry(entry)) continue;
-		if (entry.data.name === tanker.data.name) continue;
+		if (entry.data.name === shipName) continue;
 		if (entry.shipState === "transferring") continue;
 		if (claimed.has(entry.data.name)) continue;
 		const fuelPct = (entry.fuelKg / entry.fuelCapacityKg) * 100;
@@ -262,9 +279,10 @@ export function selectNextRefuelTarget(tanker: ShipEntry): string | null {
 		candidates.push({ name: entry.data.name, fuelPct });
 	}
 
-	if (candidates.length === 0) return null;
-	candidates.sort((a, b) => a.fuelPct - b.fuelPct);
-	return candidates[0].name;
+	const result =
+		candidates.length === 0 ? null : candidates.sort((a, b) => a.fuelPct - b.fuelPct)[0].name;
+	_refuelTargetCache.set(shipName, result);
+	return result;
 }
 
 export function tickTankerTransfer(ship: ShipEntry, simDt: number): boolean {
@@ -287,12 +305,28 @@ export function tickTankerTransfer(ship: ShipEntry, simDt: number): boolean {
 	return false;
 }
 
+const _surveyTargetCache = new Map<string, string | null>();
+
+// Invalidate both caches whenever intents change (claimed targets affect selection results)
+onIntentChange(() => {
+	_surveyTargetCache.clear();
+	_refuelTargetCache.clear();
+});
+
+export function invalidateSurveyTargetCache(): void {
+	_surveyTargetCache.clear();
+}
+
+export function invalidateRefuelTargetCache(): void {
+	_refuelTargetCache.clear();
+}
+
 function collectBodyCandidates(
 	sx: number,
 	sz: number,
 	claimed: Set<string>,
 ): { name: string; distSq: number }[] {
-	const candidates: { name: string; distSq: number }[] = [];
+	const out: { name: string; distSq: number }[] = [];
 	for (const body of state.bodyMeshes) {
 		if (isShipEntry(body)) continue;
 		if (isCometEntry(body)) continue;
@@ -303,9 +337,9 @@ function collectBodyCandidates(
 		if (claimed.has(body.data.name)) continue;
 		const dx = body.mesh.position.x - sx;
 		const dz = body.mesh.position.z - sz;
-		candidates.push({ name: body.data.name, distSq: dx * dx + dz * dz });
+		out.push({ name: body.data.name, distSq: dx * dx + dz * dz });
 	}
-	return candidates;
+	return out;
 }
 
 function collectAsteroidCandidates(
@@ -313,7 +347,7 @@ function collectAsteroidCandidates(
 	sz: number,
 	claimed: Set<string>,
 ): { name: string; distSq: number }[] {
-	const candidates: { name: string; distSq: number }[] = [];
+	const out: { name: string; distSq: number }[] = [];
 	for (const beltEntry of state.asteroidBelts) {
 		for (const asteroid of beltEntry.asteroids) {
 			if (asteroid.survey.surveyLevel !== 0) continue;
@@ -321,26 +355,28 @@ function collectAsteroidCandidates(
 			const idx = asteroid.beltIndex ?? 0;
 			const ax = beltEntry.positions[idx * 3] - sx;
 			const az = beltEntry.positions[idx * 3 + 2] - sz;
-			candidates.push({ name: asteroid.designation, distSq: ax * ax + az * az });
+			out.push({ name: asteroid.designation, distSq: ax * ax + az * az });
 		}
 	}
-	return candidates;
+	return out;
 }
 
 export function selectNextSurveyTarget(ship: ShipEntry): string | null {
+	const shipName = ship.data.name;
+	if (_surveyTargetCache.has(shipName)) return _surveyTargetCache.get(shipName) ?? null;
+
 	const sx = ship.mesh.position.x;
 	const sz = ship.mesh.position.z;
-	const claimed = getClaimedTargets(ship.data.name);
-
+	const claimed = getClaimedTargets(shipName);
 	const candidates = [
 		...collectBodyCandidates(sx, sz, claimed),
 		...collectAsteroidCandidates(sx, sz, claimed),
 	];
 
-	if (candidates.length === 0) return null;
-
-	candidates.sort((a, b) => a.distSq - b.distSq);
-	return candidates[0].name;
+	const result =
+		candidates.length === 0 ? null : candidates.sort((a, b) => a.distSq - b.distSq)[0].name;
+	_surveyTargetCache.set(shipName, result);
+	return result;
 }
 
 export function getUnsurvevedMoonsOfHost(ship: ShipEntry): BodyEntry[] {

@@ -11,10 +11,12 @@ import {
 	computeMorale,
 	evaluateCommandTree,
 	getUnsurvevedMoonsOfHost,
+	invalidateSurveyTargetCache,
 	selectNextSurveyTarget,
 	tickShipSimulation,
 } from "../core/commands";
 import { rebuildEntityMaps } from "../core/entities";
+import { invalidateIntentsCache } from "../core/intents";
 import { state } from "../core/state";
 import type { BodyEntry, CommandEntry, ShipEntry } from "../types";
 
@@ -457,6 +459,7 @@ function mockShipWithMesh(overrides: Partial<ShipEntry> = {}): ShipEntry {
 describe("selectNextSurveyTarget", () => {
 	beforeEach(() => {
 		state.bodyMeshes = [];
+		invalidateSurveyTargetCache();
 	});
 
 	it("skips bodies where isMoon is true", () => {
@@ -485,6 +488,7 @@ describe("selectNextSurveyTarget -- asteroids", () => {
 	beforeEach(() => {
 		state.bodyMeshes = [];
 		state.asteroidBelts = [];
+		invalidateSurveyTargetCache();
 	});
 
 	function makeBeltEntry(
@@ -582,6 +586,8 @@ describe("selectNextSurveyTarget -- intents", () => {
 		state.bodyMeshes = [];
 		state.asteroidBelts = [];
 		state.shipIntents.clear();
+		invalidateIntentsCache();
+		invalidateSurveyTargetCache();
 	});
 
 	it("skips bodies claimed by other ships via intents", () => {
@@ -658,6 +664,8 @@ describe("selectNextSurveyTarget -- NaN safety", () => {
 		state.bodyMeshes = [];
 		state.asteroidBelts = [];
 		state.shipIntents.clear();
+		invalidateIntentsCache();
+		invalidateSurveyTargetCache();
 	});
 
 	it("does not crash or produce NaN with asteroid entries that have real positions", () => {
