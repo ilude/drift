@@ -64,7 +64,7 @@ core/utils.ts, math/orbit.ts, math/visual.ts  (pure math, no app imports)
 
 **Key modules:**
 - `src/types.ts` — Shared interfaces: BodyEntry, ShipEntry, ShipIntent, CommandEntry, AppState, ResolvedEntity
-- `src/core/state.ts` — Single centralized state object, save/restore to localStorage (SAVE_VERSION 5, plural ships)
+- `src/core/state.ts` — Single centralized state object, save/restore to localStorage (SAVE_VERSION 6, plural ships)
 - `src/core/entities.ts` — Unified O(1) entity resolution: resolveEntity, findBody, findPlanet, findShip, findStar, findAsteroidEntity. Backed by Maps rebuilt via rebuildEntityMaps(). Lives in core/ so commands.ts can import it.
 - `src/core/intents.ts` — Ship intent broadcast for multi-ship coordination: publishIntent, clearIntent, getClaimedTargets. Ships broadcast current activity, others skip claimed targets.
 - `src/core/commands.ts` — Command tree evaluation (pure logic, no rendering imports), ship simulation tick
@@ -101,8 +101,14 @@ core/utils.ts, math/orbit.ts, math/visual.ts  (pure math, no app imports)
 - **Multi-ship:** Game supports multiple named ships created via `createShip(config: ShipConfig)`. Ships coordinate via intent broadcast — `selectNextSurveyTarget` skips bodies claimed by other ships. HUD shows selected ship status or fleet aggregate. Save/restore matches ships by name.
 - **Entity resolution:** All entity-by-name lookups go through `core/entities.ts`. Never use `state.bodyMeshes.find()` directly — use `findBody()`, `resolveEntity()`, `findAsteroidEntity()`, etc. Maps rebuilt via `rebuildEntityMaps()` after body/asteroid creation.
 - **Ship state machine:** orbiting → transferring → orbiting. Transfer uses 3D cubic Hermite splines with station-keeping capture blend (smoothstep in final 15%). Ships use brachistochrone physics (default 0.1g engine) for transfer timing. Minimum fuel floor of 1% capacity/day ensures visible transfer cost with high-Isp TN engines.
-- **Ship command tree:** Priority-ordered list of conditional commands (fuel-below, morale-below, hull-below, supplies-below, always). Evaluated between actions. `immediateCommand` is one-shot — cleared at the top of `dispatchCommand()` on any dispatch.
-- **Ship simulation:** `tickShipSimulation()` runs per-frame: morale decay (1.5 exponent past 180-day deployment limit), maintenance age, malfunction checks (every 30 days during transfers), fuel drain (station-keeping rates), gradual recovery during actions (refuel: 5d fixed, overhaul: dynamic duration based on hull/supply deficit at +2.5%/day each +0.5 morale/day, shore leave: 30d at +2.5 morale/day +0.25% hull/day from repair crew). All recovery rates scaled by `depotQuality` and per-system hardness multipliers.
+- **Ship command tree:** Priority-ordered list of conditional commands (fuel-below, morale-below, hull-below, supplies-below, always). Command types: survey-nearest, transfer-to, refuel, refuel-ship, shore-leave, overhaul, major-refit, return-to-base, idle. Evaluated between actions. `immediateCommand` is one-shot — cleared at the top of `dispatchCommand()` on any dispatch.
+- **Ship simulation:** `tickShipSimulation()` runs per-frame: morale decay (1.5 exponent past 180-day deployment limit), maintenance age (both `age` and `totalAge`), malfunction checks (bathtub curve, every 30 days during transfers), fuel drain (station-keeping rates), routine maintenance (idle orbiting only), gradual recovery during actions (refuel: 5d fixed, overhaul: dynamic duration capped at hull ceiling, major-refit: 180d+ base restoring ceiling, shore leave: 30d at +2.5 morale/day +0.25% hull/day from repair crew). All recovery rates scaled by `depotQuality` and per-system hardness multipliers.
+- **Tiered maintenance system:** Scientifically grounded, inspired by naval/aircraft bathtub curve maintenance patterns:
+  - **Routine maintenance:** Crew-performed while idle+orbiting. 0.05%/day hull restoration scaled by morale, capped at hull ceiling.
+  - **Standard overhaul:** Depot-level, every 2-3 years. Restores hull to ceiling (not 100%), resets `maintenance.age` to 0.
+  - **Major refit:** Deep structural restoration, 180+ day base duration. Resets `lastRefitAge = totalAge`, restoring hull ceiling to 100%. Available as command type `"major-refit"`.
+- **Hull ceiling:** Lifetime degradation limiting maximum restorable hull. `hullCeiling(totalAge, lastRefitAge) = max(30, 100 - yearsSinceRefit * 1.5)`. At 10 years: 85%, 20 years: 70%, 30 years: 55%. Floor of 30%. Major refit resets the ceiling clock. Displayed in HUD as `Hull: 85% / 95%` when ceiling < 100%.
+- **Bathtub curve malfunctions:** `bathtubFailRate()` replaces linear formula. Phase 1 (0-90 days): infant mortality ~2.5% decaying. Phase 2 (90d-3yr): constant ~1%. Phase 3 (3yr+): quadratic wear-out. Integrity uses sqrt multiplier (25% hull = 2x, not 4x) to prevent death spiral. Crew morale and commander experience reduce fail rates.
 - **Survey system:** Multi-level surveys (1-3) representing scan depth. Level 1 = surface/shallow (access ≥ 0.5), Level 2 = mid-depth (access ≥ 0.2), Level 3 = deep (access < 0.2). Higher sensor tech scans deeper into the body, revealing harder-to-extract deposits. Small bodies may be fully scanned at level 1. `minSurveyLevel` on deposits is determined by accessibility, not resource category. Duration scales with body type and crew/hull condition. `surveyMultiplier` state setting for difficulty tuning.
 - **Resource sub-typing:** Deposit pools vary by body sub-type, determined procedurally from existing data:
   - **Planets:** Gas giant (r>30k km) / Ice giant (r>15k) / Cold rocky (>2.7 AU frost line) / Warm rocky (<2.7 AU)
@@ -124,7 +130,7 @@ core/utils.ts, math/orbit.ts, math/visual.ts  (pure math, no app imports)
 
 ## Testing
 
-549+ tests across 20 files using Vitest + jsdom. Tests cover:
+570+ tests across 20 files using Vitest + jsdom. Tests cover:
 - Orbital math (orbit.test.ts)
 - Visual scaling (visual.test.ts)
 - Date/time formatting & save/restore (state.test.ts)

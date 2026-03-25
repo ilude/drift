@@ -7,10 +7,12 @@ import {
 	learnFromMalfunction,
 } from "../core/commander";
 import {
+	bathtubFailRate,
 	checkCondition,
 	computeMorale,
 	evaluateCommandTree,
 	getUnsurvevedMoonsOfHost,
+	hullCeiling,
 	invalidateSurveyTargetCache,
 	selectNextSurveyTarget,
 	tickShipSimulation,
@@ -27,7 +29,14 @@ function mockShip(overrides: Partial<ShipEntry> = {}): ShipEntry {
 		fuelCapacityKg: 50000,
 		crew: { count: 50, morale: 100, lastShoreLeave: 0, deploymentLimit: 180 },
 		commander: { judgment: 0.3, experience: 0 },
-		maintenance: { age: 0, supplies: 100, maxSupplies: 100, hullIntegrity: 100 },
+		maintenance: {
+			age: 0,
+			totalAge: 0,
+			lastRefitAge: 0,
+			supplies: 100,
+			maxSupplies: 100,
+			hullIntegrity: 100,
+		},
 		action: { type: null, commandId: null, startTime: 0, duration: 0, progress: 0 },
 		commandTree: { entries: [] },
 		immediateCommand: null,
@@ -91,28 +100,56 @@ describe("checkCondition", () => {
 
 	it("hull-below: hull 20 with threshold 30 → true", () => {
 		const ship = mockShip({
-			maintenance: { age: 0, supplies: 100, maxSupplies: 100, hullIntegrity: 20 },
+			maintenance: {
+				age: 0,
+				totalAge: 0,
+				lastRefitAge: 0,
+				supplies: 100,
+				maxSupplies: 100,
+				hullIntegrity: 20,
+			},
 		});
 		expect(checkCondition({ type: "hull-below", threshold: 30 }, ship)).toBe(true);
 	});
 
 	it("hull-below: hull 50 with threshold 30 → false", () => {
 		const ship = mockShip({
-			maintenance: { age: 0, supplies: 100, maxSupplies: 100, hullIntegrity: 50 },
+			maintenance: {
+				age: 0,
+				totalAge: 0,
+				lastRefitAge: 0,
+				supplies: 100,
+				maxSupplies: 100,
+				hullIntegrity: 50,
+			},
 		});
 		expect(checkCondition({ type: "hull-below", threshold: 30 }, ship)).toBe(false);
 	});
 
 	it("supplies-below: 30/100 supplies with threshold 50 → true", () => {
 		const ship = mockShip({
-			maintenance: { age: 0, supplies: 30, maxSupplies: 100, hullIntegrity: 100 },
+			maintenance: {
+				age: 0,
+				totalAge: 0,
+				lastRefitAge: 0,
+				supplies: 30,
+				maxSupplies: 100,
+				hullIntegrity: 100,
+			},
 		});
 		expect(checkCondition({ type: "supplies-below", threshold: 50 }, ship)).toBe(true);
 	});
 
 	it("supplies-below: 60/100 supplies with threshold 50 → false", () => {
 		const ship = mockShip({
-			maintenance: { age: 0, supplies: 60, maxSupplies: 100, hullIntegrity: 100 },
+			maintenance: {
+				age: 0,
+				totalAge: 0,
+				lastRefitAge: 0,
+				supplies: 60,
+				maxSupplies: 100,
+				hullIntegrity: 100,
+			},
 		});
 		expect(checkCondition({ type: "supplies-below", threshold: 50 }, ship)).toBe(false);
 	});
@@ -250,7 +287,14 @@ describe("tickShipSimulation", () => {
 
 	it("maintenance age accumulates by simDt", () => {
 		const ship = mockShip({
-			maintenance: { age: 0, supplies: 100, maxSupplies: 100, hullIntegrity: 100 },
+			maintenance: {
+				age: 0,
+				totalAge: 0,
+				lastRefitAge: 0,
+				supplies: 100,
+				maxSupplies: 100,
+				hullIntegrity: 100,
+			},
 		});
 		tickShipSimulation(ship, 1.5, 10);
 		expect(ship.maintenance.age).toBeCloseTo(1.5, 5);
@@ -296,7 +340,14 @@ describe("tickShipSimulation", () => {
 	it("shore leave gradually recovers morale and repairs hull", () => {
 		const ship = mockShip({
 			crew: { count: 50, morale: 50, lastShoreLeave: 0, deploymentLimit: 180 },
-			maintenance: { age: 100, supplies: 50, maxSupplies: 100, hullIntegrity: 80 },
+			maintenance: {
+				age: 100,
+				totalAge: 0,
+				lastRefitAge: 0,
+				supplies: 50,
+				maxSupplies: 100,
+				hullIntegrity: 80,
+			},
 			action: { type: "shore-leave", commandId: "1", startTime: 0, duration: 30, progress: 0 },
 		});
 		tickShipSimulation(ship, 1, 10);
@@ -339,7 +390,14 @@ describe("tickShipSimulation", () => {
 	it("overhaul gradually repairs hull, restocks supplies, and recovers morale", () => {
 		const ship = mockShip({
 			hostPlanetName: "Mars",
-			maintenance: { age: 100, supplies: 20, maxSupplies: 100, hullIntegrity: 40 },
+			maintenance: {
+				age: 100,
+				totalAge: 0,
+				lastRefitAge: 0,
+				supplies: 20,
+				maxSupplies: 100,
+				hullIntegrity: 40,
+			},
 			action: { type: "overhaul", commandId: "1", startTime: 0, duration: 5, progress: 0 },
 			crew: { count: 50, morale: 60, lastShoreLeave: 0, deploymentLimit: 180 },
 		});
@@ -352,7 +410,14 @@ describe("tickShipSimulation", () => {
 
 	it("overhaul does not exceed maximums", () => {
 		const ship = mockShip({
-			maintenance: { age: 100, supplies: 99, maxSupplies: 100, hullIntegrity: 99 },
+			maintenance: {
+				age: 100,
+				totalAge: 0,
+				lastRefitAge: 0,
+				supplies: 99,
+				maxSupplies: 100,
+				hullIntegrity: 99,
+			},
 			action: { type: "overhaul", commandId: "1", startTime: 0, duration: 5, progress: 0 },
 			crew: { count: 50, morale: 99.8, lastShoreLeave: 0, deploymentLimit: 180 },
 		});
@@ -369,7 +434,14 @@ describe("tickShipSimulation", () => {
 		// intervalAge the fail chance exceeds the seeded RNG roll on at least one interval.
 		const ship = mockShip({
 			shipState: "transferring" as const,
-			maintenance: { age: 1440, supplies: 100, maxSupplies: 100, hullIntegrity: 1 },
+			maintenance: {
+				age: 1440,
+				totalAge: 0,
+				lastRefitAge: 0,
+				supplies: 100,
+				maxSupplies: 100,
+				hullIntegrity: 1,
+			},
 		});
 		const hullBefore = ship.maintenance.hullIntegrity;
 		tickShipSimulation(ship, 91, 2000);
@@ -384,7 +456,14 @@ describe("tickShipSimulation", () => {
 			hostPlanetName: "Earth",
 			fuelKg: 0,
 			fuelCapacityKg: 100000,
-			maintenance: { age: 0, supplies: 0, maxSupplies: 100, hullIntegrity: 100 },
+			maintenance: {
+				age: 0,
+				totalAge: 0,
+				lastRefitAge: 0,
+				supplies: 0,
+				maxSupplies: 100,
+				hullIntegrity: 100,
+			},
 		});
 		// Simulate being at a colony by using the colony detection path (hostPlanetName set).
 		// tickShipSimulation detects atColony via state, so we need a matching body in state.
@@ -405,7 +484,14 @@ describe("tickShipSimulation", () => {
 			hostPlanetName: "Earth",
 			fuelKg: 10000,
 			fuelCapacityKg: 100000,
-			maintenance: { age: 0, supplies: 10, maxSupplies: 100, hullIntegrity: 100 },
+			maintenance: {
+				age: 0,
+				totalAge: 0,
+				lastRefitAge: 0,
+				supplies: 10,
+				maxSupplies: 100,
+				hullIntegrity: 100,
+			},
 		});
 		// Advance 40 days at once: dayNow - dayPrev = 40, capped at 30.
 		// The condition: daysCrossed >= dayNow - dayPrev should fail, entering the else if.
@@ -823,7 +909,14 @@ describe("checkPreemptiveService", () => {
 		const ship = mockShip({
 			hostPlanetName: "Earth",
 			commander: { judgment: 0.8, experience: 10 },
-			maintenance: { age: 200, supplies: 50, maxSupplies: 100, hullIntegrity: 40 },
+			maintenance: {
+				age: 200,
+				totalAge: 0,
+				lastRefitAge: 0,
+				supplies: 50,
+				maxSupplies: 100,
+				hullIntegrity: 40,
+			},
 			commandTree: {
 				entries: [
 					mockEntry("hull-check", "overhaul", {
@@ -945,7 +1038,14 @@ describe("commander defers maintenance", () => {
 		const ship = mockShip({
 			hostPlanetName: "Earth",
 			commander: { judgment: 0.9, experience: 10 },
-			maintenance: { age: 100, supplies: 50, maxSupplies: 100, hullIntegrity: 25 },
+			maintenance: {
+				age: 100,
+				totalAge: 0,
+				lastRefitAge: 0,
+				supplies: 50,
+				maxSupplies: 100,
+				hullIntegrity: 25,
+			},
 			commandTree: {
 				entries: [
 					mockEntry("hull-check", "overhaul", {
@@ -963,7 +1063,14 @@ describe("commander defers maintenance", () => {
 		const ship = mockShip({
 			hostPlanetName: "Mars",
 			commander: { judgment: 0.9, experience: 10 },
-			maintenance: { age: 100, supplies: 50, maxSupplies: 100, hullIntegrity: 25 },
+			maintenance: {
+				age: 100,
+				totalAge: 0,
+				lastRefitAge: 0,
+				supplies: 50,
+				maxSupplies: 100,
+				hullIntegrity: 25,
+			},
 			commandTree: {
 				entries: [
 					mockEntry("hull-check", "overhaul", {
@@ -981,7 +1088,14 @@ describe("commander defers maintenance", () => {
 		const ship = mockShip({
 			hostPlanetName: "Ceres",
 			commander: { judgment: 0.15, experience: 0 },
-			maintenance: { age: 100, supplies: 50, maxSupplies: 100, hullIntegrity: 25 },
+			maintenance: {
+				age: 100,
+				totalAge: 0,
+				lastRefitAge: 0,
+				supplies: 50,
+				maxSupplies: 100,
+				hullIntegrity: 25,
+			},
 			commandTree: {
 				entries: [
 					mockEntry("hull-check", "overhaul", {
@@ -1002,7 +1116,14 @@ describe("commander defers maintenance", () => {
 		const ship = mockShip({
 			hostPlanetName: "Ceres",
 			commander: { judgment: 0.8, experience: 20 },
-			maintenance: { age: 100, supplies: 50, maxSupplies: 100, hullIntegrity: 25 },
+			maintenance: {
+				age: 100,
+				totalAge: 0,
+				lastRefitAge: 0,
+				supplies: 50,
+				maxSupplies: 100,
+				hullIntegrity: 25,
+			},
 			commandTree: {
 				entries: [
 					mockEntry("hull-check", "overhaul", {
@@ -1023,7 +1144,14 @@ describe("commander defers maintenance", () => {
 		const ship = mockShip({
 			hostPlanetName: "Ceres",
 			commander: { judgment: 0.5, experience: 10 },
-			maintenance: { age: 200, supplies: 50, maxSupplies: 100, hullIntegrity: 12 },
+			maintenance: {
+				age: 200,
+				totalAge: 0,
+				lastRefitAge: 0,
+				supplies: 50,
+				maxSupplies: 100,
+				hullIntegrity: 12,
+			},
 			commandTree: {
 				entries: [
 					mockEntry("hull-check", "overhaul", {
@@ -1136,7 +1264,14 @@ describe("commanderDecide", () => {
 		const ship = mockShip({
 			hostPlanetName: "Ceres",
 			commander: { judgment: 0.8, experience: 20 },
-			maintenance: { age: 100, supplies: 50, maxSupplies: 100, hullIntegrity: 25 },
+			maintenance: {
+				age: 100,
+				totalAge: 0,
+				lastRefitAge: 0,
+				supplies: 50,
+				maxSupplies: 100,
+				hullIntegrity: 25,
+			},
 			commandTree: {
 				entries: [
 					mockEntry("hull-check", "overhaul", {
@@ -1261,12 +1396,258 @@ describe("tickShipSimulation -- malfunction learning", () => {
 		// Use same setup as the existing malfunction test: degraded hull, high age
 		const ship = mockShip({
 			shipState: "transferring" as const,
-			maintenance: { age: 1440, supplies: 100, maxSupplies: 100, hullIntegrity: 1 },
+			maintenance: {
+				age: 1440,
+				totalAge: 0,
+				lastRefitAge: 0,
+				supplies: 100,
+				maxSupplies: 100,
+				hullIntegrity: 1,
+			},
 			commander: { judgment: 0.3, experience: 0 },
 		});
 		const judgmentBefore = ship.commander.judgment;
 		tickShipSimulation(ship, 91, 2000);
 		// Malfunction fires with integrity=1 and high age → judgment should increase
 		expect(ship.commander.judgment).toBeGreaterThan(judgmentBefore);
+	});
+});
+
+// --- Hull ceiling ---
+
+describe("hullCeiling", () => {
+	it("returns 100 for a new ship", () => {
+		expect(hullCeiling(0, 0)).toBe(100);
+	});
+
+	it("returns ~85 at 10 years since refit", () => {
+		expect(hullCeiling(3650, 0)).toBe(85);
+	});
+
+	it("returns ~70 at 20 years since refit", () => {
+		expect(hullCeiling(7300, 0)).toBe(70);
+	});
+
+	it("returns 100 for a 20-year ship just refitted", () => {
+		expect(hullCeiling(7300, 7300)).toBe(100);
+	});
+
+	it("returns ~85 for a 30-year ship refitted at 20", () => {
+		expect(hullCeiling(10950, 7300)).toBe(85);
+	});
+
+	it("never drops below 30", () => {
+		expect(hullCeiling(100000, 0)).toBe(30);
+	});
+});
+
+// --- Bathtub fail rate ---
+
+describe("bathtubFailRate", () => {
+	it("has elevated rate in infant mortality phase (day 0)", () => {
+		const rate = bathtubFailRate(0, 100, 100, 0);
+		expect(rate).toBeGreaterThan(0.015);
+	});
+
+	it("has lower rate at end of infant mortality (day 90)", () => {
+		const rateStart = bathtubFailRate(0, 100, 100, 0);
+		const rateEnd = bathtubFailRate(90, 100, 100, 0);
+		expect(rateEnd).toBeLessThan(rateStart);
+	});
+
+	it("has constant low rate during useful life (1 year)", () => {
+		const rate = bathtubFailRate(365, 100, 100, 0);
+		expect(rate).toBeCloseTo(0.0085, 3); // ~1% base * 0.85 morale factor
+	});
+
+	it("has accelerating rate during wear-out (5 years)", () => {
+		const rate2yr = bathtubFailRate(730, 100, 100, 0);
+		const rate5yr = bathtubFailRate(1825, 100, 100, 0);
+		expect(rate5yr).toBeGreaterThan(rate2yr * 2);
+	});
+
+	it("sqrt integrity multiplier prevents death spiral", () => {
+		const rate100 = bathtubFailRate(365, 100, 100, 0);
+		const rate25 = bathtubFailRate(365, 25, 100, 0);
+		// At 25% hull, sqrt(100/25) = 2.0, so rate should be ~2x, not 4x
+		expect(rate25 / rate100).toBeCloseTo(2, 0);
+	});
+
+	it("high morale reduces fail rate", () => {
+		const rateLow = bathtubFailRate(365, 100, 30, 0);
+		const rateHigh = bathtubFailRate(365, 100, 100, 0);
+		expect(rateHigh).toBeLessThan(rateLow);
+	});
+
+	it("experience reduces fail rate up to 20%", () => {
+		const rateNoExp = bathtubFailRate(365, 100, 50, 0);
+		const rateMaxExp = bathtubFailRate(365, 100, 50, 40);
+		expect(rateMaxExp).toBeCloseTo(rateNoExp * 0.8, 4);
+	});
+
+	it("experience caps at 20% reduction", () => {
+		const rate40 = bathtubFailRate(365, 100, 50, 40);
+		const rate100 = bathtubFailRate(365, 100, 50, 100);
+		expect(rate40).toBe(rate100);
+	});
+});
+
+// --- Routine maintenance ---
+
+describe("tickRoutineMaintenance (via tickShipSimulation)", () => {
+	it("slowly restores hull while idle and orbiting", () => {
+		const ship = mockShip({
+			shipState: "orbiting" as const,
+			hostPlanetName: "Mars",
+			maintenance: {
+				age: 0,
+				totalAge: 0,
+				lastRefitAge: 0,
+				supplies: 100,
+				maxSupplies: 100,
+				hullIntegrity: 90,
+			},
+		});
+		tickShipSimulation(ship, 10, 100);
+		// 0.05% * (100/100 morale) * 10 days = 0.5% recovery
+		expect(ship.maintenance.hullIntegrity).toBeGreaterThan(90);
+		expect(ship.maintenance.hullIntegrity).toBeLessThan(91);
+	});
+
+	it("does not restore hull during active action", () => {
+		const ship = mockShip({
+			shipState: "orbiting" as const,
+			hostPlanetName: "Mars",
+			action: {
+				type: "survey-nearest",
+				commandId: null,
+				startTime: 0,
+				duration: 10,
+				progress: 0,
+			},
+			maintenance: {
+				age: 0,
+				totalAge: 0,
+				lastRefitAge: 0,
+				supplies: 100,
+				maxSupplies: 100,
+				hullIntegrity: 90,
+			},
+		});
+		const hullBefore = ship.maintenance.hullIntegrity;
+		tickShipSimulation(ship, 10, 100);
+		expect(ship.maintenance.hullIntegrity).toBe(hullBefore);
+	});
+
+	it("caps routine repair at hull ceiling", () => {
+		const ship = mockShip({
+			shipState: "orbiting" as const,
+			hostPlanetName: "Mars",
+			maintenance: {
+				age: 0,
+				totalAge: 7300, // 20 years → ceiling = 70
+				lastRefitAge: 0,
+				supplies: 100,
+				maxSupplies: 100,
+				hullIntegrity: 69,
+			},
+		});
+		tickShipSimulation(ship, 100, 100);
+		expect(ship.maintenance.hullIntegrity).toBeLessThanOrEqual(70);
+	});
+});
+
+// --- totalAge always ticks ---
+
+describe("totalAge tracking", () => {
+	it("totalAge increments even at colony", () => {
+		const ship = mockShip({
+			shipState: "orbiting" as const,
+			hostPlanetName: "Earth",
+			maintenance: {
+				age: 0,
+				totalAge: 100,
+				lastRefitAge: 0,
+				supplies: 100,
+				maxSupplies: 100,
+				hullIntegrity: 100,
+			},
+		});
+		tickShipSimulation(ship, 5, 100);
+		expect(ship.maintenance.totalAge).toBe(105);
+		// deployment age should NOT tick at colony
+		expect(ship.maintenance.age).toBe(0);
+	});
+
+	it("both age and totalAge tick when deployed", () => {
+		const ship = mockShip({
+			shipState: "orbiting" as const,
+			hostPlanetName: "Mars",
+			maintenance: {
+				age: 50,
+				totalAge: 200,
+				lastRefitAge: 0,
+				supplies: 100,
+				maxSupplies: 100,
+				hullIntegrity: 100,
+			},
+		});
+		tickShipSimulation(ship, 10, 100);
+		expect(ship.maintenance.totalAge).toBe(210);
+		expect(ship.maintenance.age).toBe(60);
+	});
+});
+
+// --- Overhaul respects hull ceiling ---
+
+describe("overhaul hull ceiling", () => {
+	it("overhaul repair caps at ceiling, not 100%", () => {
+		const ship = mockShip({
+			shipState: "orbiting" as const,
+			hostPlanetName: "Earth",
+			action: {
+				type: "overhaul",
+				commandId: null,
+				startTime: 0,
+				duration: 100,
+				progress: 0,
+			},
+			maintenance: {
+				age: 0,
+				totalAge: 7300, // 20 years → ceiling = 70
+				lastRefitAge: 0,
+				supplies: 100,
+				maxSupplies: 100,
+				hullIntegrity: 50,
+			},
+		});
+		// Simulate enough days for full repair
+		tickShipSimulation(ship, 50, 100);
+		expect(ship.maintenance.hullIntegrity).toBeLessThanOrEqual(70);
+	});
+
+	it("major-refit repair can reach 100%", () => {
+		const ship = mockShip({
+			shipState: "orbiting" as const,
+			hostPlanetName: "Earth",
+			action: {
+				type: "major-refit",
+				commandId: null,
+				startTime: 0,
+				duration: 200,
+				progress: 0,
+			},
+			maintenance: {
+				age: 0,
+				totalAge: 7300,
+				lastRefitAge: 0,
+				supplies: 100,
+				maxSupplies: 100,
+				hullIntegrity: 50,
+			},
+		});
+		tickShipSimulation(ship, 50, 100);
+		// Should restore toward 100, not be capped at 70
+		expect(ship.maintenance.hullIntegrity).toBeGreaterThan(70);
 	});
 });
