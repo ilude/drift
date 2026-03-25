@@ -190,13 +190,17 @@ describe("generateDeposits", () => {
 	it("asteroid deposits have valid resource ids from asteroid pool", () => {
 		const validAsteroidIds = new Set([
 			"iron",
-			"nickel-iron",
 			"platinum",
 			"titanium",
-			"silicon",
 			"copper",
 			"aluminum",
+			"silicon",
+			"carbon",
 			"rare-earth",
+			"phosphorus",
+			"water",
+			"uranium",
+			"thorium",
 		]);
 		let testedCount = 0;
 		for (let seed = 1; seed < 100 && testedCount < 10; seed++) {

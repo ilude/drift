@@ -335,68 +335,128 @@ function surveyLevelFromAccess(accessibility: number): number {
 
 function buildPool(bodyType: string, radius: number): WeightedResource[] {
 	const isGasGiant = bodyType === "Planet" && radius > 30000;
+	// In practice with Sol data: Jupiter=69911, Saturn=58232 (gas), Uranus=25362, Neptune=24622 (ice)
 
 	if (isGasGiant) {
+		// Jupiter/Saturn: hydrogen/helium atmosphere, metallic hydrogen core
+		// Rich in He-3 (solar wind implantation), deuterium, atmospheric hydrocarbons
 		return [
 			{ id: "helium-3", weight: 30 },
-			{ id: "hydrocarbons", weight: 25 },
-			{ id: "water", weight: 10 },
+			{ id: "deuterium", weight: 20 },
+			{ id: "hydrocarbons", weight: 15 },
 			{ id: "nitrogen", weight: 10 },
-			{ id: "ortheum", weight: 8 },
-			{ id: "cadrine", weight: 7 },
-			{ id: "vantine", weight: 5 },
-			{ id: "nemorin", weight: 5 },
+			{ id: "water", weight: 5 },
+			// Deep core: metals under extreme pressure
+			{ id: "iron", weight: 3 },
+			// Umbral: formed under immense gravitational pressure
+			{ id: "ortheum", weight: 6 },
+			{ id: "cadrine", weight: 5 },
+			{ id: "heliate", weight: 4 },
+			{ id: "nemorin", weight: 2 },
 		];
 	}
 
 	if (bodyType === "Comet") {
+		// "Dirty snowballs": water ice, frozen gases, dust (silicates, carbon)
 		return [
-			{ id: "water", weight: 50 },
-			{ id: "nitrogen", weight: 30 },
+			{ id: "water", weight: 40 },
+			{ id: "nitrogen", weight: 15 },
 			{ id: "hydrocarbons", weight: 15 },
-			{ id: "carbon", weight: 5 },
+			{ id: "carbon", weight: 10 },
+			{ id: "deuterium", weight: 5 },
+			{ id: "silicon", weight: 5 },
+			// Trace metals in dust
+			{ id: "iron", weight: 5 },
+			{ id: "phosphorus", weight: 3 },
+			// Rare umbral traces from deep space
+			{ id: "vantine", weight: 2 },
 		];
 	}
 
 	if (bodyType === "Centaur") {
+		// Icy bodies from outer solar system, mix of comet and KBO composition
+		// More volatile-rich than asteroids, some rocky core material
 		return [
-			{ id: "water", weight: 30 },
-			{ id: "nitrogen", weight: 20 },
-			{ id: "hydrocarbons", weight: 15 },
+			{ id: "water", weight: 25 },
+			{ id: "nitrogen", weight: 15 },
+			{ id: "hydrocarbons", weight: 12 },
 			{ id: "carbon", weight: 10 },
-			{ id: "helium-3", weight: 8 },
-			{ id: "ortheum", weight: 7 },
-			{ id: "nemorin", weight: 5 },
-			{ id: "vantine", weight: 5 },
+			{ id: "deuterium", weight: 8 },
+			{ id: "helium-3", weight: 5 },
+			// Rocky component
+			{ id: "iron", weight: 5 },
+			{ id: "silicon", weight: 5 },
+			// Outer system umbral deposits
+			{ id: "ortheum", weight: 6 },
+			{ id: "nemorin", weight: 4 },
+			{ id: "vantine", weight: 3 },
+			{ id: "tessarene", weight: 2 },
 		];
 	}
 
 	if (bodyType === "Asteroid") {
+		// Three real classes: C-type (carbonaceous), S-type (silicate), M-type (metallic)
+		// Pool represents a blend; individual asteroid composition varies by seed
 		return [
-			{ id: "iron", weight: 25 },
-			{ id: "nickel-iron", weight: 20 },
-			{ id: "platinum", weight: 12 },
-			{ id: "titanium", weight: 10 },
-			{ id: "silicon", weight: 10 },
+			{ id: "iron", weight: 22 },
+			{ id: "platinum", weight: 10 },
+			{ id: "titanium", weight: 8 },
 			{ id: "copper", weight: 8 },
-			{ id: "aluminum", weight: 8 },
-			{ id: "rare-earth", weight: 7 },
+			{ id: "aluminum", weight: 7 },
+			{ id: "silicon", weight: 10 },
+			{ id: "carbon", weight: 8 },
+			{ id: "rare-earth", weight: 5 },
+			{ id: "phosphorus", weight: 3 },
+			// Some asteroids have water (C-type)
+			{ id: "water", weight: 5 },
+			// Trace radioactives
+			{ id: "uranium", weight: 2 },
+			{ id: "thorium", weight: 2 },
 		];
 	}
 
-	// Rocky: Planet, Dwarf Planet, Moon -- default
+	if (bodyType === "Dwarf Planet") {
+		// Pluto, Eris, Ceres, etc: icy/rocky mix, differentiated cores
+		// More volatiles than rocky planets, some deep umbral
+		return [
+			{ id: "water", weight: 20 },
+			{ id: "iron", weight: 12 },
+			{ id: "silicon", weight: 8 },
+			{ id: "nitrogen", weight: 10 },
+			{ id: "carbon", weight: 8 },
+			{ id: "aluminum", weight: 5 },
+			{ id: "rare-earth", weight: 3 },
+			{ id: "hydrocarbons", weight: 8 },
+			{ id: "uranium", weight: 3 },
+			{ id: "thorium", weight: 3 },
+			// Deep ice/rock boundary umbral
+			{ id: "ortheum", weight: 5 },
+			{ id: "caritene", weight: 3 },
+			{ id: "istrium", weight: 2 },
+		];
+	}
+
+	// Rocky Planet or Moon — default
+	// Differentiated bodies: iron core, silicate mantle, varied surface
 	return [
-		{ id: "iron", weight: 25 },
-		{ id: "copper", weight: 15 },
-		{ id: "aluminum", weight: 12 },
-		{ id: "titanium", weight: 10 },
-		{ id: "platinum", weight: 5 },
+		{ id: "iron", weight: 20 },
+		{ id: "copper", weight: 10 },
+		{ id: "aluminum", weight: 10 },
+		{ id: "titanium", weight: 8 },
+		{ id: "platinum", weight: 4 },
 		{ id: "silicon", weight: 10 },
-		{ id: "carbon", weight: 8 },
+		{ id: "carbon", weight: 6 },
 		{ id: "rare-earth", weight: 5 },
-		{ id: "phosphorus", weight: 5 },
-		{ id: "uranium", weight: 3 },
-		{ id: "thorium", weight: 2 },
+		{ id: "phosphorus", weight: 4 },
+		// Volatiles (trapped water, atmospheric nitrogen)
+		{ id: "water", weight: 8 },
+		{ id: "nitrogen", weight: 4 },
+		// Radioactives in crust/mantle
+		{ id: "uranium", weight: 4 },
+		{ id: "thorium", weight: 3 },
+		// Deep mantle umbral (only at low accessibility)
+		{ id: "caritene", weight: 2 },
+		{ id: "heliate", weight: 2 },
 	];
 }
 
