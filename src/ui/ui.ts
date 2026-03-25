@@ -36,7 +36,7 @@ export function buildBodyList(): void {
 	bodyListEl.innerHTML = "";
 
 	const groups: Record<string, BodyEntry[]> = {};
-	const groupOrder = ["Star", "Planet", "Dwarf Planet", "Detached Object", "Comet", "Ship"];
+	const groupOrder = ["Star", "Planet", "Dwarf Planet", "Centaur", "Asteroid", "Comet", "Ship"];
 	state.bodyMeshes.forEach((entry) => {
 		if (entry.isMoon) return;
 		const type = entry.data.type;
@@ -48,7 +48,8 @@ export function buildBodyList(): void {
 		Star: "Stars",
 		Planet: "Planets",
 		"Dwarf Planet": "Dwarf Planets",
-		"Detached Object": "Detached Objects",
+		Centaur: "Centaurs",
+		Asteroid: "Asteroids",
 		Comet: "Comets",
 		Ship: "Ships",
 	};
@@ -160,7 +161,7 @@ function discoverSystem(seed: number): void {
 // --- Labels ---
 
 interface LabelUpdateCtx {
-	cv: ReturnType<typeof state.categoryVisibility.valueOf>;
+	cv: Record<CategoryKey, CategoryVisibility>;
 	moonsVisible: boolean;
 	needsScaleUpdate: boolean;
 	scaleFactor: number;
@@ -961,8 +962,8 @@ const VIEW_CATEGORIES: ViewCategory[] = [
 		],
 	},
 	{
-		key: "Detached Object",
-		label: "Detached Objects",
+		key: "Centaur",
+		label: "Centaurs",
 		toggles: [
 			{ prop: "labels", label: "Labels" },
 			{ prop: "orbits", label: "Orbits" },
@@ -989,7 +990,11 @@ const VIEW_CATEGORIES: ViewCategory[] = [
 	{
 		key: "Asteroid",
 		label: "Asteroids",
-		toggles: [{ prop: "labels", label: "Belts" }],
+		toggles: [
+			{ prop: "labels", label: "Labels" },
+			{ prop: "orbits", label: "Orbits" },
+			{ prop: "trails", label: "Trails" },
+		],
 	},
 	{
 		key: "Ship",
@@ -1004,11 +1009,10 @@ const VIEW_CATEGORIES: ViewCategory[] = [
 function applyVisibility(catKey: CategoryKey, prop: keyof CategoryVisibility): void {
 	const val = state.categoryVisibility[catKey][prop];
 
-	if (catKey === "Asteroid") {
+	if (catKey === "Asteroid" && prop === "labels") {
 		state.asteroidBelts.forEach((ab) => {
 			ab.points.visible = val;
 		});
-		return;
 	}
 
 	state.bodyMeshes.forEach((entry) => {

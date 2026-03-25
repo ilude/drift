@@ -437,7 +437,7 @@ function handleSurveyMoonFirst(ship: ShipEntry): boolean {
 	const unsurvevedMoons = getUnsurvevedMoonsOfHost(ship);
 	if (unsurvevedMoons.length === 0) return false;
 	const moon = unsurvevedMoons[0];
-	const dur = getSurveyDuration(moon.data.mass, ship);
+	const dur = getSurveyDuration((moon.data as { mass: number }).mass, ship);
 	ship.action = mkAction("survey-nearest", "survey", state.simTime.days, dur, moon.data.name);
 	publishIntent(ship.data.name, {
 		type: "surveying",
