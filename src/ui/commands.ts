@@ -15,6 +15,7 @@ const COMMAND_NAMES: Record<CommandType, string> = {
 	"survey-nearest": "Survey nearest",
 	"transfer-to": "Transfer to",
 	refuel: "Refuel",
+	"refuel-ship": "Refuel ship",
 	"shore-leave": "Shore leave",
 	overhaul: "Overhaul",
 	"return-to-base": "Return to base",
@@ -43,13 +44,27 @@ const IMMEDIATE_ORDERS: Array<{ label: string; command: CommandType }> = [
 	{ label: "Idle", command: "idle" },
 ];
 
-function buildTransferSubMenu(
+const TRANSFER_CATEGORIES: Array<{ type: string; label: string }> = [
+	{ type: "Planet", label: "Planets" },
+	{ type: "Dwarf Planet", label: "Dwarf Planets" },
+	{ type: "Centaur", label: "Centaurs" },
+	{ type: "Asteroid", label: "Asteroids" },
+];
+
+function buildTransferBodyList(
 	ship: ShipEntry,
 	container: HTMLElement,
 	parentDropdown: HTMLDivElement,
-): HTMLDivElement {
-	const sub = document.createElement("div");
-	sub.className = "cmd-preset-list";
+	categoryType: string,
+	onBack: () => void,
+): void {
+	parentDropdown.innerHTML = "";
+
+	const backItem = document.createElement("div");
+	backItem.className = "cmd-preset-item";
+	backItem.textContent = "\u25c2 Back";
+	backItem.addEventListener("click", onBack);
+	parentDropdown.appendChild(backItem);
 
 	const engine = ENGINE_TYPES.find((e) => e.id === ship.engineId);
 	const hostEntry = state.bodyMeshes.find(
@@ -58,9 +73,7 @@ function buildTransferSubMenu(
 	const r1 = hostEntry ? hostEntry.data.distance : ship.data.distance;
 	const accelMS2 = engine ? engine.accelG * G_ACCEL : 0;
 
-	const transferTypes = new Set(["Planet", "Dwarf Planet", "Centaur", "Asteroid"]);
-	const destinations = state.bodyMeshes.filter((e) => transferTypes.has(e.data.type));
-
+	const destinations = state.bodyMeshes.filter((e) => e.data.type === categoryType);
 	for (const dest of destinations) {
 		const item = document.createElement("div");
 		item.className = "cmd-preset-item";
@@ -80,10 +93,38 @@ function buildTransferSubMenu(
 			parentDropdown.remove();
 			renderCommandTree(ship, container);
 		});
-		sub.appendChild(item);
+		parentDropdown.appendChild(item);
 	}
+}
 
-	return sub;
+function buildTransferSubMenu(
+	ship: ShipEntry,
+	container: HTMLElement,
+	parentDropdown: HTMLDivElement,
+	onBack: () => void,
+): void {
+	parentDropdown.innerHTML = "";
+
+	const backItem = document.createElement("div");
+	backItem.className = "cmd-preset-item";
+	backItem.textContent = "\u25c2 Back";
+	backItem.addEventListener("click", onBack);
+	parentDropdown.appendChild(backItem);
+
+	for (const cat of TRANSFER_CATEGORIES) {
+		const count = state.bodyMeshes.filter((e) => e.data.type === cat.type).length;
+		if (count === 0) continue;
+
+		const item = document.createElement("div");
+		item.className = "cmd-preset-item";
+		item.textContent = `${cat.label} (${count}) \u25b8`;
+		item.addEventListener("click", () => {
+			buildTransferBodyList(ship, container, parentDropdown, cat.type, () => {
+				buildTransferSubMenu(ship, container, parentDropdown, onBack);
+			});
+		});
+		parentDropdown.appendChild(item);
+	}
 }
 
 function buildGiveOrderButton(ship: ShipEntry, container: HTMLElement): HTMLDivElement {
@@ -108,29 +149,19 @@ function buildGiveOrderButton(ship: ShipEntry, container: HTMLElement): HTMLDivE
 		dropdown = document.createElement("div");
 		dropdown.className = "cmd-preset-list";
 
-		// Transfer to... option with sub-menu
+		// Transfer to... option with category sub-menu
 		const transferItem = document.createElement("div");
 		transferItem.className = "cmd-preset-item";
 		transferItem.textContent = "Transfer to... \u25b8";
 		transferItem.addEventListener("click", () => {
 			if (!dropdown) return;
-			dropdown.innerHTML = "";
-			const backItem = document.createElement("div");
-			backItem.className = "cmd-preset-item";
-			backItem.textContent = "\u25c2 Back";
-			backItem.addEventListener("click", () => {
-				// Re-open main dropdown
+			buildTransferSubMenu(ship, container, dropdown, () => {
 				if (dropdown) {
 					dropdown.remove();
 					dropdown = null;
 				}
 				btn.click();
 			});
-			dropdown.appendChild(backItem);
-			const sub = buildTransferSubMenu(ship, container, dropdown);
-			while (sub.firstChild) {
-				dropdown.appendChild(sub.firstChild);
-			}
 		});
 		dropdown.appendChild(transferItem);
 
@@ -384,6 +415,11 @@ const PRESETS: Preset[] = [
 		label: "Overhaul when hull < 30%",
 		command: "overhaul",
 		condition: { type: "hull-below", threshold: 30 },
+	},
+	{
+		label: "Refuel fleet ships",
+		command: "refuel-ship",
+		condition: { type: "always" },
 	},
 	{
 		label: "Return to base",
