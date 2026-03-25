@@ -94,8 +94,9 @@ export const state: AppState = {
 			k,
 			{
 				labels: true,
-				orbits: k !== "Comet",
-				trails: k === "Comet" || k === "Ship",
+				orbits: k !== "Comet" && k !== "Dwarf Planet" && k !== "Centaur" && k !== "Asteroid",
+				trails:
+					k === "Comet" || k === "Dwarf Planet" || k === "Centaur" || k === "Asteroid" || k === "Ship",
 			},
 		]),
 	) as Record<CategoryKey, CategoryVisibility>,

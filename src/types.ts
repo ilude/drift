@@ -121,6 +121,7 @@ export type CommandType =
 	| "survey-nearest"
 	| "transfer-to"
 	| "refuel"
+	| "refuel-ship"
 	| "shore-leave"
 	| "overhaul"
 	| "return-to-base"
@@ -147,7 +148,7 @@ export interface CommandTree {
 }
 
 export interface CommandResult {
-	action: "transfer" | "survey" | "refuel" | "overhaul" | "shore-leave" | "idle";
+	action: "transfer" | "survey" | "refuel" | "refuel-ship" | "overhaul" | "shore-leave" | "idle";
 	target?: string;
 }
 
@@ -159,7 +160,8 @@ export type ShipIntent =
 	| { type: "refueling"; location: string; shipName: string }
 	| { type: "overhauling"; location: string; shipName: string }
 	| { type: "shore-leave"; location: string; shipName: string }
-	| { type: "idle"; location: string; shipName: string };
+	| { type: "idle"; location: string; shipName: string }
+	| { type: "tanking"; target: string; shipName: string };
 
 // --- Ship sub-interfaces ---
 

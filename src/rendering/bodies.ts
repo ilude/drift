@@ -196,6 +196,39 @@ export function createTrail(color: string, maxPoints: number): TrailState {
 	};
 }
 
+/** Pre-fill a body's trail buffer by computing past orbital positions backwards.
+ *  Used for Dwarf Planets, Centaurs, and named Asteroids so they show trails
+ *  instead of orbit rings (same visual treatment as comets, but 2D orbits). */
+function prefillBodyTrail(entry: PlanetEntry): void {
+	const t = entry.trail;
+	const ecc = entry.data.e || 0;
+	const stepAngle = Math.abs(entry.speed) * 0.02; // same sampling density as comets
+	if (stepAngle === 0) return;
+
+	for (let i = 0; i < t.maxPoints; i++) {
+		const pastAngle = entry.angle - stepAngle * (t.maxPoints - i);
+		const theta = meanToTrue(pastAngle, ecc);
+		const kr = keplerRadius(entry.data.distance, ecc, theta);
+		const r = scaleDist(kr);
+		const i3 = i * 3;
+		t.positions[i3] = Math.cos(theta) * r;
+		t.positions[i3 + 1] = 0;
+		t.positions[i3 + 2] = Math.sin(theta) * r;
+		const fade = i / t.maxPoints;
+		t.colors[i3] = t.baseColor.r * fade;
+		t.colors[i3 + 1] = t.baseColor.g * fade;
+		t.colors[i3 + 2] = t.baseColor.b * fade;
+	}
+	t.count = t.maxPoints;
+	t.head = 0;
+	for (let i = 0; i < t.maxPoints; i++) t.indices[i] = i;
+	t.line.geometry.attributes.position.needsUpdate = true;
+	t.line.geometry.attributes.color.needsUpdate = true;
+	(t.line.geometry.index as THREE.BufferAttribute).needsUpdate = true;
+	t.line.geometry.setDrawRange(0, t.count);
+	t.line.visible = true;
+}
+
 /** Create geometry levels and material for a body. */
 function createGeometryAndMaterial(
 	data: BodyData,
@@ -375,6 +408,12 @@ function createBody(data: BodyData, parentMesh: THREE.Mesh | null): PlanetEntry 
 	};
 
 	state.bodyMeshes.push(entry);
+
+	// Pre-fill trails for minor body types (like comets, but 2D orbits)
+	if (data.type === "Dwarf Planet" || data.type === "Centaur" || data.type === "Asteroid") {
+		prefillBodyTrail(entry);
+		if (entry.orbitLine) entry.orbitLine.visible = false;
+	}
 
 	if (data.moons) {
 		data.moons.forEach((moonData) => {
