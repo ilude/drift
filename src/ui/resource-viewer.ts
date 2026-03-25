@@ -288,13 +288,15 @@ body {
 }
 .filter-search:focus { border-color: #4a6a4a; outline: none; }
 .filter-search::placeholder { color: #3a5a3a; }
-.cat-chip {
-	display: inline-block; padding: 2px 7px; border-radius: 3px; font-size: 9px;
-	cursor: pointer; border: 1px solid; user-select: none;
-	text-transform: uppercase; font-weight: bold; letter-spacing: 0.5px;
+.cat-tab {
+	display: inline-block; padding: 4px 10px; font-size: 10px;
+	cursor: pointer; border: 1px solid #2a3a2a; border-bottom: none;
+	user-select: none; text-transform: uppercase; font-weight: bold;
+	letter-spacing: 0.5px; background: #0d0d14; color: #4a6a4a;
+	border-radius: 3px 3px 0 0; margin-bottom: -1px; position: relative;
 }
-.cat-chip.active { opacity: 1; }
-.cat-chip.inactive { opacity: 0.3; }
+.cat-tab:hover { background: #1a2a1a; color: #88cc88; }
+.cat-tab.active { background: #141420; border-bottom: 1px solid #141420; z-index: 1; }
 .filter-sep { color: #2a3a2a; }
 .reset-btn {
 	background: #1a2a1a; border: 1px solid #2a3a2a; color: #88cc88;
@@ -320,8 +322,7 @@ th.col-type { text-align: left; min-width: 65px; }
 th.col-dist { text-align: right; min-width: 55px; }
 th.col-lv { text-align: center; min-width: 30px; }
 th.col-total { text-align: right; min-width: 70px; }
-th.col-res { min-width: 62px; writing-mode: vertical-lr; text-orientation: mixed;
-	transform: rotate(180deg); padding: 6px 3px; height: 80px; font-size: 10px; }
+th.col-res { min-width: 80px; padding: 4px 8px; font-size: 10px; text-align: right; }
 
 td { padding: 3px 6px; border-bottom: 1px solid #111118; white-space: nowrap; }
 td.cell-body {
@@ -381,15 +382,14 @@ tr.selected td.cell-body { border-left: 2px solid #88cc88; }
 </div>
 
 <div class="filter-bar">
+	<span class="cat-tab active" data-cat="all" style="color:#88cc88;">All</span>
+	<span class="cat-tab" data-cat="metal" style="border-color:#aaccaa55;">Metal</span>
+	<span class="cat-tab" data-cat="volatile" style="border-color:#88aacc55;">Volatile</span>
+	<span class="cat-tab" data-cat="industrial" style="border-color:#ccaa8855;">Industrial</span>
+	<span class="cat-tab" data-cat="radioactive" style="border-color:#cc888855;">Radioactive</span>
+	<span class="cat-tab" data-cat="umbral" style="border-color:#bb99dd55;">Umbral</span>
+	<span class="filter-sep">|</span>
 	<input type="text" class="filter-search" id="search-input" placeholder="Search body...">
-	<span class="filter-sep">|</span>
-	<span class="cat-chip active" data-cat="metal" style="border-color:#aaccaa; background:#aaccaa22;">Metal</span>
-	<span class="cat-chip active" data-cat="volatile" style="border-color:#88aacc; background:#88aacc22;">Volatile</span>
-	<span class="cat-chip active" data-cat="industrial" style="border-color:#ccaa88; background:#ccaa8822;">Industrial</span>
-	<span class="cat-chip active" data-cat="radioactive" style="border-color:#cc8888; background:#cc888822;">Radioactive</span>
-	<span class="cat-chip active" data-cat="umbral" style="border-color:#bb99dd; background:#bb99dd22;">Umbral</span>
-	<span class="filter-sep">|</span>
-	<button class="reset-btn" id="reset-btn">Reset</button>
 </div>
 
 <div class="table-wrap" id="table-wrap">
@@ -411,7 +411,7 @@ let resCols = [];
 let selectedBody = null;
 let sortCol = "totalValue";
 let sortDir = -1;
-let categories = new Set(["metal","volatile","industrial","radioactive","umbral"]);
+let activeTab = "all";
 let cellMode = "value"; // "value" | "qty" | "access"
 let showEmpty = false;
 
@@ -419,7 +419,7 @@ try {
 	const s = JSON.parse(localStorage.getItem("drift-rv2") || "{}");
 	if (s.sortCol) sortCol = s.sortCol;
 	if (s.sortDir) sortDir = s.sortDir;
-	if (s.categories) categories = new Set(s.categories);
+	if (s.activeTab) activeTab = s.activeTab;
 	if (s.cellMode) cellMode = s.cellMode;
 	if (s.showEmpty) showEmpty = true;
 	if (s.search) document.addEventListener("DOMContentLoaded", () => { document.getElementById("search-input").value = s.search; });
@@ -428,8 +428,7 @@ try {
 function saveState() {
 	try {
 		localStorage.setItem("drift-rv2", JSON.stringify({
-			sortCol, sortDir,
-			categories: [...categories],
+			sortCol, sortDir, activeTab,
 			cellMode, showEmpty,
 			search: document.getElementById("search-input").value,
 		}));
@@ -437,7 +436,8 @@ function saveState() {
 }
 
 function visibleResCols() {
-	return resCols.filter(rc => categories.has(rc.category));
+	if (activeTab === "all") return [];
+	return resCols.filter(rc => rc.category === activeTab);
 }
 
 function fmtK(n) {
@@ -462,12 +462,11 @@ function getFiltered() {
 	const search = (document.getElementById("search-input").value || "").toLowerCase();
 	let filtered = bodyRows;
 	if (search) filtered = filtered.filter(r => r.bodyName.toLowerCase().includes(search));
-	if (!showEmpty) {
-		const visCats = categories;
+	if (!showEmpty && activeTab !== "all") {
 		filtered = filtered.filter(r => {
 			for (const [id, _] of Object.entries(r.deposits)) {
 				const rc = ALL_RES.find(x => x.id === id);
-				if (rc && visCats.has(rc.category)) return true;
+				if (rc && rc.category === activeTab) return true;
 			}
 			return false;
 		});
@@ -505,7 +504,7 @@ function buildHeader() {
 	h += '<th class="col-lv" data-col="surveyLevel">Lv<span class="sort-ind"></span></th>';
 	h += '<th class="col-total" data-col="totalValue">Total<span class="sort-ind"></span></th>';
 	for (const rc of vrc) {
-		h += '<th class="col-res cat-' + rc.category + '" data-col="' + rc.id + '" title="' + rc.name + ' (' + rc.category + ')">' + rc.symbol + '<span class="sort-ind"></span></th>';
+		h += '<th class="col-res cat-' + rc.category + '" data-col="' + rc.id + '" title="' + rc.symbol + ' — ' + rc.category + '">' + rc.name + '<span class="sort-ind"></span></th>';
 	}
 	tr.innerHTML = h;
 	updateSortIndicators();
@@ -584,27 +583,24 @@ document.getElementById("tbody").addEventListener("click", (e) => {
 	if (link) window.opener?.postMessage({ type: "select-body", name: link.dataset.name }, "*");
 });
 
-// Events: category chips
-document.querySelectorAll(".cat-chip").forEach(chip => {
-	chip.addEventListener("click", () => {
-		const cat = chip.dataset.cat;
-		if (categories.has(cat)) { categories.delete(cat); chip.classList.remove("active"); chip.classList.add("inactive"); }
-		else { categories.add(cat); chip.classList.add("active"); chip.classList.remove("inactive"); }
-		render();
+// Events: category tabs
+function activateTab(cat) {
+	activeTab = cat;
+	document.querySelectorAll(".cat-tab").forEach(t => {
+		t.classList.toggle("active", t.dataset.cat === cat);
+		if (t.dataset.cat === cat) t.style.color = CAT_COLORS[cat] || "#88cc88";
+		else t.style.color = "#4a6a4a";
 	});
+	render();
+}
+document.querySelectorAll(".cat-tab").forEach(tab => {
+	tab.addEventListener("click", () => activateTab(tab.dataset.cat));
 });
+// Restore active tab visual
+activateTab(activeTab);
 
 // Events: search
 document.getElementById("search-input").addEventListener("input", () => render());
-
-// Events: reset
-document.getElementById("reset-btn").addEventListener("click", () => {
-	document.getElementById("search-input").value = "";
-	categories = new Set(["metal","volatile","industrial","radioactive","umbral"]);
-	document.querySelectorAll(".cat-chip").forEach(c => { c.classList.add("active"); c.classList.remove("inactive"); });
-	sortCol = "totalValue"; sortDir = -1;
-	render();
-});
 
 // Events: cell mode toggle (cycles value -> qty -> access)
 const modes = ["value", "qty", "access"];
