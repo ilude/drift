@@ -18,6 +18,7 @@ const COMMAND_NAMES: Record<CommandType, string> = {
 	"refuel-ship": "Refuel ship",
 	"shore-leave": "Shore leave",
 	overhaul: "Overhaul",
+	"major-refit": "Major refit",
 	"return-to-base": "Return to base",
 	idle: "Hold position",
 };
@@ -41,6 +42,7 @@ const IMMEDIATE_ORDERS: Array<{ label: string; command: CommandType }> = [
 	{ label: "Refuel", command: "refuel" },
 	{ label: "Shore Leave", command: "shore-leave" },
 	{ label: "Overhaul", command: "overhaul" },
+	{ label: "Major Refit", command: "major-refit" },
 	{ label: "Idle", command: "idle" },
 ];
 
@@ -415,6 +417,11 @@ const PRESETS: Preset[] = [
 		label: "Overhaul when hull < 30%",
 		command: "overhaul",
 		condition: { type: "hull-below", threshold: 30 },
+	},
+	{
+		label: "Major refit when hull < 60%",
+		command: "major-refit",
+		condition: { type: "hull-below", threshold: 60 },
 	},
 	{
 		label: "Refuel fleet ships",

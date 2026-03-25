@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { hullCeiling } from "../core/commands";
 import { findStar } from "../core/entities";
 import { MAX_CLICK_DIST, state } from "../core/state";
 import { getResourceDef } from "../data/resources";
@@ -29,6 +30,8 @@ function formatOrbitingAction(action: import("../types").ShipAction): string {
 			return "Shore Leave";
 		case "overhaul":
 			return "Overhaul";
+		case "major-refit":
+			return "Major Refit";
 		case "refuel":
 			return "Refueling";
 		case "refuel-ship":
@@ -187,6 +190,7 @@ const SHIP_ROW_IDS = [
 	"info-morale-row",
 	"info-leave-row",
 	"info-hull-row",
+	"info-age-row",
 	"info-supplies-row",
 	"info-action-row",
 	"info-duration-row",
@@ -237,6 +241,24 @@ function updateBodyInfoTitle(entry: BodyEntry): void {
 	});
 }
 
+function updateHullAndAge(entry: ShipEntry): void {
+	const ceiling = hullCeiling(entry.maintenance.totalAge, entry.maintenance.lastRefitAge);
+	const hullEl = document.getElementById("info-hull-value");
+	if (hullEl) {
+		const current = Math.round(entry.maintenance.hullIntegrity);
+		const cap = Math.round(ceiling);
+		hullEl.textContent = cap < 100 ? `${current}% / ${cap}%` : `${current}%`;
+		hullEl.className = current < 30 ? "critical" : current < 60 ? "warning" : "";
+	}
+
+	const ageEl = document.getElementById("info-age-value");
+	if (ageEl) {
+		const totalYears = Math.floor(entry.maintenance.totalAge / 365);
+		const remainDays = Math.floor(entry.maintenance.totalAge % 365);
+		ageEl.textContent = totalYears > 0 ? `${totalYears}y ${remainDays}d` : `${remainDays}d`;
+	}
+}
+
 function showShipPanel(entry: ShipEntry): void {
 	for (const id of SHIP_ROW_IDS) {
 		document.getElementById(id)?.classList.remove("hidden");
@@ -264,7 +286,7 @@ function showShipPanel(entry: ShipEntry): void {
 	if (leaveValueEl)
 		leaveValueEl.textContent = `${Math.round(state.simTime.days - entry.crew.lastShoreLeave)}d`;
 
-	setColoredPct("info-hull-value", Math.round(entry.maintenance.hullIntegrity));
+	updateHullAndAge(entry);
 
 	const suppliesValueEl = document.getElementById("info-supplies-value");
 	if (suppliesValueEl) {
@@ -438,7 +460,7 @@ function updateShipStatus(entry: ShipEntry): void {
 	if (leaveEl)
 		leaveEl.textContent = `${Math.round(state.simTime.days - entry.crew.lastShoreLeave)}d`;
 
-	setColoredPct("info-hull-value", Math.round(entry.maintenance.hullIntegrity));
+	updateHullAndAge(entry);
 
 	const suppliesEl = document.getElementById("info-supplies-value");
 	if (suppliesEl) {
