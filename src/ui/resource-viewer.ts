@@ -245,11 +245,12 @@ function generatePopoutHTML(): string {
 <title>Drift — Resource Survey</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><circle cx='8' cy='8' r='6' fill='%2388cc88'/></svg>">
 <style>
+@import url('https://fonts.googleapis.com/css2?family=Exo+2:wght@300;400;500;600;700&display=swap');
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body {
 	background: #0d0d14;
 	color: #88cc88;
-	font-family: "Courier New", monospace;
+	font-family: "Exo 2", sans-serif;
 	font-size: 11px;
 	display: flex;
 	flex-direction: column;

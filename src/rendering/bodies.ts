@@ -136,7 +136,7 @@ export function createLabel(name: string, color: string, isMoon: boolean): HTMLD
 	div.style.cssText = `
         position: absolute;
         color: ${color};
-        font-family: 'Courier New', monospace;
+        font-family: 'Exo 2', sans-serif;
         font-size: ${isMoon ? "9px" : "11px"};
         white-space: nowrap;
         text-shadow: 0 0 4px #000, 0 0 2px #000;

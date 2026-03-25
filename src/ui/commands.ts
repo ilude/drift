@@ -308,7 +308,7 @@ function buildRow(
 			input.style.background = "#141420";
 			input.style.border = "1px solid #4a6a4a";
 			input.style.color = "#99aa99";
-			input.style.fontFamily = "'Courier New', monospace";
+			input.style.fontFamily = "'Exo 2', sans-serif";
 			input.style.padding = "0 2px";
 
 			const commit = () => {
