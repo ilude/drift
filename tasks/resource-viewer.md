@@ -1,5 +1,7 @@
 # Resource Viewer — Popout Spreadsheet Window
 
+> **Status:** Implemented in `src/ui/resource-viewer.ts`. Body×resource matrix with category tabs, sortable columns, body-click navigation, postMessage sync. PWA manifest enables chrome-less popout.
+
 ## Goal
 
 Provide a spreadsheet-like table of all surveyed resource deposits across all bodies, displayed in a popout browser window to support multi-monitor setups.

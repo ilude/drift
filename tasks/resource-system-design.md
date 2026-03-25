@@ -1,12 +1,12 @@
 # Resource System Design Notes
 
-> **Status:** Data model implemented (`src/data/resources.ts`, `src/types.ts`). Resource catalog (27 entries), deposit generation, and multi-level survey system are complete. Production chains, node-graph UI, and dual-use mechanics are future work.
+> **Status:** Data model and viewer implemented. Resource catalog (27 entries), scientifically-grounded deposit generation with sub-typing (frost line, parent distance, belt position), multi-level survey (depth-based, not category-based), Earth homeworld with all resources, and popout resource matrix viewer are complete. Production chains, mining extraction, node-graph UI, and dual-use mechanics are future work.
 
 Working design document for Drift's resource/mining system.
 
 ## Key Design Decisions (confirmed)
 
-- **Survey model:** Progressive — sensor tech level determines which deposits are revealed
+- **Survey model:** Depth-based — sensor tech level determines scan depth. Higher accessibility deposits (near surface) are found first. `minSurveyLevel` is derived from accessibility (≥0.5 → level 1, ≥0.2 → level 2, <0.2 → level 3), not resource category. Small bodies may be fully scanned at level 1.
 - **Mining difficulty:** First 60-80% easy, last 20% increasingly harder (accessibility depletion)
 - **Generation:** Lazy deterministic — deposits generated when surveyed, using hash(systemSeed, bodyName). System has a "richness" budget allocated at generation time.
 - **Fictional element category:** "Umbral Elements" — discovered through dark matter/dark energy research
@@ -95,16 +95,20 @@ Every system should have unintended but mechanically consistent secondary uses. 
 ### Abstraction Level
 Between Victoria 3 (pure menus) and Anno (ratio-based placement). Players design production workflows, not belt layouts. Automatic logistics handles physical transport.
 
+## Resolved Questions
+
+- **What body types favor which resource categories?** — Resolved. Sub-typed pools based on frost line (2.7 AU), parent distance (moons), belt position (C/S/M-type asteroids), and distance (inner/outer dwarf planets). See `buildPool()` in `resources.ts`.
+- **Tech tree structure for survey sensors — how many levels?** — 3 levels representing scan depth. Basic (surface, access ≥ 0.5), Improved (mid-depth, access ≥ 0.2), Advanced (deep, access < 0.2).
+- **Asteroid mining vs planetary mining — different mechanics?** — Same mechanics, different resource pools. C-type (outer, carbonaceous), S-type (inner, silicate), M-type (mid, metallic).
+
 ## Open Questions
 
 - Processing chains: How deep should the dependency graph go? (e.g., Uranium → Enriched Uranium → Plutonium)
 - Should normal resources also have processed variants? (e.g., Iron → Steel, Silicon → Microchips)
-- Tech tree structure for survey sensors — how many levels?
-- What body types favor which resource categories?
-- Asteroid mining vs planetary mining — different mechanics?
 - How does system richness budget interact with body-level generation?
 - What other systems have natural dual-use potential?
 - How do we handle "accidental" destruction from dual-use without making the game feel unfair to NPCs?
+- Mining extraction: ship action or colony facility? Duration, rates, cargo capacity?
 
 ## Reference
 - `tasks/aurora-4x-reference.md` — Aurora 4X minerals and survey mechanics

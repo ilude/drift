@@ -33,7 +33,8 @@ src/
               textures.ts, bodies.ts,    (body init, survey state)
               ship-transfer.ts           (Hermite spline transfers, capture blend)
   ui/         ui.ts, selection.ts,       (HUD, labels, click handlers)
-              commands.ts                (command tree editor UI)
+              commands.ts,               (command tree editor UI)
+              resource-viewer.ts         (popout resource matrix window)
   data/       sol-data.ts,               (system data & generation)
               system-generator.ts,
               resources.ts               (resource catalog, deposit generation)
@@ -56,7 +57,7 @@ core/utils.ts, math/orbit.ts, math/visual.ts  (pure math, no app imports)
         |
   rendering/rendering.ts, rendering/ship-transfer.ts, math/transfer.ts
         |
-  ui/selection.ts, ui/ui.ts, ui/commands.ts
+  ui/selection.ts, ui/ui.ts, ui/commands.ts, ui/resource-viewer.ts
         |
      main.ts  (orchestrator)
 ```
@@ -76,15 +77,20 @@ core/utils.ts, math/orbit.ts, math/visual.ts  (pure math, no app imports)
 - `src/rendering/ship-transfer.ts` — Hermite spline transfers, capture blend, station-keeping approach
 - `src/math/transfer.ts` — Transfer math helpers: Hohmann, game transfer timing, coordinate-independent utilities
 - `src/data/system-generator.ts` — Procedural star system generation from seeds
-- `src/data/resources.ts` — Resource catalog (27 entries), seeded deposit generation per body
-- `src/ui/commands.ts` — Command tree editor UI (reorder, toggle, add/remove orders)
+- `src/data/resources.ts` — Resource catalog (27 entries), scientifically-grounded deposit generation. Pools sub-typed by body type, frost line distance, parent distance (moons), belt position (asteroids). Earth homeworld gets all 27 resources via `generateEarthDeposits()`.
+- `src/ui/commands.ts` — Command tree editor UI (reorder, toggle, add/remove orders), category-first transfer target picker
+- `src/ui/resource-viewer.ts` — Popout resource matrix window. Body rows × resource columns. Category tabs, sortable, body-click navigation. postMessage communication with main window.
 
 ## UI Structure
 
-- **Header bar:** `[System Name ▾] | [View ▾] | <spacer> | [Pause] [Speed ▾] | [Date] [Perf]`
+- **Header bar:** `[System Name ▾] | [View ▾] | [Resources] | [Save] | <spacer> | [Pause] [Speed ▾] | [Date] [Perf]`
 - **View menu:** Dropdown with per-category visibility toggles (labels, orbits, trails) for each body type. Recenter button with Ctrl+R shortcut.
-- **Body categories:** Star, Planet, Dwarf Planet, Detached Object, Moon, Comet, Asteroid, Ship — each with independent visibility controls via `state.categoryVisibility`.
+- **Body categories:** Star, Planet, Dwarf Planet, Centaur, Moon, Comet, Asteroid, Ship — each with independent visibility controls via `state.categoryVisibility`. Centaurs and Asteroids start collapsed in the body list.
+- **Resource viewer:** Popout window (`window.open()`) for multi-monitor. Body×resource matrix table with category tabs (All, Metal, Volatile, Industrial, Radioactive, Umbral). Sortable columns, body name click navigates main window. Communication via `postMessage()`. Code in `src/ui/resource-viewer.ts`.
 - **Dropdowns** (system-switcher, speed-selector, view-menu) are positioned dynamically using `getBoundingClientRect()` for alignment.
+- **Transfer target picker:** Category-first hierarchy — pick body type (Planets, Dwarf Planets, Centaurs, Asteroids) then specific body within that category.
+- **Font:** Exo 2 (Google Fonts) — sans-serif, optimized for small-size data readability.
+- **PWA:** `manifest.json` enables chrome-less popout windows when installed as a PWA.
 
 ## Conventions
 
@@ -97,21 +103,28 @@ core/utils.ts, math/orbit.ts, math/visual.ts  (pure math, no app imports)
 - **Ship state machine:** orbiting → transferring → orbiting. Transfer uses 3D cubic Hermite splines with station-keeping capture blend (smoothstep in final 15%). Ships use brachistochrone physics (default 0.1g engine) for transfer timing. Minimum fuel floor of 1% capacity/day ensures visible transfer cost with high-Isp TN engines.
 - **Ship command tree:** Priority-ordered list of conditional commands (fuel-below, morale-below, hull-below, supplies-below, always). Evaluated between actions. `immediateCommand` is one-shot — cleared at the top of `dispatchCommand()` on any dispatch.
 - **Ship simulation:** `tickShipSimulation()` runs per-frame: morale decay (1.5 exponent past 180-day deployment limit), maintenance age, malfunction checks (every 30 days during transfers), fuel drain (station-keeping rates), gradual recovery during actions (refuel: 5d fixed, overhaul: dynamic duration based on hull/supply deficit at +2.5%/day each +0.5 morale/day, shore leave: 30d at +2.5 morale/day +0.25% hull/day from repair crew). All recovery rates scaled by `depotQuality` and per-system hardness multipliers.
-- **Survey system:** Multi-level surveys (1-3) revealing progressively rarer resources. Duration scales with body type and crew/hull condition. `surveyMultiplier` state setting for difficulty tuning.
+- **Survey system:** Multi-level surveys (1-3) representing scan depth. Level 1 = surface/shallow (access ≥ 0.5), Level 2 = mid-depth (access ≥ 0.2), Level 3 = deep (access < 0.2). Higher sensor tech scans deeper into the body, revealing harder-to-extract deposits. Small bodies may be fully scanned at level 1. `minSurveyLevel` on deposits is determined by accessibility, not resource category. Duration scales with body type and crew/hull condition. `surveyMultiplier` state setting for difficulty tuning.
+- **Resource sub-typing:** Deposit pools vary by body sub-type, determined procedurally from existing data:
+  - **Planets:** Gas giant (r>30k km) / Ice giant (r>15k) / Cold rocky (>2.7 AU frost line) / Warm rocky (<2.7 AU)
+  - **Moons:** Icy outer (parent >5 AU) / Mid-system (parent >2.7 AU) / Rocky inner (parent <2.7 AU)
+  - **Asteroids:** C-type carbonaceous (outer belt) / M-type metallic (mid belt) / S-type silicate (inner belt)
+  - **Dwarf Planets:** Outer nitrogen-ice (>10 AU, Pluto analog) / Inner water-ice (<10 AU, Ceres analog)
+  - **Comets/Centaurs:** Fixed pools (water/nitrogen/hydrocarbon dominated)
 - **Rate modifier pattern:** Every rate-based game system uses two orthogonal scaling axes:
   1. **Quality modifier** (`depotQuality`): represents location facilities — crew competence, equipment modernity, depot capacity. Currently a single global value (1.0 = 100%), eventually calculated per-location from base/colony subsystems.
   2. **Game hardness multiplier** (per-system on AppState): player-chosen difficulty. 1.0 = default, higher = slower/harder. Current multipliers: `surveyMultiplier`, `repairMultiplier`, `refuelMultiplier`, `moraleMultiplier`, `supplyMultiplier`.
   - **Formula:** `effectiveRate = baseRate * quality / hardnessMultiplier`
   - **Convention:** All new rate-based systems MUST include both modifiers. Values are stored as decimals (1.0 = 100%). When brainstorming new systems, proactively identify where quality and hardness modifiers should apply.
 - **Commander judgment:** Ships have a `Commander` with `judgment` (0.0–1.0) and `experience` counter. Lives in `core/commander.ts` — the judgment layer on top of the mechanical command tree (`core/commands.ts`). Two judgment patterns: (1) **preemptive servicing** at colonies — raises maintenance thresholds before departure by `(100 - base) * judgment * 0.3`; (2) **defer maintenance** in the field — at unsurveyed bodies, defers maintenance commands when judgment says it's safe to survey first (personal floor interpolates from command threshold toward critical by judgment). Learning from failure: malfunctions and emergency-returns bump judgment with diminishing returns, capped at 0.9. New ships start at 0.3. All callers use `commanderDecide(ship)` — never call `evaluateCommandTree` directly for dispatch. DDD model documented in `tasks/ddd-model.md`. Future crew career system designed in `tasks/crew-career-system.md`.
-- **Comet trails:** Pre-filled on creation by computing past orbital positions backwards. Trail buffer is 1200 points (vs 400 for planets). Sample rate scales with zoom level.
+- **Pre-filled trails:** Comets, Dwarf Planets, Centaurs, and Asteroids get trails pre-filled on creation by computing past orbital positions backwards (orbits hidden by default). Comet trail buffer is 1200 points (vs 400 for others). Sample rate scales with zoom level.
+- **Save system:** Manual save only via header "Save" button. No auto-save on unload. Game always starts fresh with Sol system and default ships.
 - **Render-on-demand:** 30fps cap; render loop stops when paused and resumes on input (wake-render event).
 - **No circular imports.** Pure math modules have zero app imports.
 - **Biome enforced:** Linter + formatter. Tabs, double quotes, trailing commas. Zero warnings policy. Config in `biome.json`.
 
 ## Testing
 
-501 tests across 19 files using Vitest + jsdom. Tests cover:
+549+ tests across 20 files using Vitest + jsdom. Tests cover:
 - Orbital math (orbit.test.ts)
 - Visual scaling (visual.test.ts)
 - Date/time formatting & save/restore (state.test.ts)
@@ -128,5 +141,6 @@ core/utils.ts, math/orbit.ts, math/visual.ts  (pure math, no app imports)
 - Body creation & selection (bodies.test.ts, selection.test.ts)
 - Entity resolution & maps (entities.test.ts)
 - Ship intent broadcast (intents.test.ts)
+- Resource viewer data collection (resource-viewer.test.ts)
 
 All tests must pass before committing. Run `bun run test` to verify.
