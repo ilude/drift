@@ -276,6 +276,8 @@ interface ShipConfig {
 	hostPlanetName: string;
 	engineId?: string;
 	color?: string;
+	fuelCapacityKg?: number;
+	commandTree?: import("../types").CommandTree;
 }
 
 export function createShip(config: ShipConfig): ShipEntry | undefined {
@@ -359,8 +361,8 @@ export function createShip(config: ShipConfig): ShipEntry | undefined {
 		// Ship physics
 		engineId: defaultEngine.id,
 		dryMassKg: defaultEngine.dryMassKg,
-		fuelKg: 50_000,
-		fuelCapacityKg: 50_000,
+		fuelKg: config.fuelCapacityKg ?? 50_000,
+		fuelCapacityKg: config.fuelCapacityKg ?? 50_000,
 		// Ship state
 		shipState: "orbiting" as const,
 		hostPlanetName: homePlanetData.name,
@@ -391,7 +393,7 @@ export function createShip(config: ShipConfig): ShipEntry | undefined {
 		tailCount: 0,
 		tailLine: null,
 		// Command & autonomy
-		commandTree: {
+		commandTree: config.commandTree ?? {
 			entries: [
 				{
 					id: "fuel-check",

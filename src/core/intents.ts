@@ -22,6 +22,7 @@ export function isTargetClaimed(targetName: string, excludeShipName: string): bo
 		if (shipName === excludeShipName) continue;
 		if (intent.type === "surveying" && intent.target === targetName) return true;
 		if (intent.type === "transferring" && intent.destination === targetName) return true;
+		if (intent.type === "tanking" && intent.target === targetName) return true;
 	}
 	return false;
 }
@@ -33,6 +34,7 @@ export function getClaimedTargets(excludeShipName: string): Set<string> {
 		if (shipName === excludeShipName) continue;
 		if (intent.type === "surveying") claimed.add(intent.target);
 		if (intent.type === "transferring") claimed.add(intent.destination);
+		if (intent.type === "tanking") claimed.add(intent.target);
 	}
 	return claimed;
 }

@@ -61,6 +61,8 @@ function commandToResult(
 			return { action: "shore-leave" };
 		case "overhaul":
 			return { action: "overhaul" };
+		case "refuel-ship":
+			return { action: "refuel-ship" };
 		case "return-to-base":
 			return { action: "refuel" };
 		case "idle":

@@ -5,8 +5,10 @@ import {
 	getUnsurvevedMoonsOfHost,
 	HULL_REPAIR_PER_DAY,
 	SUPPLY_RESTOCK_PER_DAY,
+	selectNextRefuelTarget,
 	selectNextSurveyTarget,
 	tickShipSimulation,
+	tickTankerTransfer,
 } from "./core/commands";
 import {
 	findAsteroidEntity,
@@ -38,7 +40,14 @@ import {
 } from "./rendering/rendering";
 import { camera, cometGroup, controls, renderer, scene, trailGroups } from "./rendering/scene";
 import { asteroidProxy, initiateTransfer, setOnTransferComplete } from "./rendering/ship-transfer";
-import type { BodyEntry, CommandResult, PlanetEntry, ShipEntry, SystemData } from "./types";
+import type {
+	BodyEntry,
+	CommandResult,
+	CommandTree,
+	PlanetEntry,
+	ShipEntry,
+	SystemData,
+} from "./types";
 import { isCometEntry, isShipEntry, isSurveyable } from "./types";
 import { pushResourceUpdate } from "./ui/resource-viewer";
 import {
@@ -81,6 +90,47 @@ updatePositions(1e-10, 300);
 createShip({ name: "ISS Explorer", hostPlanetName: "Earth" });
 createShip({ name: "ISS Magellan", hostPlanetName: "Mars" });
 createShip({ name: "ISS Kepler", hostPlanetName: "Jupiter" });
+
+const tankerCommandTree: CommandTree = {
+	entries: [
+		{
+			id: "fuel-check",
+			command: "refuel",
+			condition: { type: "fuel-below", threshold: 30 },
+			enabled: true,
+			origin: "ship",
+		},
+		{
+			id: "hull-check",
+			command: "overhaul",
+			condition: { type: "hull-below", threshold: 30 },
+			enabled: true,
+			origin: "ship",
+		},
+		{
+			id: "morale-check",
+			command: "shore-leave",
+			condition: { type: "morale-below", threshold: 40 },
+			enabled: true,
+			origin: "ship",
+		},
+		{
+			id: "refuel-fleet",
+			command: "refuel-ship",
+			condition: { type: "always" },
+			enabled: true,
+			origin: "ship",
+		},
+		{ id: "idle", command: "idle", condition: { type: "always" }, enabled: true, origin: "ship" },
+	],
+};
+createShip({
+	name: "ISS Sheetz",
+	hostPlanetName: "Earth",
+	color: "#ffaa33",
+	fuelCapacityKg: 150_000,
+	commandTree: tankerCommandTree,
+});
 state.asteroidBelts = createAsteroidBelts();
 rebuildEntityMaps();
 
@@ -199,6 +249,13 @@ function loadSystem(systemData: SystemData): void {
 	const firstPlanet =
 		state.bodyMeshes.find((e) => !isShipEntry(e) && e.data.type === "Planet")?.data.name ?? "Earth";
 	createShip({ name: "ISS Explorer", hostPlanetName: firstPlanet });
+	createShip({
+		name: "ISS Sheetz",
+		hostPlanetName: firstPlanet,
+		color: "#ffaa33",
+		fuelCapacityKg: 150_000,
+		commandTree: tankerCommandTree,
+	});
 	state.asteroidBelts = createAsteroidBelts();
 	rebuildEntityMaps();
 
@@ -545,6 +602,53 @@ function handleOverhaulCommand(ship: ShipEntry): void {
 	});
 }
 
+function computeRefuelShipDuration(target: ShipEntry): number {
+	const deficit = target.fuelCapacityKg - target.fuelKg;
+	return Math.max(1, Math.ceil(deficit / 10_000)); // 10,000 kg/day transfer rate
+}
+
+function handleRefuelShipCommand(ship: ShipEntry): void {
+	const targetName = selectNextRefuelTarget(ship);
+	if (!targetName) {
+		// No ships need fuel -- idle (will re-evaluate next frame)
+		ship.action = noAction();
+		publishIntent(ship.data.name, {
+			type: "idle",
+			location: ship.hostPlanetName,
+			shipName: ship.data.name,
+		});
+		return;
+	}
+
+	const targetShip = findShip(targetName);
+	if (!targetShip) return;
+
+	publishIntent(ship.data.name, {
+		type: "tanking",
+		target: targetName,
+		shipName: ship.data.name,
+	});
+
+	if (targetShip.hostPlanetName === ship.hostPlanetName) {
+		// Already at the same body -- start refueling immediately
+		const duration = computeRefuelShipDuration(targetShip);
+		ship.action = mkAction("refuel-ship", "refuel-fleet", state.simTime.days, duration, targetName);
+	} else {
+		// Need to travel to the target ship's host body
+		const hostBody = findBody(targetShip.hostPlanetName);
+		if (hostBody && initiateTransfer(ship, hostBody)) {
+			ship.action = mkAction("refuel-ship", "refuel-fleet", 0, 0, targetName);
+		} else {
+			ship.action = noAction();
+			publishIntent(ship.data.name, {
+				type: "idle",
+				location: ship.hostPlanetName,
+				shipName: ship.data.name,
+			});
+		}
+	}
+}
+
 let _dispatchDepth = 0;
 function dispatchCommand(ship: ShipEntry, result: CommandResult): void {
 	_dispatchDepth++;
@@ -580,6 +684,9 @@ function dispatchCommand(ship: ShipEntry, result: CommandResult): void {
 			break;
 		case "overhaul":
 			handleOverhaulCommand(ship);
+			break;
+		case "refuel-ship":
+			handleRefuelShipCommand(ship);
 			break;
 		case "idle":
 			ship.action = noAction();
@@ -622,6 +729,13 @@ function completeAction(ship: ShipEntry): void {
 			`${ship.data.name}: Refueling completed`,
 			ship.data.name,
 		);
+	} else if (actionType === "refuel-ship") {
+		ship.action = noAction();
+		addCoalescedNotification(
+			"action-complete",
+			`${ship.data.name}: Fleet refueling completed`,
+			ship.data.name,
+		);
 	}
 
 	// Commander evaluates standing orders + applies judgment for next action
@@ -640,6 +754,15 @@ function tickShip(ship: ShipEntry, simDt: number): void {
 		ship.action.startTime > 0 &&
 		ship.action.duration > 0;
 	if (hasActiveAction) {
+		// Ship-to-ship fuel transfer: pump fuel each frame, abort if target moved
+		if (ship.action.type === "refuel-ship") {
+			const done = tickTankerTransfer(ship, simDt);
+			if (done) {
+				completeAction(ship);
+				return;
+			}
+		}
+
 		const elapsed = state.simTime.days - ship.action.startTime;
 		ship.action.progress = Math.min(1, elapsed / ship.action.duration);
 
@@ -721,6 +844,15 @@ export function onTransferComplete(ship: ShipEntry): void {
 		startActionTimer(ship, 30);
 	} else if (actionType === "overhaul") {
 		startActionTimer(ship, computeOverhaulDuration(ship));
+	} else if (actionType === "refuel-ship") {
+		const targetShip = findShip(ship.action.target ?? undefined);
+		if (targetShip) {
+			startActionTimer(ship, computeRefuelShipDuration(targetShip));
+		} else {
+			ship.action = noAction();
+			const decision = commanderDecide(ship);
+			if (decision) dispatchCommand(ship, decision);
+		}
 	} else {
 		// No pending action -- commander decides
 		const decision = commanderDecide(ship);

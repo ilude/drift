@@ -5,7 +5,7 @@
 import type { BodyEntry, CommandCondition, CommandResult, ShipEntry } from "../types";
 import { isCometEntry, isShipEntry, isSurveyable } from "../types";
 import { isAtColony, learnFromMalfunction } from "./commander";
-import { findBody } from "./entities";
+import { findBody, findShip } from "./entities";
 import { getClaimedTargets } from "./intents";
 import { state } from "./state";
 import { seededRandom } from "./utils";
@@ -40,6 +40,8 @@ function commandToResult(
 			return { action: "shore-leave" };
 		case "overhaul":
 			return { action: "overhaul" };
+		case "refuel-ship":
+			return { action: "refuel-ship" };
 		case "return-to-base":
 			return { action: "refuel" };
 		case "idle":
@@ -236,6 +238,50 @@ export function tickShipSimulation(ship: ShipEntry, simDt: number, simTime: numb
 	tickMaintenanceAge(ship, simDt, atColony);
 	tickFuelConsumption(ship, simDt, atColony);
 	tickMalfunctionCheck(ship, simDt);
+}
+
+// --- Fleet refueling ---
+const FLEET_FUEL_THRESHOLD = 50; // ships below this % are candidates
+const TANKER_TRANSFER_RATE_PER_DAY = 10_000; // kg/day ship-to-ship
+const TANKER_RESERVE_FLOOR = 0.15; // keep 15% for return trip
+
+export function selectNextRefuelTarget(tanker: ShipEntry): string | null {
+	const claimed = getClaimedTargets(tanker.data.name);
+	const candidates: { name: string; fuelPct: number }[] = [];
+
+	for (const entry of state.bodyMeshes) {
+		if (!isShipEntry(entry)) continue;
+		if (entry.data.name === tanker.data.name) continue;
+		if (entry.shipState === "transferring") continue;
+		if (claimed.has(entry.data.name)) continue;
+		const fuelPct = (entry.fuelKg / entry.fuelCapacityKg) * 100;
+		if (fuelPct >= FLEET_FUEL_THRESHOLD) continue;
+		candidates.push({ name: entry.data.name, fuelPct });
+	}
+
+	if (candidates.length === 0) return null;
+	candidates.sort((a, b) => a.fuelPct - b.fuelPct);
+	return candidates[0].name;
+}
+
+export function tickTankerTransfer(ship: ShipEntry, simDt: number): boolean {
+	const target = findShip(ship.action.target ?? undefined);
+	if (!target || target.hostPlanetName !== ship.hostPlanetName || target.shipState !== "orbiting") {
+		return true; // abort -- target moved or departed
+	}
+
+	const reserveFloor = ship.fuelCapacityKg * TANKER_RESERVE_FLOOR;
+	const available = Math.max(0, ship.fuelKg - reserveFloor);
+	const targetDeficit = target.fuelCapacityKg - target.fuelKg;
+
+	if (available <= 0 || targetDeficit <= 0) {
+		return true; // done -- tanker dry or target full
+	}
+
+	const transferAmount = Math.min(available, targetDeficit, TANKER_TRANSFER_RATE_PER_DAY * simDt);
+	ship.fuelKg -= transferAmount;
+	target.fuelKg += transferAmount;
+	return false;
 }
 
 function collectBodyCandidates(

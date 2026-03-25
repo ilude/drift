@@ -18,28 +18,34 @@ import { isCometEntry, isShipEntry, isSurveyable } from "../types";
 import { renderCommandTree } from "./commands";
 import { pushBodySelected } from "./resource-viewer";
 
+/** Format a ship's orbiting action as display text. */
+function formatOrbitingAction(action: import("../types").ShipAction): string {
+	switch (action.type) {
+		case "survey-nearest":
+			return action.startTime > 0
+				? `Surveying ${action.target ?? "?"}`
+				: `En route to ${action.target ?? "?"}`;
+		case "shore-leave":
+			return "Shore Leave";
+		case "overhaul":
+			return "Overhaul";
+		case "refuel":
+			return "Refueling";
+		case "refuel-ship":
+			return action.startTime > 0
+				? `Refueling ${action.target ?? "ship"}`
+				: `En route to refuel ${action.target ?? "ship"}`;
+		default:
+			return "Idle";
+	}
+}
+
 /** Format a ship's current action as display text. Single source of truth for action display. */
 export function formatShipAction(entry: import("../types").ShipEntry): string {
 	if (entry.shipState === "transferring") {
 		return `In transit to ${entry.transferTarget}`;
 	}
-	const action = entry.action;
-	if (action.type === "survey-nearest" && action.startTime > 0) {
-		return `Surveying ${action.target ?? "?"}`;
-	}
-	if (action.type === "survey-nearest") {
-		return `En route to ${action.target ?? "?"}`;
-	}
-	if (action.type === "shore-leave" && action.startTime > 0) {
-		return "Shore Leave";
-	}
-	if (action.type === "overhaul" && action.startTime > 0) {
-		return "Overhaul";
-	}
-	if (action.type === "refuel") {
-		return "Refueling";
-	}
-	return "Idle";
+	return formatOrbitingAction(entry.action);
 }
 
 function formatDays(d: number): string {
