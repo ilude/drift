@@ -40,6 +40,8 @@ function commandToResult(
 			return { action: "shore-leave" };
 		case "overhaul":
 			return { action: "overhaul" };
+		case "major-refit":
+			return { action: "major-refit" };
 		case "refuel-ship":
 			return { action: "refuel-ship" };
 		case "return-to-base":
@@ -74,6 +76,12 @@ export function computeMorale(daysSinceLeave: number, deploymentLimit: number): 
 // Malfunction check interval in days
 const MALFUNCTION_INTERVAL = 30;
 
+// Routine crew maintenance rate (per day, while idle + orbiting)
+const ROUTINE_MAINT_RATE = 0.05; // 0.05% hull/day (~18%/year at full morale)
+
+// Major refit base duration
+export const REFIT_BASE_DAYS = 180; // 6-month base refit
+
 // Gradual recovery rates (per day)
 const MORALE_RECOVERY_PER_DAY = 2.5; // +2.5 morale/day during shore leave (~28 days from 30% to full)
 const REFUEL_RATE_PER_DAY = 0.2; // 20% of capacity/day
@@ -81,6 +89,50 @@ export const HULL_REPAIR_PER_DAY = 2.5; // +2.5% hull/day during overhaul (~40 d
 export const SUPPLY_RESTOCK_PER_DAY = 2.5; // +2.5 supplies/day during overhaul
 const SHORE_LEAVE_REPAIR_PER_DAY = 0.25; // +0.25% hull/day from repair crew during shore leave
 const OVERHAUL_MORALE_PER_DAY = 0.5; // +0.5 morale/day during overhaul ("working from home", ~140 days from 30% to full)
+
+// --- Hull ceiling: lifetime degradation ---
+// Overhauls can only restore hull to this ceiling. Major refit resets lastRefitAge.
+// 0 years since refit: 100%, 10y: 85%, 20y: 70%, 30y: 55%, floor: 30%
+export function hullCeiling(totalAge: number, lastRefitAge: number): number {
+	const yearsSinceRefit = (totalAge - lastRefitAge) / 365;
+	return Math.max(30, 100 - yearsSinceRefit * 1.5);
+}
+
+// --- Bathtub curve malfunction model ---
+// Phase 1 (0-90 days): infant mortality ~2.5% decaying to ~1%
+// Phase 2 (90 days - 3 years): useful life, constant ~1%
+// Phase 3 (3+ years): wear-out, quadratic acceleration
+export function bathtubFailRate(
+	daysSinceOverhaul: number,
+	hullIntegrity: number,
+	morale: number,
+	experience: number,
+): number {
+	const years = daysSinceOverhaul / 365;
+
+	let baseRate: number;
+	if (years < 0.25) {
+		// Phase 1: Infant mortality — elevated then decaying
+		baseRate = 0.01 + 0.015 * (1 - years / 0.25);
+	} else if (years < 3) {
+		// Phase 2: Useful life — low constant rate
+		baseRate = 0.01;
+	} else {
+		// Phase 3: Wear-out — quadratic acceleration
+		const wearYears = years - 3;
+		baseRate = 0.01 + 0.005 * wearYears * wearYears;
+	}
+
+	// Hull integrity: sqrt prevents death spiral (25% hull = 2x, not 4x)
+	const integrityMultiplier = Math.sqrt(100 / Math.max(1, hullIntegrity));
+
+	// Crew quality: morale and experience reduce failures
+	const moraleFactor = 1 - (morale - 50) * 0.003;
+	const expReduction = Math.min(0.2, experience * 0.005);
+	const crewFactor = moraleFactor * (1 - expReduction);
+
+	return baseRate * integrityMultiplier * crewFactor;
+}
 
 type SimRates = {
 	moraleRate: number;
@@ -126,13 +178,14 @@ function tickMoraleDecay(
 	if (isOrbiting && ship.action.type === "shore-leave") {
 		ship.crew.morale = Math.min(100, ship.crew.morale + rates.moraleRate * simDt);
 		ship.crew.lastShoreLeave = simTime;
-		// Repair crew works on hull during shore leave
+		// Repair crew works on hull during shore leave (capped at ceiling)
+		const ceiling = hullCeiling(ship.maintenance.totalAge, ship.maintenance.lastRefitAge);
 		ship.maintenance.hullIntegrity = Math.min(
-			100,
+			ceiling,
 			ship.maintenance.hullIntegrity + rates.repairCrewRate * simDt,
 		);
-	} else if (isOrbiting && ship.action.type === "overhaul") {
-		// Crew recovers morale slowly during overhaul ("working from home")
+	} else if (isOrbiting && (ship.action.type === "overhaul" || ship.action.type === "major-refit")) {
+		// Crew recovers morale slowly during overhaul/refit ("working from home")
 		ship.crew.morale = Math.min(100, ship.crew.morale + rates.overhaulMoraleRate * simDt);
 		ship.crew.lastShoreLeave = simTime;
 	} else if (atColony) {
@@ -155,9 +208,14 @@ function tickActionRecovery(
 		ship.fuelKg = Math.min(ship.fuelCapacityKg, ship.fuelKg + fuelPerFrame);
 	}
 
-	if (isOrbiting && ship.action.type === "overhaul") {
+	if (isOrbiting && (ship.action.type === "overhaul" || ship.action.type === "major-refit")) {
+		// Major refit targets 100% (ceiling resets on completion); overhaul targets current ceiling
+		const ceiling =
+			ship.action.type === "major-refit"
+				? 100
+				: hullCeiling(ship.maintenance.totalAge, ship.maintenance.lastRefitAge);
 		ship.maintenance.hullIntegrity = Math.min(
-			100,
+			ceiling,
 			ship.maintenance.hullIntegrity + rates.repairRate * simDt,
 		);
 		ship.maintenance.supplies = Math.min(
@@ -200,8 +258,9 @@ function tickColonyServices(
 }
 
 function tickMaintenanceAge(ship: ShipEntry, simDt: number, atColony: boolean): void {
+	ship.maintenance.totalAge += simDt; // lifetime clock always ticks
 	if (!atColony) {
-		ship.maintenance.age += simDt;
+		ship.maintenance.age += simDt; // deployment clock pauses at colony
 	}
 }
 
@@ -230,16 +289,32 @@ function tickMalfunctionCheck(ship: ShipEntry, simDt: number): void {
 		currentCheck++;
 		const intervalAge = currentCheck * MALFUNCTION_INTERVAL;
 		const rng = seededRandom(Math.floor(intervalAge));
-		const integrity = Math.max(1, ship.maintenance.hullIntegrity);
-		const failChance = (intervalAge / (365 * 5)) * (100 / integrity);
+		const failChance = bathtubFailRate(
+			ship.maintenance.age,
+			ship.maintenance.hullIntegrity,
+			ship.crew.morale,
+			ship.commander.experience,
+		);
 		const roll = rng();
 		if (roll < failChance) {
-			const damage = ship.maintenance.supplies <= 0 ? 15 : 5 + Math.floor(rng() * 11);
+			const damage = ship.maintenance.supplies <= 0 ? 12 : 3 + Math.floor(rng() * 10);
 			ship.maintenance.hullIntegrity = Math.max(0, ship.maintenance.hullIntegrity - damage);
 			ship.maintenance.supplies = Math.max(0, ship.maintenance.supplies - damage);
 			learnFromMalfunction(ship);
 		}
 	}
+}
+
+function tickRoutineMaintenance(ship: ShipEntry, simDt: number): void {
+	// Crew performs routine maintenance only while idle and orbiting
+	if (ship.shipState !== "orbiting" || ship.action.type !== null) return;
+
+	const moraleFactor = ship.crew.morale / 100;
+	const ceiling = hullCeiling(ship.maintenance.totalAge, ship.maintenance.lastRefitAge);
+	ship.maintenance.hullIntegrity = Math.min(
+		ceiling,
+		ship.maintenance.hullIntegrity + ROUTINE_MAINT_RATE * moraleFactor * simDt,
+	);
 }
 
 export function tickShipSimulation(ship: ShipEntry, simDt: number, simTime: number): void {
@@ -253,6 +328,7 @@ export function tickShipSimulation(ship: ShipEntry, simDt: number, simTime: numb
 	tickMaintenanceAge(ship, simDt, atColony);
 	tickFuelConsumption(ship, simDt, atColony);
 	tickMalfunctionCheck(ship, simDt);
+	tickRoutineMaintenance(ship, simDt);
 }
 
 // --- Fleet refueling ---
