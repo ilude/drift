@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  */
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../rendering/scene", () => ({
 	scene: { add: vi.fn(), remove: vi.fn() },
@@ -10,15 +10,19 @@ vi.mock("../rendering/scene", () => ({
 	cometGroup: { add: vi.fn() },
 }));
 
+import { rebuildEntityMaps } from "../core/entities";
+import { state } from "../core/state";
 import { keplerRadius, meanToTrue, orbitSpeed, scaleDist } from "../math/orbit";
 import {
+	completeTransferState,
 	computeHermiteKnots,
 	distanceKmBetween,
 	hermiteDerivative,
 	hermiteEval,
 	predictTargetWorld,
+	setOnTransferComplete,
 } from "../rendering/ship-transfer";
-import type { BodyEntry, PlanetEntry } from "../types";
+import type { BodyEntry, PlanetEntry, ShipEntry } from "../types";
 
 // Minimal PlanetEntry mock -- only fields these functions actually read
 function makePlanetEntry(x: number, z: number, distanceAU: number, speed = 0.01): PlanetEntry {
@@ -611,5 +615,143 @@ describe("re-spline endpoint continuity", () => {
 					(r.posAfterZ - r.posBeforeZ) ** 2,
 			),
 		).toBeLessThan(0.01);
+	});
+});
+
+// ──────────────────────────────────────────────
+// completeTransferState
+// ──────────────────────────────────────────────
+
+function makeTransferShip(
+	transferTarget: string,
+	overrides: Record<string, unknown> = {},
+): ShipEntry {
+	return {
+		shipState: "transferring",
+		transferTarget,
+		hostPlanetName: "Earth",
+		transferFuelTotal: 5_000,
+		pendingTransfer: { foo: 1 },
+		speed: 0.5,
+		angle: Math.PI / 4,
+		data: { name: "ISS-1", distance: 1.0 },
+		orbitA: 1.0,
+		trail: {
+			count: 50,
+			head: 25,
+			sampleAccum: 0.3,
+			line: { geometry: { setDrawRange: vi.fn() } },
+		},
+		mesh: { position: { x: 0, y: 0, z: 0 } },
+		...overrides,
+	} as unknown as ShipEntry;
+}
+
+function makePlanetBody(name: string, distanceAU: number): PlanetEntry {
+	return {
+		data: { name, distance: distanceAU, type: "Planet" },
+		mesh: { position: { x: 50, y: 0, z: 0 } },
+		isMoon: false,
+		parentMesh: null,
+		angle: 0,
+		speed: 0,
+	} as unknown as PlanetEntry;
+}
+
+describe("completeTransferState", () => {
+	beforeEach(() => {
+		state.bodyMeshes = [];
+		state.asteroidBelts = [];
+		rebuildEntityMaps();
+		setOnTransferComplete(() => {});
+	});
+
+	it("sets shipState to orbiting and clears all transfer fields", () => {
+		const ship = makeTransferShip("Mars");
+		completeTransferState(ship);
+
+		expect(ship.shipState).toBe("orbiting");
+		expect(ship.transferTarget).toBeNull();
+		expect(ship.transferFuelTotal).toBe(0);
+		expect(ship.pendingTransfer).toBeNull();
+	});
+
+	it("resets trail counters and calls setDrawRange(0, 0)", () => {
+		const ship = makeTransferShip("Mars");
+		completeTransferState(ship);
+
+		expect(ship.trail.count).toBe(0);
+		expect(ship.trail.head).toBe(0);
+		expect(ship.trail.sampleAccum).toBe(0);
+		expect(ship.trail.line.geometry.setDrawRange).toHaveBeenCalledWith(0, 0);
+	});
+
+	it("sets hostPlanetName from transferTarget when body not found", () => {
+		const ship = makeTransferShip("Unknown-Body");
+		completeTransferState(ship);
+
+		expect(ship.hostPlanetName).toBe("Unknown-Body");
+		expect(ship.angle).toBe(0);
+	});
+
+	it("updates hostPlanetName, distance, and orbitA from target body", () => {
+		state.bodyMeshes = [makePlanetBody("Mars", 1.524)];
+		rebuildEntityMaps();
+
+		const ship = makeTransferShip("Mars");
+		completeTransferState(ship);
+
+		expect(ship.hostPlanetName).toBe("Mars");
+		expect(ship.data.distance).toBeCloseTo(1.524);
+		expect(ship.orbitA).toBeCloseTo(1.524);
+		expect(ship.angle).toBe(0);
+	});
+
+	it("uses parent planet as hostPlanetName when target is a moon", () => {
+		const earthMesh = { position: { x: 10, y: 0, z: 0 } };
+		const earth = {
+			data: { name: "Earth", distance: 1.0, type: "Planet" },
+			mesh: earthMesh,
+			isMoon: false,
+			parentMesh: null,
+			angle: 0,
+			speed: 0,
+		} as unknown as PlanetEntry;
+		const luna = {
+			data: { name: "Luna", distance: 0.0026, type: "Moon" },
+			mesh: { position: { x: 10.5, y: 0, z: 0 } },
+			isMoon: true,
+			parentMesh: earthMesh, // same reference as earth.mesh
+			angle: 0,
+			speed: 0,
+		} as unknown as PlanetEntry;
+		state.bodyMeshes = [earth, luna];
+		rebuildEntityMaps();
+
+		const ship = makeTransferShip("Luna");
+		completeTransferState(ship);
+
+		expect(ship.hostPlanetName).toBe("Earth");
+	});
+
+	it("sets station-keeping speed and resets angle to 0", () => {
+		const ship = makeTransferShip("Mars", { angle: Math.PI / 2, speed: 5 });
+		completeTransferState(ship);
+
+		expect(ship.angle).toBe(0);
+		// SHIP_LOCAL_SPEED ≈ 2π/365 ≈ 0.0172 rad/day
+		expect(ship.speed).toBeGreaterThan(0);
+		expect(ship.speed).toBeLessThan(0.1);
+	});
+
+	it("calls onTransferCompleteHook with the ship", () => {
+		const hook = vi.fn();
+		setOnTransferComplete(hook);
+
+		const ship = makeTransferShip("Mars");
+		completeTransferState(ship);
+
+		expect(hook).toHaveBeenCalledOnce();
+		expect(hook).toHaveBeenCalledWith(ship);
 	});
 });

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { getColony } from "../core/colonies";
 import {
 	checkHoldForTanker,
 	checkPreemptiveService,
@@ -21,7 +22,7 @@ import {
 import { rebuildEntityMaps } from "../core/entities";
 import { invalidateIntentsCache } from "../core/intents";
 import { state } from "../core/state";
-import type { BodyEntry, CommandEntry, ShipEntry } from "../types";
+import type { BodyEntry, ColonyState, CommandEntry, ShipEntry } from "../types";
 
 function mockShip(overrides: Partial<ShipEntry> = {}): ShipEntry {
 	return {
@@ -1790,5 +1791,157 @@ describe("overhaul hull ceiling", () => {
 		tickShipSimulation(ship, 50, 100);
 		// Should restore toward 100, not be capped at 70
 		expect(ship.maintenance.hullIntegrity).toBeGreaterThan(70);
+	});
+});
+
+// --- deliverColonyShuttle ---
+// Tested indirectly via tickShipSimulation: crossing exactly 1 integer day boundary
+// triggers one shuttle delivery. simTime=5.1, simDt=0.2 → floor(5.1)=5, floor(4.9)=4 → 1 shuttle.
+
+function makeColony(bodyName: string, overrides: Partial<ColonyState> = {}): ColonyState {
+	return {
+		bodyName,
+		name: `${bodyName} Colony`,
+		population: 1_000_000,
+		habitability: 1,
+		installations: {
+			constructionFactory: 0,
+			repairYard: 1,
+			fuelDepot: 1,
+			mine: 0,
+			lab: 0,
+			academy: 0,
+			storage: 0,
+			shipyard: 0,
+		},
+		stockpile: { fuelKg: 2_000_000, supplies: 100_000, resources: {} },
+		researchPoints: 0,
+		constructionProjects: [],
+		currentResearch: null,
+		researchQueue: [],
+		...overrides,
+	} as unknown as ColonyState;
+}
+
+describe("deliverColonyShuttle (via tickShipSimulation)", () => {
+	const SIM_TIME = 5.1; // floor=5
+	const SIM_DT = 0.2; // floor(5.1-0.2)=floor(4.9)=4 → crosses 1 day
+
+	beforeEach(() => {
+		state.colonies.clear();
+		state.bodyMeshes = [];
+		rebuildEntityMaps();
+	});
+
+	it("delivers only the fuel deficit, not 25% of capacity", () => {
+		// Ship at 80% fuel needs 10 000 kg. Old bug: always requested 12 500 (25% capacity).
+		state.colonies.set(
+			"Earth",
+			makeColony("Earth", {
+				stockpile: { fuelKg: 50_000, supplies: 100_000, resources: {} },
+			}),
+		);
+		const ship = mockShip({ hostPlanetName: "Earth", fuelKg: 40_000, fuelCapacityKg: 50_000 });
+		tickShipSimulation(ship, SIM_DT, SIM_TIME);
+
+		expect(ship.fuelKg).toBe(50_000); // topped up to full
+		const [colony] = getColony("Earth");
+		expect(colony.stockpile.fuelKg).toBe(40_000); // lost 10 000, not 12 500
+	});
+
+	it("caps shuttle at 25% capacity when deficit exceeds one load", () => {
+		state.colonies.set(
+			"Earth",
+			makeColony("Earth", {
+				stockpile: { fuelKg: 100_000, supplies: 100_000, resources: {} },
+			}),
+		);
+		const ship = mockShip({ hostPlanetName: "Earth", fuelKg: 0, fuelCapacityKg: 50_000 });
+		tickShipSimulation(ship, SIM_DT, SIM_TIME);
+
+		// Deficit is 50 000, but shuttle cap is 25% = 12 500
+		expect(ship.fuelKg).toBe(12_500);
+		const [colony] = getColony("Earth");
+		expect(colony.stockpile.fuelKg).toBe(87_500);
+	});
+
+	it("does not deliver fuel when ship is already full", () => {
+		state.colonies.set(
+			"Earth",
+			makeColony("Earth", {
+				stockpile: { fuelKg: 50_000, supplies: 100_000, resources: {} },
+			}),
+		);
+		const ship = mockShip({ hostPlanetName: "Earth", fuelKg: 50_000, fuelCapacityKg: 50_000 });
+		tickShipSimulation(ship, SIM_DT, SIM_TIME);
+
+		const [colony] = getColony("Earth");
+		expect(colony.stockpile.fuelKg).toBe(50_000); // colony unchanged
+	});
+
+	it("clamps delivery to available colony stockpile", () => {
+		// Colony only has 3 000 kg; ship needs 10 000
+		state.colonies.set(
+			"Earth",
+			makeColony("Earth", {
+				stockpile: { fuelKg: 3_000, supplies: 100_000, resources: {} },
+			}),
+		);
+		const ship = mockShip({ hostPlanetName: "Earth", fuelKg: 40_000, fuelCapacityKg: 50_000 });
+		tickShipSimulation(ship, SIM_DT, SIM_TIME);
+
+		expect(ship.fuelKg).toBe(43_000); // only 3 000 available
+		const [colony] = getColony("Earth");
+		expect(colony.stockpile.fuelKg).toBe(0);
+	});
+
+	it("skips fuel shuttle when action type is refuel", () => {
+		// The refuel action uses a separate continuous delivery path (tickActionRecovery).
+		// The shuttle must not also fire — that would double-charge the colony.
+		state.colonies.set(
+			"Earth",
+			makeColony("Earth", {
+				stockpile: { fuelKg: 50_000, supplies: 100_000, resources: {} },
+			}),
+		);
+		const ship = mockShip({
+			hostPlanetName: "Earth",
+			fuelKg: 40_000,
+			fuelCapacityKg: 50_000,
+			action: { type: "refuel", commandId: null, startTime: 0, duration: 5, progress: 0 },
+		});
+		tickShipSimulation(ship, SIM_DT, SIM_TIME);
+
+		const [colony] = getColony("Earth");
+		// tickActionRecovery draws ~1 500 kg (refuelRate * capacity * simDt). Shuttle (10 000) must NOT fire.
+		expect(colony.stockpile.fuelKg).toBeGreaterThan(40_000);
+	});
+
+	it("skips supply shuttle during overhaul", () => {
+		state.colonies.set(
+			"Earth",
+			makeColony("Earth", {
+				stockpile: { fuelKg: 50_000, supplies: 50_000, resources: {} },
+			}),
+		);
+		const ship = mockShip({
+			hostPlanetName: "Earth",
+			fuelKg: 50_000, // full — no fuel shuttle fires either
+			fuelCapacityKg: 50_000,
+			action: { type: "overhaul", commandId: null, startTime: 0, duration: 30, progress: 0 },
+			maintenance: {
+				age: 0,
+				totalAge: 0,
+				lastRefitAge: 0,
+				supplies: 50,
+				maxSupplies: 100,
+				hullIntegrity: 80,
+			},
+		});
+		tickShipSimulation(ship, SIM_DT, SIM_TIME);
+
+		const [colony] = getColony("Earth");
+		// Shuttle would have taken up to 25 supplies. Only tickActionRecovery (~0.375) should fire.
+		expect(colony.stockpile.supplies).toBeGreaterThan(50_000 - 25);
 	});
 });
