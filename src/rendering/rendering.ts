@@ -558,7 +558,6 @@ function updateSingleBody(
 
 export function updatePositions(dt: number, camDist: number): void {
 	const simDt = dt * state.timeSpeed;
-	state.simTime.advanceDays(simDt);
 	if (simDt === 0) return;
 
 	const zoomFactor = ZOOM_BASE / camDist;

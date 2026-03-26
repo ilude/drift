@@ -810,6 +810,14 @@ export function setupUI(loadSystem: (systemData: SystemData) => void): void {
 
 	pauseBtn.addEventListener("click", togglePause);
 
+	// Background sim toggle
+	const bgSimBtn = document.getElementById("btn-bg-sim") as HTMLElement;
+	bgSimBtn.classList.toggle("active", state.backgroundSim);
+	bgSimBtn.addEventListener("click", () => {
+		state.backgroundSim = !state.backgroundSim;
+		bgSimBtn.classList.toggle("active", state.backgroundSim);
+	});
+
 	// Advance-to-next-event button
 	const advanceBtn = document.getElementById("btn-advance") as HTMLElement;
 	let advanceMode = false;

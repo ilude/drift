@@ -39,6 +39,7 @@ import { generateDeposits, generateEarthDeposits } from "./data/resources";
 import { getSolSystem } from "./data/sol-data";
 import { DIST_SCALE } from "./math/orbit";
 import { AU_TO_KM, checkTransferKm } from "./math/ship-physics";
+import { isTransferComplete } from "./math/transfer";
 import { SURVEYED_ASTEROID_COLOR } from "./rendering/bodies";
 import {
 	createAsteroidBelts,
@@ -50,7 +51,12 @@ import {
 	updatePositions,
 } from "./rendering/rendering";
 import { camera, cometGroup, controls, renderer, scene, trailGroups } from "./rendering/scene";
-import { asteroidProxy, initiateTransfer, setOnTransferComplete } from "./rendering/ship-transfer";
+import {
+	asteroidProxy,
+	completeTransferState,
+	initiateTransfer,
+	setOnTransferComplete,
+} from "./rendering/ship-transfer";
 import type {
 	BodyEntry,
 	CommandResult,
@@ -994,22 +1000,62 @@ controls.addEventListener("change", markDirty);
 window.addEventListener("resize", markDirty);
 window.addEventListener("wake-render", markDirty);
 
-// Pause simulation when tab is hidden to prevent ships aging while unattended
+// Background simulation — keeps sim running without animations when tab is hidden
+const BG_TICK_MS = 500;
+let _bgIntervalId: ReturnType<typeof setInterval> | null = null;
+let _bgLastTickMs = 0;
+
+function startBackgroundTick(): void {
+	if (_bgIntervalId !== null) return;
+	_bgLastTickMs = performance.now();
+	_bgIntervalId = setInterval(runBackgroundTick, BG_TICK_MS);
+}
+
+function stopBackgroundTick(): void {
+	if (_bgIntervalId === null) return;
+	clearInterval(_bgIntervalId);
+	_bgIntervalId = null;
+}
+
+function runBackgroundTick(): void {
+	const now = performance.now();
+	const realDt = (now - _bgLastTickMs) / 1000;
+	_bgLastTickMs = now;
+	const simDt = realDt * state.timeSpeed;
+
+	state.simTime.advanceDays(simDt);
+	tickColonies(simDt);
+	for (const entry of state.bodyMeshes) {
+		if (!isShipEntry(entry)) continue;
+		tickShip(entry, simDt);
+		if (entry.shipState === "transferring") {
+			const elapsed = state.simTime.days - entry.transferStartTime;
+			if (isTransferComplete(elapsed, entry.transferTimeDays)) {
+				completeTransferState(entry);
+			}
+		}
+	}
+}
+
+// Pause or background-tick when tab is hidden
 let _speedBeforeHide = 0;
 document.addEventListener("visibilitychange", () => {
 	if (document.hidden) {
 		_speedBeforeHide = state.timeSpeed;
-		if (state.timeSpeed !== 0) {
+		if (state.backgroundSim && state.timeSpeed !== 0) {
+			startBackgroundTick();
+		} else if (state.timeSpeed !== 0) {
 			state.timeSpeed = 0;
 			window.dispatchEvent(new Event("wake-render"));
 		}
 	} else {
+		stopBackgroundTick();
 		if (_speedBeforeHide !== 0 && state.timeSpeed === 0) {
 			state.timeSpeed = _speedBeforeHide;
-			// Reset the clock delta so returning to the tab doesn't produce a giant dt
-			timer.update();
-			startLoop();
 		}
+		// Reset the clock delta so returning to the tab doesn't produce a giant dt
+		timer.update();
+		startLoop();
 	}
 });
 
@@ -1051,6 +1097,7 @@ function tickSimulation(dt: number, simActive: boolean): [number, number, number
 	const t0 = performance.now();
 	if (simActive) {
 		const simDt = dt * state.timeSpeed;
+		state.simTime.advanceDays(simDt);
 		tickColonies(simDt);
 		for (const entry of state.bodyMeshes) {
 			if (isShipEntry(entry)) {

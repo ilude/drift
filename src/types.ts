@@ -571,6 +571,7 @@ export interface AppState {
 	flyTo: FlyToState | null;
 	simTime: GameClock;
 	timeSpeed: number;
+	backgroundSim: boolean;
 	currentSystemKey: string;
 	discoveredSystems: Map<string, DiscoveredSystem>;
 	masterRng: (() => number) | null;

@@ -484,20 +484,17 @@ export function setOnTransferComplete(hook: (ship: ShipEntry) => void): void {
 	onTransferCompleteHook = hook;
 }
 
-export function completeTransfer(entry: ShipEntry, entryAngle = 0): void {
-	// Clear the transfer trail
+/** State-only transfer completion for background simulation. Does not update mesh position. */
+export function completeTransferState(entry: ShipEntry): void {
 	entry.trail.count = 0;
 	entry.trail.head = 0;
 	entry.trail.sampleAccum = 0;
 	entry.trail.line.geometry.setDrawRange(0, 0);
 
 	const transferTarget = entry.transferTarget ?? "";
-
-	// Find the target body -- could be a planet, moon, or comet
 	const [target, targetFound] = findBody(transferTarget);
 
 	entry.shipState = "orbiting";
-	// If target is a moon, use parent planet name for station-keeping
 	if (targetFound && target.isMoon && target.parentMesh) {
 		const parent = state.bodyMeshes.find((e) => e.mesh === target.parentMesh);
 		entry.hostPlanetName = parent ? parent.data.name : transferTarget;
@@ -508,13 +505,30 @@ export function completeTransfer(entry: ShipEntry, entryAngle = 0): void {
 	entry.transferFuelTotal = 0;
 	entry.pendingTransfer = null;
 	entry.speed = SHIP_LOCAL_SPEED;
+	entry.angle = 0;
 
 	if (targetFound) {
 		entry.data.distance = target.data.distance || entry.data.distance;
 		entry.orbitA = entry.data.distance;
-		entry.angle = entryAngle;
+	} else {
+		const [hit, hitFound] = findAsteroidEntity(transferTarget);
+		if (hitFound) {
+			entry.data.distance = hit.asteroid.au;
+			entry.orbitA = hit.asteroid.au;
+		}
+	}
 
-		// Snap to station-keeping orbit using the same offset as the render loop
+	if (onTransferCompleteHook) onTransferCompleteHook(entry);
+}
+
+export function completeTransfer(entry: ShipEntry, entryAngle = 0): void {
+	const transferTarget = entry.transferTarget ?? "";
+	completeTransferState(entry);
+	entry.angle = entryAngle;
+
+	// Snap mesh to current visual position of target
+	const [target, targetFound] = findBody(transferTarget);
+	if (targetFound) {
 		const offset = stationKeepingOffset(target);
 		entry.mesh.position.set(
 			target.mesh.position.x + Math.cos(entry.angle) * offset,
@@ -522,25 +536,17 @@ export function completeTransfer(entry: ShipEntry, entryAngle = 0): void {
 			target.mesh.position.z + Math.sin(entry.angle) * offset,
 		);
 	} else {
-		// Check if target is an asteroid
 		const [hit, hitFound] = findAsteroidEntity(transferTarget);
 		if (hitFound) {
 			const proxy = asteroidProxy(hit.asteroid, hit.beltEntry);
 			const offset = stationKeepingOffset(proxy);
-			entry.data.distance = hit.asteroid.au;
-			entry.orbitA = hit.asteroid.au;
-			entry.angle = entryAngle;
 			entry.mesh.position.set(
 				proxy.mesh.position.x + Math.cos(entry.angle) * offset,
 				proxy.mesh.position.y ?? 0,
 				proxy.mesh.position.z + Math.sin(entry.angle) * offset,
 			);
-		} else {
-			entry.angle = 0;
 		}
 	}
-
-	if (onTransferCompleteHook) onTransferCompleteHook(entry);
 }
 
 /** Shared logic: write spline knots, set transfer state, prefill tail. */

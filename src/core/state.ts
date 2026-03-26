@@ -71,6 +71,7 @@ export const state: AppState = {
 	flyTo: null,
 	simTime: new GameClock(0),
 	timeSpeed: 1,
+	backgroundSim: false,
 	currentSystemKey: "sol",
 	discoveredSystems: new Map(),
 	masterRng: null,
