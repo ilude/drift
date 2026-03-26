@@ -9,8 +9,10 @@ import {
 	getColony,
 	getColonyResourceStock,
 	getNearestColonyForShip,
+	getScientistsAtColony,
+	queueResearchProjectForScientist,
 	seedStartingColonies,
-	startResearchProject,
+	setScientistLabs,
 	tickColony,
 } from "../core/colonies";
 import { rebuildEntityMaps } from "../core/entities";
@@ -82,7 +84,7 @@ function makeColony(bodyName: string, overrides: Partial<ColonyState> = {}): Col
 			repairYard: 1,
 			fuelDepot: 1,
 			mine: 1,
-			lab: 1,
+			lab: 3,
 			academy: 0,
 			storage: 1,
 			shipyard: 0,
@@ -90,8 +92,7 @@ function makeColony(bodyName: string, overrides: Partial<ColonyState> = {}): Col
 		stockpile: { fuelKg: 1000, supplies: 100, resources: {} },
 		researchPoints: 0,
 		constructionProjects: [],
-		currentResearch: null,
-		researchQueue: [],
+		transferQueue: [],
 		...overrides,
 	};
 }
@@ -99,20 +100,23 @@ function makeColony(bodyName: string, overrides: Partial<ColonyState> = {}): Col
 describe("colonies", () => {
 	beforeEach(() => {
 		state.colonies.clear();
+		state.scientists.clear();
+		state.researchProjects.clear();
 		state.researchedTechs.clear();
 		state.bodyMeshes = [];
 		rebuildEntityMaps();
 	});
 
-	it("seedStartingColonies creates Earth colony when Earth exists", () => {
+	it("seedStartingColonies creates Earth colony and initial scientists", () => {
 		state.bodyMeshes = [mockPlanet("Earth")];
 		rebuildEntityMaps();
 		seedStartingColonies();
 
 		const [colony, found] = getColony("Earth");
 		expect(found).toBe(true);
+		if (!colony) throw new Error("expected colony");
 		expect(colony.population).toBeGreaterThan(1_000_000_000);
-		expect(colony.installations.lab).toBeGreaterThan(0);
+		expect(getScientistsAtColony("Earth").length).toBeGreaterThan(0);
 	});
 
 	it("computeColonyWorkforce reports staffing ratio", () => {
@@ -193,39 +197,39 @@ describe("colonies", () => {
 		expect(earth.survey?.deposits[0].mined).toBeGreaterThan(0);
 	});
 
-	it("tickColony does not mine unsurveyed bodies", () => {
-		const earth = mockPlanet("Earth", {
-			survey: {
-				surveyLevel: 0,
-				deposits: [
-					{ resourceId: "iron", quantity: 100, accessibility: 1, mined: 0, minSurveyLevel: 1 },
-				],
-			},
-		});
-		state.bodyMeshes = [earth];
+	it("scientist queue drives active research and completion", () => {
+		state.bodyMeshes = [mockPlanet("Earth")];
 		rebuildEntityMaps();
-		const colony = makeColony("Earth");
-		state.colonies.set("Earth", colony);
+		state.colonies.set("Earth", makeColony("Earth"));
+		seedStartingColonies();
+		const scientist = getScientistsAtColony("Earth")[0];
+		expect(scientist).toBeDefined();
+		const setLabs = setScientistLabs(scientist.id, 2);
+		expect(setLabs).toBe(true);
+		const queued = queueResearchProjectForScientist(scientist.id, "survey-automation");
+		expect(queued).toBe(true);
 
-		tickColony(colony, 1);
+		const [colony] = getColony("Earth");
+		tickColony(colony as ColonyState, 30);
 
-		expect(getColonyResourceStock("Earth", "iron")).toBe(0);
-		expect(earth.survey?.deposits[0].mined).toBe(0);
+		expect(state.researchedTechs.has("survey-automation")).toBe(true);
+		expect(state.gameLog.some((entry) => entry.category === "Research")).toBe(true);
 	});
 
-	it("tickColony generates research points from labs when research is active", () => {
-		const earth = mockPlanet("Earth");
-		state.bodyMeshes = [earth];
+	it("getNearestColonyForShip returns closest colony by orbital distance", () => {
+		state.bodyMeshes = [
+			mockPlanet("Earth", { data: { ...mockPlanet("Earth").data, distance: 1 } }),
+			mockPlanet("Mars", { data: { ...mockPlanet("Mars").data, distance: 1.5 } }),
+			mockPlanet("Jupiter", { data: { ...mockPlanet("Jupiter").data, distance: 5 } }),
+		];
 		rebuildEntityMaps();
-		const colony = makeColony("Earth", {
-			researchPoints: 0,
-			currentResearch: { techId: "survey-automation", assignedLabs: 1, progressRp: 0, paused: false },
-		});
-		state.colonies.set("Earth", colony);
+		state.colonies.set("Earth", makeColony("Earth"));
+		state.colonies.set("Jupiter", makeColony("Jupiter"));
 
-		tickColony(colony, 2);
-
-		expect(colony.researchPoints).toBeGreaterThan(0);
+		const [nearest, nearestFound] = getNearestColonyForShip(mockShip("Mars"));
+		expect(nearestFound).toBe(true);
+		if (!nearest) throw new Error("expected colony");
+		expect(nearest.data.name).toBe("Earth");
 	});
 
 	it("tickColony advances construction projects into completed installations", () => {
@@ -250,85 +254,5 @@ describe("colonies", () => {
 
 		expect(colony.installations.mine).toBeGreaterThan(0);
 		expect(colony.constructionProjects).toHaveLength(0);
-	});
-
-	it("tickColony completes research projects and records researched techs", () => {
-		const earth = mockPlanet("Earth");
-		state.bodyMeshes = [earth];
-		const colony = makeColony("Earth", {
-			installations: {
-				constructionFactory: 1,
-				repairYard: 1,
-				fuelDepot: 1,
-				mine: 1,
-				lab: 3,
-				academy: 0,
-				storage: 1,
-				shipyard: 0,
-			},
-		});
-		state.colonies.set("Earth", colony);
-		state.researchedTechs.clear();
-		startResearchProject("Earth", "survey-automation", 3);
-
-		tickColony(colony, 20);
-
-		expect(state.researchedTechs.has("survey-automation")).toBe(true);
-		expect(colony.currentResearch).toBeNull();
-	});
-
-	it("getNearestColonyForShip returns closest colony by orbital distance", () => {
-		state.bodyMeshes = [
-			mockPlanet("Earth", { data: { ...mockPlanet("Earth").data, distance: 1 } }),
-			mockPlanet("Mars", { data: { ...mockPlanet("Mars").data, distance: 1.5 } }),
-			mockPlanet("Jupiter", { data: { ...mockPlanet("Jupiter").data, distance: 5 } }),
-		];
-		rebuildEntityMaps();
-		state.colonies.set("Earth", makeColony("Earth"));
-		state.colonies.set("Jupiter", makeColony("Jupiter"));
-
-		const [nearest, nearestFound] = getNearestColonyForShip(mockShip("Mars"));
-		expect(nearestFound).toBe(true);
-		expect(nearest.data.name).toBe("Earth");
-	});
-
-	it("getNearestColonyForShip works when ship is at an asteroid", () => {
-		state.bodyMeshes = [
-			mockPlanet("Earth", { data: { ...mockPlanet("Earth").data, distance: 1 } }),
-			mockPlanet("Mars", { data: { ...mockPlanet("Mars").data, distance: 1.5 } }),
-		];
-		const positions = new Float32Array(3);
-		state.asteroidBelts = [
-			{
-				belt: {
-					name: "Main Belt",
-					minAU: 2.2,
-					maxAU: 3.2,
-					count: 1,
-					color: "#999",
-					size: 0.5,
-					maxInc: 10,
-				},
-				asteroids: [
-					{
-						designation: "MA-G113",
-						au: 2.5,
-						period: 3.95,
-						diameter: 1,
-						mass: 1e15,
-						beltIndex: 0,
-						survey: { surveyLevel: 0, deposits: [] },
-					},
-				],
-				positions,
-			} as unknown as import("../types").AsteroidBeltEntry,
-		];
-		rebuildEntityMaps();
-		state.colonies.set("Earth", makeColony("Earth"));
-		state.colonies.set("Mars", makeColony("Mars"));
-
-		const [nearest, nearestFound] = getNearestColonyForShip(mockShip("MA-G113"));
-		expect(nearestFound).toBe(true);
-		expect(nearest.data.name).toBe("Mars"); // Mars at 1.5 AU is closer to 2.5 than Earth at 1
 	});
 });

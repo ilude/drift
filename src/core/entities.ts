@@ -127,3 +127,21 @@ export function findShip(name?: string): Result<ShipEntry> {
 export function findStar(): Result<PlanetEntry> {
 	return cachedStar ? ok(cachedStar) : err();
 }
+
+export function listShips(): ShipEntry[] {
+	const ships: ShipEntry[] = [];
+	for (const entry of bodyMap.values()) {
+		if (isShipEntry(entry)) ships.push(entry);
+	}
+	return ships;
+}
+
+export function listShipsAtBody(bodyName: string): ShipEntry[] {
+	const ships: ShipEntry[] = [];
+	for (const entry of bodyMap.values()) {
+		if (isShipEntry(entry) && entry.hostPlanetName === bodyName && entry.shipState === "orbiting") {
+			ships.push(entry);
+		}
+	}
+	return ships;
+}

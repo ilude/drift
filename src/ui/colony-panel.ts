@@ -5,14 +5,19 @@ import {
 	computeColonyQualities,
 	computeColonyWorkforce,
 	getColony,
-	getResearchDef,
+	getProjectCompletionDate,
+	getResearchDashboardRows,
+	getScientistsAtColony,
+	getSurveySpeedMultiplier,
+	queueResearchProjectForScientist,
 	RESEARCH_DEFS,
-	setResearchLabs,
-	startResearchProject,
+	reorderScientistQueue,
+	setResearchPaused,
+	setScientistLabs,
 	toggleConstructionProjectPaused,
 } from "../core/colonies";
 import { state } from "../core/state";
-import type { PlanetEntry } from "../types";
+import type { PlanetEntry, ScientistDashboardRow, ScientistState } from "../types";
 
 function getSection(): HTMLElement | null {
 	return document.getElementById("info-colony-section");
@@ -33,8 +38,8 @@ function renderOverview(entry: PlanetEntry): string {
 			<div class="colony-card"><span class="colony-card-label">Workforce</span><span class="colony-card-value">${workforce.usedWorkers.toLocaleString()} / ${workforce.availableWorkers.toLocaleString()}</span></div>
 			<div class="colony-card"><span class="colony-card-label">Staffing</span><span class="colony-card-value">${formatPercent(workforce.staffingRatio)}</span></div>
 			<div class="colony-card"><span class="colony-card-label">Construction</span><span class="colony-card-value">${formatPercent(qualities.construction)}</span></div>
-			<div class="colony-card"><span class="colony-card-label">Repair</span><span class="colony-card-value">${formatPercent(qualities.repair)}</span></div>
-			<div class="colony-card"><span class="colony-card-label">Refuel</span><span class="colony-card-value">${formatPercent(qualities.refuel)}</span></div>
+			<div class="colony-card"><span class="colony-card-label">Research</span><span class="colony-card-value">${formatPercent(qualities.research)}</span></div>
+			<div class="colony-card"><span class="colony-card-label">Survey Speed</span><span class="colony-card-value">x${(1 / getSurveySpeedMultiplier()).toFixed(2)}</span></div>
 		</div>
 		<div class="colony-stockpile">
 			<div class="colony-subheader">Stockpiles</div>
@@ -93,79 +98,105 @@ function renderConstruction(entry: PlanetEntry): string {
 				</select>
 				<button type="button" class="ctrl-btn" id="colony-build-add">Add Project</button>
 			</div>
-			<div class="colony-help">Aurora-style model: construction factories produce build points, and projects consume a share of colony industry over time.</div>
+			<div class="colony-help">Build points are shared across all active projects by allocation percent.</div>
 			<div class="colony-project-list">${projects}</div>
 		</div>
 	`;
 }
 
-function renderResearch(entry: PlanetEntry): string {
-	const [colony, found] = getColony(entry.data.name);
-	if (!found) return "";
-	const availableLabs = Math.max(1, colony.installations.lab);
-	const techOptions = RESEARCH_DEFS.filter(
-		(def) => !colony.currentResearch || def.id !== colony.currentResearch.techId,
-	)
-		.filter((def) => !colony.researchQueue.some((project) => project.techId === def.id))
-		.filter((def) => !state.researchedTechs.has(def.id))
-		.map((def) => `<option value="${def.id}">${def.name} (${def.rpCost} RP)</option>`)
+function renderScientistRows(scientists: ScientistState[]): string {
+	if (scientists.length === 0)
+		return `<div class="colony-empty">No scientists at this colony.</div>`;
+	return scientists
+		.map((scientist) => {
+			const queue =
+				scientist.projectQueue.length === 0 ? "Queue empty" : scientist.projectQueue.join(", ");
+			return `<tr>
+				<td>${scientist.name}</td>
+				<td>${scientist.primaryCategory} / ${scientist.secondaryCategory}</td>
+				<td>${scientist.adminCap}</td>
+				<td>
+					<input class="colony-scientist-labs" data-scientist-id="${scientist.id}" type="number" min="0" max="${scientist.adminCap}" value="${scientist.assignedLabs}">
+				</td>
+				<td>${scientist.activeProjectTechId ?? "Idle"}</td>
+				<td>${queue}</td>
+			</tr>`;
+		})
 		.join("");
-	const labOptions = Array.from({ length: availableLabs }, (_, index) => {
-		const value = index + 1;
-		return `<option value="${value}" ${value === availableLabs ? "selected" : ""}>${value} lab${value === 1 ? "" : "s"}</option>`;
-	}).join("");
-	const currentProject = colony.currentResearch
-		? (() => {
-				const [def, defFound] = getResearchDef(colony.currentResearch.techId);
-				const progress = defFound
-					? Math.min(100, Math.round((colony.currentResearch.progressRp / def?.rpCost) * 100))
-					: 0;
-				return `
-					<div class="colony-project">
-						<div>
-							<div class="colony-project-title">${def?.name ?? colony.currentResearch.techId}</div>
-							<div class="colony-project-meta">${Math.floor(colony.currentResearch.progressRp)} / ${def?.rpCost ?? 0} RP • ${colony.currentResearch.assignedLabs} labs • ${progress}%</div>
-							<div class="colony-help">${def?.effectText ?? ""}</div>
-						</div>
-					</div>
-				`;
-			})()
-		: `<div class="colony-empty">No active research project.</div>`;
-	const queue =
-		colony.researchQueue.length === 0
-			? `<div class="colony-empty">Queue empty.</div>`
-			: colony.researchQueue
-					.map((project) => {
-						const [def] = getResearchDef(project.techId);
-						return `<div class="colony-queue-item">${def?.name ?? project.techId} • ${project.assignedLabs} labs</div>`;
-					})
-					.join("");
-	const completed = RESEARCH_DEFS.filter((def) => state.researchedTechs.has(def.id))
-		.map((def) => `<div class="colony-queue-item">${def.name} • ${def.effectText}</div>`)
+}
+
+function renderProjectGroup(title: string, rows: ScientistDashboardRow[]): string {
+	if (rows.length === 0) {
+		return `<div class="colony-subheader">${title}</div><div class="colony-empty">None.</div>`;
+	}
+	const body = rows
+		.sort((a, b) => {
+			const aEta = a.etaSimDay ?? Number.POSITIVE_INFINITY;
+			const bEta = b.etaSimDay ?? Number.POSITIVE_INFINITY;
+			return aEta - bEta;
+		})
+		.map((row) => {
+			const def = RESEARCH_DEFS.find((entry) => entry.id === row.techId);
+			const progressPct = def ? Math.min(100, Math.round((row.progressRp / def.rpCost) * 100)) : 0;
+			const eta = row.status === "queued" ? "--" : getProjectCompletionDate(row.techId);
+			return `<tr>
+				<td>${row.techId}</td>
+				<td>${row.leadScientistName}</td>
+				<td>${progressPct}%</td>
+				<td>${eta}</td>
+				<td>${row.assignedLabs}</td>
+			</tr>`;
+		})
 		.join("");
 	return `
+		<div class="colony-subheader">${title}</div>
+		<table class="colony-table">
+			<thead>
+				<tr><th>Project</th><th>Lead Scientist</th><th>Progress %</th><th>ETA</th><th>Allocated Labs</th></tr>
+			</thead>
+			<tbody>${body}</tbody>
+		</table>
+	`;
+}
+
+function renderResearch(entry: PlanetEntry): string {
+	const scientists = getScientistsAtColony(entry.data.name);
+	const rows = getResearchDashboardRows(entry.data.name);
+	const techOptions = RESEARCH_DEFS.filter((def) => !state.researchedTechs.has(def.id))
+		.map((def) => `<option value="${def.id}">${def.name} (${def.rpCost} RP)</option>`)
+		.join("");
+	const scientistOptions = scientists
+		.map((scientist) => `<option value="${scientist.id}">${scientist.name}</option>`)
+		.join("");
+	const active = rows.filter((row) => row.status === "active");
+	const paused = rows.filter((row) => row.status === "paused");
+	const queued = rows.filter((row) => row.status === "queued");
+
+	return `
 		<div class="colony-section-block">
-			<div class="colony-subheader">Research</div>
+			<div class="colony-subheader">Scientists</div>
 			<div class="colony-form">
+				<select id="colony-research-scientist">${scientistOptions}</select>
 				<select id="colony-research-tech">${techOptions}</select>
-				<select id="colony-research-labs">${labOptions}</select>
-				<button type="button" class="ctrl-btn" id="colony-research-start">Start</button>
-				<button type="button" class="ctrl-btn" id="colony-research-queue">Queue</button>
+				<button type="button" class="ctrl-btn" id="colony-research-add">Assign</button>
 			</div>
-			<div class="colony-help">Aurora-like start: research is colony-local, uses assigned labs, and runs one active project with a queue.</div>
-			${currentProject}
-			<div class="colony-subheader">Queue</div>
-			<div class="colony-project-list">${queue}</div>
-			<div class="colony-subheader">Completed</div>
-			<div class="colony-project-list">${completed || `<div class="colony-empty">No completed technologies.</div>`}</div>
+			<div class="colony-help">Jobs are assigned to scientists. Each scientist runs one active project and keeps a personal queue.</div>
+			<table class="colony-table">
+				<thead>
+					<tr><th>Scientist</th><th>Specialty</th><th>Admin Cap</th><th>Labs</th><th>Active</th><th>Queue</th></tr>
+				</thead>
+				<tbody>
+					${renderScientistRows(scientists)}
+				</tbody>
+			</table>
+			${renderProjectGroup("Active", active)}
+			${renderProjectGroup("Paused", paused)}
+			${renderProjectGroup("Queued", queued)}
 		</div>
 	`;
 }
 
 function attachEvents(entry: PlanetEntry): void {
-	const [colony, found] = getColony(entry.data.name);
-	if (!found) return;
-
 	const buildAdd = document.getElementById("colony-build-add");
 	buildAdd?.addEventListener("click", () => {
 		const installationEl = document.getElementById(
@@ -203,40 +234,53 @@ function attachEvents(entry: PlanetEntry): void {
 		});
 	});
 
-	const startBtn = document.getElementById("colony-research-start");
-	const queueBtn = document.getElementById("colony-research-queue");
-	const handleResearch = (queue: boolean) => {
+	const assignBtn = document.getElementById("colony-research-add");
+	assignBtn?.addEventListener("click", () => {
+		const scientistEl = document.getElementById(
+			"colony-research-scientist",
+		) as HTMLSelectElement | null;
 		const techEl = document.getElementById("colony-research-tech") as HTMLSelectElement | null;
-		const labsEl = document.getElementById("colony-research-labs") as HTMLSelectElement | null;
-		if (!techEl || !labsEl || !techEl.value) return;
-		if (!colony.currentResearch) {
-			startResearchProject(
-				entry.data.name,
-				techEl.value,
-				Math.max(1, Number(labsEl.value) || 1),
-				false,
-			);
-		} else {
-			startResearchProject(
-				entry.data.name,
-				techEl.value,
-				Math.max(1, Number(labsEl.value) || 1),
-				queue,
-			);
-		}
+		if (!scientistEl || !techEl || !scientistEl.value || !techEl.value) return;
+		queueResearchProjectForScientist(scientistEl.value, techEl.value);
 		renderColonyPanel(entry);
-	};
-	startBtn?.addEventListener("click", () => {
-		handleResearch(false);
-	});
-	queueBtn?.addEventListener("click", () => {
-		handleResearch(true);
 	});
 
-	const labsEl = document.getElementById("colony-research-labs");
-	labsEl?.addEventListener("change", () => {
-		const select = labsEl as HTMLSelectElement;
-		setResearchLabs(entry.data.name, Math.max(1, Number(select.value) || 1));
+	document.querySelectorAll(".colony-scientist-labs").forEach((node) => {
+		node.addEventListener("change", () => {
+			const input = node as HTMLInputElement;
+			const scientistId = input.dataset.scientistId;
+			if (!scientistId) return;
+			setScientistLabs(scientistId, Number(input.value) || 0);
+			renderColonyPanel(entry);
+		});
+	});
+
+	document.querySelectorAll(".colony-row-pause").forEach((node) => {
+		node.addEventListener("click", () => {
+			const techId = (node as HTMLElement).dataset.techId;
+			if (!techId) return;
+			setResearchPaused(techId, true);
+			renderColonyPanel(entry);
+		});
+	});
+
+	document.querySelectorAll(".colony-row-resume").forEach((node) => {
+		node.addEventListener("click", () => {
+			const techId = (node as HTMLElement).dataset.techId;
+			if (!techId) return;
+			setResearchPaused(techId, false);
+			renderColonyPanel(entry);
+		});
+	});
+
+	document.querySelectorAll(".colony-queue-up").forEach((node) => {
+		node.addEventListener("click", () => {
+			const scientistId = (node as HTMLElement).dataset.scientistId;
+			const idx = Number((node as HTMLElement).dataset.idx);
+			if (!scientistId || Number.isNaN(idx)) return;
+			reorderScientistQueue(scientistId, idx, Math.max(0, idx - 1));
+			renderColonyPanel(entry);
+		});
 	});
 }
 

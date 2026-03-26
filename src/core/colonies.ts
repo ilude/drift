@@ -8,14 +8,17 @@ import type {
 	ColonyResearchProject,
 	ColonyState,
 	ColonyWorkforce,
+	GameLogCategory,
 	PlanetEntry,
 	Result,
+	ScientistDashboardRow,
+	ScientistState,
 	ShipEntry,
 } from "../types";
 import { isPlanetEntry, isSurveyable } from "../types";
-import { findAsteroidEntity, findBody } from "./entities";
+import { findAsteroidEntity, findBody, listShipsAtBody } from "./entities";
 import { err, ok } from "./result";
-import { state } from "./state";
+import { simTimeToDate, state } from "./state";
 
 const WORKFORCE_RATIO = 0.45;
 const BASE_STORAGE_CAPACITY = 100_000;
@@ -24,9 +27,30 @@ const BASE_SERVICE_QUALITY = 0.5;
 const BASE_MINING_RATE = 10;
 const BASE_RESEARCH_RATE = 5;
 const BASE_CONSTRUCTION_BP_RATE = 2;
+const CATEGORY_GROWTH_RATE = 0.0015;
+
 let projectCounter = 0;
+let transferCounter = 0;
+let scientistCounter = 0;
 
 export type ResearchCategory = "industry" | "survey" | "logistics" | "research";
+
+const RESEARCH_CATEGORIES: ResearchCategory[] = ["industry", "survey", "logistics", "research"];
+
+const SCIENTIST_NAMES = [
+	"John Doe",
+	"Maya Ivanova",
+	"Victor Hale",
+	"Elena Park",
+	"Darius Quinn",
+	"Rina Solberg",
+	"Anika Rao",
+	"Thomas Vale",
+	"Nadia Ilyin",
+	"Sara Kincaid",
+	"Haruto Sato",
+	"Milo Graves",
+];
 
 export interface ConstructionDefinition {
 	id: ColonyInstallationId;
@@ -40,6 +64,7 @@ export interface ResearchDefinition {
 	name: string;
 	category: ResearchCategory;
 	rpCost: number;
+	difficulty: number;
 	description: string;
 	effectText: string;
 }
@@ -102,6 +127,7 @@ export const RESEARCH_DEFS: ResearchDefinition[] = [
 		name: "Survey Automation",
 		category: "survey",
 		rpCost: 120,
+		difficulty: 1.1,
 		description: "Refines mission-planning and scan interpretation.",
 		effectText: "-15% survey duration",
 	},
@@ -110,6 +136,7 @@ export const RESEARCH_DEFS: ResearchDefinition[] = [
 		name: "Improved Mining Drills",
 		category: "industry",
 		rpCost: 120,
+		difficulty: 1.2,
 		description: "Better extraction tooling and haul discipline for frontier colonies.",
 		effectText: "+25% mine output",
 	},
@@ -118,6 +145,7 @@ export const RESEARCH_DEFS: ResearchDefinition[] = [
 		name: "Maintenance Doctrine",
 		category: "logistics",
 		rpCost: 140,
+		difficulty: 1.3,
 		description: "Standardized service routines for yard crews and depot handling.",
 		effectText: "+15% repair/refuel quality",
 	},
@@ -126,6 +154,7 @@ export const RESEARCH_DEFS: ResearchDefinition[] = [
 		name: "Lab Instrumentation",
 		category: "research",
 		rpCost: 150,
+		difficulty: 1.35,
 		description: "Denser instrumentation packages for better throughput per active lab.",
 		effectText: "+20% research output",
 	},
@@ -134,6 +163,7 @@ export const RESEARCH_DEFS: ResearchDefinition[] = [
 		name: "Fabrication Methods",
 		category: "industry",
 		rpCost: 160,
+		difficulty: 1.4,
 		description: "Improves construction planning and line efficiency for installation builds.",
 		effectText: "+25% construction BP",
 	},
@@ -150,10 +180,57 @@ const INSTALLATION_WORKERS: Record<keyof ColonyInstallations, number> = {
 	shipyard: 250_000,
 };
 
+function rand(): number {
+	return state.masterRng ? state.masterRng() : Math.random();
+}
+
+function pickCategory(): ResearchCategory {
+	const idx = Math.floor(rand() * RESEARCH_CATEGORIES.length);
+	return RESEARCH_CATEGORIES[Math.max(0, Math.min(RESEARCH_CATEGORIES.length - 1, idx))];
+}
+
 function bodyDistanceAU(body: BodyEntry): number {
 	if (body.data.distance > 0 && !body.isMoon) return body.data.distance;
 	const { x, y, z } = body.mesh.position;
 	return (Math.hypot(x, y, z) / DIST_SCALE) ** 2;
+}
+
+function makeScientistName(): string {
+	const idx = scientistCounter % SCIENTIST_NAMES.length;
+	const cycle = Math.floor(scientistCounter / SCIENTIST_NAMES.length);
+	return cycle === 0 ? SCIENTIST_NAMES[idx] : `${SCIENTIST_NAMES[idx]} ${cycle + 1}`;
+}
+
+function clampBonus(value: number): number {
+	return Math.max(0, Math.min(0.5, value));
+}
+
+function getScientistMultiplier(scientist: ScientistState, category: string): number {
+	return 1 + clampBonus(scientist.categoryBonuses[category] ?? 0);
+}
+
+function ensureExperienceKey(scientist: ScientistState, category: string): void {
+	if (scientist.experienceByCategory[category] === undefined)
+		scientist.experienceByCategory[category] = 0;
+	if (scientist.categoryBonuses[category] === undefined) scientist.categoryBonuses[category] = 0;
+}
+
+function pushGameLog(
+	category: GameLogCategory,
+	message: string,
+	meta?: Record<string, string | number | boolean | null>,
+): void {
+	state.gameLog.push({
+		id: state.gameLog.length + 1,
+		category,
+		simTime: state.simTime.days,
+		message,
+		meta,
+	});
+}
+
+export function formatSimDate(simDay: number): string {
+	return simTimeToDate(simDay).toISOString().slice(0, 10);
 }
 
 export function getColony(bodyName: string): Result<ColonyState> {
@@ -204,13 +281,42 @@ function createColony(
 		},
 		researchPoints: 0,
 		constructionProjects: [],
-		currentResearch: null,
-		researchQueue: [],
+		transferQueue: [],
 	};
+}
+
+function seedInitialScientistsAtColony(bodyName: string, count: number): void {
+	for (let i = 0; i < count; i++) {
+		const primary = pickCategory();
+		let secondary = pickCategory();
+		if (secondary === primary)
+			secondary = RESEARCH_CATEGORIES[(RESEARCH_CATEGORIES.indexOf(primary) + 1) % 4];
+		const scientist: ScientistState = {
+			id: `scientist-${scientistCounter++}`,
+			name: makeScientistName(),
+			colonyBodyName: bodyName,
+			primaryCategory: primary,
+			secondaryCategory: secondary,
+			activeProjectTechId: null,
+			projectQueue: [],
+			assignedLabs: 0,
+			adminCap: 1 + Math.floor(rand() * 5),
+			categoryBonuses: {
+				[primary]: clampBonus(0.15 + rand() * 0.35),
+				[secondary]: clampBonus(0.05 + rand() * 0.2),
+			},
+			completedProjects: [],
+			experienceByCategory: {},
+		};
+		state.scientists.set(scientist.id, scientist);
+	}
 }
 
 export function seedStartingColonies(): void {
 	state.colonies.clear();
+	state.scientists.clear();
+	state.researchProjects.clear();
+	state.gameLog = [];
 
 	const [earth] = findBody("Earth");
 	if (earth && isPlanetEntry(earth)) {
@@ -225,8 +331,8 @@ export function seedStartingColonies(): void {
 					repairYard: 4,
 					fuelDepot: 4,
 					mine: 2,
-					lab: 1,
-					academy: 0,
+					lab: 4,
+					academy: 1,
 					storage: 6,
 					shipyard: 1,
 				},
@@ -242,6 +348,7 @@ export function seedStartingColonies(): void {
 				},
 			),
 		);
+		seedInitialScientistsAtColony(earth.data.name, 5);
 		return;
 	}
 
@@ -273,6 +380,310 @@ export function seedStartingColonies(): void {
 			{ fuelKg: 100_000, supplies: 2_000 },
 		),
 	);
+	seedInitialScientistsAtColony(fallback.data.name, 2);
+}
+
+export function getScientistsAtColony(bodyName: string): ScientistState[] {
+	const scientists: ScientistState[] = [];
+	for (const scientist of state.scientists.values()) {
+		if (scientist.colonyBodyName === bodyName) scientists.push(scientist);
+	}
+	return scientists;
+}
+
+export function getScientist(scientistId: string): Result<ScientistState> {
+	const scientist = state.scientists.get(scientistId);
+	return scientist ? ok(scientist) : err();
+}
+
+export function setScientistLabs(scientistId: string, requestedLabs: number): boolean {
+	const [scientist, found] = getScientist(scientistId);
+	if (!found) return false;
+	const [colony, colonyFound] = getColony(scientist.colonyBodyName);
+	if (!colonyFound) return false;
+	const nextLabs = Math.max(0, Math.floor(requestedLabs));
+	if (nextLabs > scientist.adminCap) return false;
+	let assignedElsewhere = 0;
+	for (const peer of getScientistsAtColony(colony.bodyName)) {
+		if (peer.id === scientist.id) continue;
+		assignedElsewhere += peer.assignedLabs;
+	}
+	if (assignedElsewhere + nextLabs > colony.installations.lab) return false;
+	scientist.assignedLabs = nextLabs;
+	return true;
+}
+
+function getResearchDef(techId: string): Result<ResearchDefinition> {
+	const def = RESEARCH_DEFS.find((entry) => entry.id === techId);
+	return def ? ok(def) : err();
+}
+
+function getProject(techId: string): Result<ColonyResearchProject> {
+	const project = state.researchProjects.get(techId);
+	return project ? ok(project) : err();
+}
+
+function canStartProject(scientist: ScientistState, techId: string): boolean {
+	if (state.researchedTechs.has(techId)) return false;
+	const [def, found] = getResearchDef(techId);
+	if (!found) return false;
+	const [colony, colonyFound] = getColony(scientist.colonyBodyName);
+	if (!colonyFound || colony.installations.lab <= 0) return false;
+	const [existing, existingFound] = getProject(def.id);
+	if (!existingFound) return true;
+	if (existing.leadScientistId === scientist.id) return false;
+	return existing.leadScientistId === null;
+}
+
+function maybeActivateNextProject(scientist: ScientistState): void {
+	if (scientist.activeProjectTechId !== null) return;
+	while (scientist.projectQueue.length > 0) {
+		const nextTechId = scientist.projectQueue[0];
+		if (!canStartProject(scientist, nextTechId)) {
+			scientist.projectQueue.shift();
+			continue;
+		}
+		const [existing, found] = getProject(nextTechId);
+		if (found) {
+			existing.leadScientistId = scientist.id;
+			existing.colonyBodyName = scientist.colonyBodyName;
+			existing.paused = false;
+			existing.startedAt ??= state.simTime.days;
+			existing.assignedLabs = Math.min(scientist.assignedLabs, scientist.adminCap);
+		} else {
+			const [def] = getResearchDef(nextTechId);
+			state.researchProjects.set(nextTechId, {
+				techId: nextTechId,
+				colonyBodyName: scientist.colonyBodyName,
+				leadScientistId: scientist.id,
+				assignedLabs: Math.min(scientist.assignedLabs, scientist.adminCap),
+				progressRp: 0,
+				paused: false,
+				queuedAt: state.simTime.days,
+				startedAt: state.simTime.days,
+				difficulty: def?.difficulty ?? 1,
+			});
+		}
+		scientist.activeProjectTechId = nextTechId;
+		scientist.projectQueue.shift();
+		break;
+	}
+}
+
+export function queueResearchProjectForScientist(scientistId: string, techId: string): boolean {
+	const [scientist, found] = getScientist(scientistId);
+	if (!found) return false;
+	if (!canStartProject(scientist, techId) && state.researchedTechs.has(techId)) return false;
+	if (scientist.activeProjectTechId === techId) return false;
+	if (scientist.projectQueue.includes(techId)) return false;
+	const [existing, existingFound] = getProject(techId);
+	if (existingFound && existing.leadScientistId && existing.leadScientistId !== scientist.id)
+		return false;
+	scientist.projectQueue.push(techId);
+	maybeActivateNextProject(scientist);
+	return true;
+}
+
+export function reorderScientistQueue(
+	scientistId: string,
+	fromIndex: number,
+	toIndex: number,
+): boolean {
+	const [scientist, found] = getScientist(scientistId);
+	if (!found) return false;
+	if (fromIndex < 0 || toIndex < 0) return false;
+	if (fromIndex >= scientist.projectQueue.length || toIndex >= scientist.projectQueue.length)
+		return false;
+	if (fromIndex === toIndex) return true;
+	const [item] = scientist.projectQueue.splice(fromIndex, 1);
+	scientist.projectQueue.splice(toIndex, 0, item);
+	return true;
+}
+
+export function setResearchPaused(techId: string, paused: boolean): boolean {
+	const [project, found] = getProject(techId);
+	if (!found) return false;
+	project.paused = paused;
+	if (paused && project.leadScientistId) {
+		const [scientist, scientistFound] = getScientist(project.leadScientistId);
+		if (scientistFound && scientist.activeProjectTechId === techId)
+			scientist.activeProjectTechId = null;
+	}
+	if (!paused && project.leadScientistId) {
+		const [scientist, scientistFound] = getScientist(project.leadScientistId);
+		if (scientistFound && scientist.activeProjectTechId === null)
+			scientist.activeProjectTechId = techId;
+	}
+	return true;
+}
+
+export function getProjectCompletionDate(techId: string): string {
+	const [project, projectFound] = getProject(techId);
+	if (!projectFound) return "--";
+	const eta = estimateProjectEta(project);
+	return eta === null ? "--" : formatSimDate(eta);
+}
+
+function estimateProjectEta(project: ColonyResearchProject): number | null {
+	if (project.paused) return null;
+	const [def, defFound] = getResearchDef(project.techId);
+	if (!defFound || def.rpCost <= project.progressRp) return state.simTime.days;
+	if (!project.leadScientistId) return null;
+	const [scientist, scientistFound] = getScientist(project.leadScientistId);
+	if (!scientistFound) return null;
+	const [colony, colonyFound] = getColony(project.colonyBodyName);
+	if (!colonyFound) return null;
+	const qualities = computeColonyQualities(colony);
+	const effLabs = Math.min(scientist.assignedLabs, scientist.adminCap, colony.installations.lab);
+	if (effLabs <= 0) return null;
+	const multiplier = getScientistMultiplier(scientist, def.category);
+	const rpPerDay = BASE_RESEARCH_RATE * effLabs * qualities.research * multiplier;
+	if (rpPerDay <= 0) return null;
+	return state.simTime.days + (def.rpCost - project.progressRp) / rpPerDay;
+}
+
+function completeProject(project: ColonyResearchProject, scientist: ScientistState): void {
+	state.researchedTechs.add(project.techId);
+	state.researchProjects.delete(project.techId);
+	scientist.activeProjectTechId = null;
+	scientist.completedProjects.push(project.techId);
+	const [def] = getResearchDef(project.techId);
+	pushGameLog("Research", `Completed ${def?.name ?? project.techId}`, {
+		techId: project.techId,
+		scientist: scientist.name,
+		date: formatSimDate(state.simTime.days),
+		colony: project.colonyBodyName,
+	});
+	maybeActivateNextProject(scientist);
+}
+
+function tickResearchProject(project: ColonyResearchProject, simDtDays: number): void {
+	if (project.paused || !project.leadScientistId) return;
+	const [def, defFound] = getResearchDef(project.techId);
+	const [scientist, scientistFound] = getScientist(project.leadScientistId);
+	const [colony, colonyFound] = getColony(project.colonyBodyName);
+	if (!defFound || !scientistFound || !colonyFound) return;
+	if (scientist.colonyBodyName !== colony.bodyName) return;
+	if (scientist.activeProjectTechId !== project.techId) return;
+	const qualities = computeColonyQualities(colony);
+	const effectiveLabs = Math.min(
+		scientist.assignedLabs,
+		scientist.adminCap,
+		colony.installations.lab,
+	);
+	project.assignedLabs = effectiveLabs;
+	if (effectiveLabs <= 0) return;
+	const categoryMultiplier = getScientistMultiplier(scientist, def.category);
+	const rpGain =
+		BASE_RESEARCH_RATE * effectiveLabs * qualities.research * categoryMultiplier * simDtDays;
+	project.progressRp += rpGain;
+	colony.researchPoints += rpGain;
+
+	ensureExperienceKey(scientist, def.category);
+	scientist.experienceByCategory[def.category] += simDtDays * def.difficulty;
+	const grown =
+		scientist.categoryBonuses[def.category] + simDtDays * def.difficulty * CATEGORY_GROWTH_RATE;
+	scientist.categoryBonuses[def.category] = clampBonus(grown);
+
+	if (project.progressRp >= def.rpCost) {
+		completeProject(project, scientist);
+	}
+}
+
+export function getResearchDashboardRows(bodyName: string): ScientistDashboardRow[] {
+	const rows: ScientistDashboardRow[] = [];
+	for (const project of state.researchProjects.values()) {
+		if (project.colonyBodyName !== bodyName) continue;
+		const [lead] = project.leadScientistId ? getScientist(project.leadScientistId) : [null, false];
+		rows.push({
+			techId: project.techId,
+			status: project.paused ? "paused" : "active",
+			leadScientistId: project.leadScientistId,
+			leadScientistName: lead?.name ?? "Unassigned",
+			assignedLabs: project.assignedLabs,
+			progressRp: project.progressRp,
+			etaSimDay: estimateProjectEta(project),
+		});
+	}
+	for (const scientist of getScientistsAtColony(bodyName)) {
+		for (const techId of scientist.projectQueue) {
+			rows.push({
+				techId,
+				status: "queued",
+				leadScientistId: scientist.id,
+				leadScientistName: scientist.name,
+				assignedLabs: Math.min(scientist.assignedLabs, scientist.adminCap),
+				progressRp: 0,
+				etaSimDay: null,
+			});
+		}
+	}
+	return rows;
+}
+
+export function getDeadheadCapacityForShip(ship: ShipEntry): number {
+	if (ship.crew.count < 10) return 0;
+	return Math.min(Math.floor(ship.crew.count * 0.1), 20);
+}
+
+export function requestScientistTransfer(
+	scientistId: string,
+	destinationBodyName: string,
+): boolean {
+	const [scientist, found] = getScientist(scientistId);
+	if (!found || scientist.colonyBodyName === destinationBodyName) return false;
+	const [origin, originFound] = getColony(scientist.colonyBodyName);
+	if (!originFound) return false;
+	origin.transferQueue.push({
+		id: `xfer-${transferCounter++}`,
+		scientistId,
+		originBodyName: scientist.colonyBodyName,
+		destinationBodyName,
+		requestedAt: state.simTime.days,
+		status: "queued",
+		estimatedArrivalDay: null,
+		assignedShipName: null,
+	});
+	return true;
+}
+
+function routeTransferQueue(colony: ColonyState): void {
+	if (colony.transferQueue.length === 0) return;
+	const request = colony.transferQueue[0];
+	if (request.status !== "queued") return;
+	const ships = listShipsAtBody(colony.bodyName);
+	const ship = ships.find((entry) => getDeadheadCapacityForShip(entry) > 0);
+	if (!ship) return;
+	request.status = "in-transit";
+	request.assignedShipName = ship.data.name;
+	request.estimatedArrivalDay = state.simTime.days + 3;
+}
+
+function settleTransfers(colony: ColonyState): void {
+	while (colony.transferQueue.length > 0) {
+		const first = colony.transferQueue[0];
+		if (first.status !== "in-transit") break;
+		if ((first.estimatedArrivalDay ?? Number.POSITIVE_INFINITY) > state.simTime.days) break;
+		const [scientist, found] = getScientist(first.scientistId);
+		if (found) {
+			scientist.colonyBodyName = first.destinationBodyName;
+			if (scientist.activeProjectTechId) {
+				const [project, projectFound] = getProject(scientist.activeProjectTechId);
+				if (projectFound) {
+					project.paused = true;
+					project.leadScientistId = null;
+				}
+				scientist.activeProjectTechId = null;
+			}
+			pushGameLog("Logistics", `Scientist transfer complete: ${scientist.name}`, {
+				scientist: scientist.name,
+				origin: first.originBodyName,
+				destination: first.destinationBodyName,
+				ship: first.assignedShipName,
+			});
+		}
+		colony.transferQueue.shift();
+	}
 }
 
 export function computeColonyWorkforce(colony: ColonyState): ColonyWorkforce {
@@ -348,15 +759,6 @@ function getConstructionDef(installationId: ColonyInstallationId): ConstructionD
 	const def = CONSTRUCTION_DEFS.find((entry) => entry.id === installationId);
 	if (!def) throw new Error(`Unknown construction installation: ${installationId}`);
 	return def;
-}
-
-export function getResearchDef(techId: string): Result<ResearchDefinition> {
-	const def = RESEARCH_DEFS.find((entry) => entry.id === techId);
-	return def ? ok(def) : err();
-}
-
-function applyCompletedTech(techId: string): void {
-	state.researchedTechs.add(techId);
 }
 
 export function getColonyQualitiesAtBody(bodyName: string): Result<ColonyQualities> {
@@ -459,39 +861,41 @@ export function startResearchProject(
 	techId: string,
 	assignedLabs: number,
 	queue = false,
+	scientistId?: string,
 ): void {
-	const [colony, colonyFound] = getColony(bodyName);
-	const [_def, defFound] = getResearchDef(techId);
-	if (!colonyFound || !defFound || state.researchedTechs.has(techId) || assignedLabs <= 0) return;
-	const project: ColonyResearchProject = {
-		techId,
-		assignedLabs,
-		progressRp: 0,
-		paused: false,
-	};
-	if (!queue && !colony.currentResearch) {
-		colony.currentResearch = project;
+	const scientist =
+		scientistId !== undefined
+			? state.scientists.get(scientistId)
+			: getScientistsAtColony(bodyName).find((entry) => entry.activeProjectTechId === null);
+	if (!scientist) return;
+	setScientistLabs(scientist.id, Math.max(0, assignedLabs));
+	if (queue || scientist.activeProjectTechId !== null) {
+		queueResearchProjectForScientist(scientist.id, techId);
 		return;
 	}
-	if (!queue && colony.currentResearch?.techId === techId) return;
-	if (colony.researchQueue.some((entry) => entry.techId === techId)) return;
-	colony.researchQueue.push(project);
+	queueResearchProjectForScientist(scientist.id, techId);
+	maybeActivateNextProject(scientist);
 }
 
 export function cancelResearchProject(bodyName: string, techId: string): void {
-	const [colony, found] = getColony(bodyName);
-	if (!found) return;
-	if (colony.currentResearch?.techId === techId) {
-		colony.currentResearch = colony.researchQueue.shift() ?? null;
-		return;
+	for (const scientist of getScientistsAtColony(bodyName)) {
+		scientist.projectQueue = scientist.projectQueue.filter((queued) => queued !== techId);
+		if (scientist.activeProjectTechId === techId) scientist.activeProjectTechId = null;
 	}
-	colony.researchQueue = colony.researchQueue.filter((entry) => entry.techId !== techId);
+	state.researchProjects.delete(techId);
 }
 
-export function setResearchLabs(bodyName: string, assignedLabs: number): void {
-	const [colony] = getColony(bodyName);
-	if (!colony?.currentResearch) return;
-	colony.currentResearch.assignedLabs = Math.max(1, assignedLabs);
+export function setResearchLabs(
+	bodyName: string,
+	assignedLabs: number,
+	scientistId?: string,
+): void {
+	const scientist =
+		scientistId !== undefined
+			? state.scientists.get(scientistId)
+			: getScientistsAtColony(bodyName).find((entry) => entry.activeProjectTechId !== null);
+	if (!scientist) return;
+	setScientistLabs(scientist.id, assignedLabs);
 }
 
 export function consumeColonyFuel(bodyName: string, amountKg: number): number {
@@ -534,27 +938,13 @@ function tickMining(colony: ColonyState, simDtDays: number, qualities: ColonyQua
 	}
 }
 
-function tickResearch(colony: ColonyState, simDtDays: number, qualities: ColonyQualities): void {
-	if (!colony.currentResearch) {
-		colony.currentResearch = colony.researchQueue.shift() ?? null;
+function tickResearch(colony: ColonyState, simDtDays: number): void {
+	for (const project of state.researchProjects.values()) {
+		if (project.colonyBodyName !== colony.bodyName) continue;
+		tickResearchProject(project, simDtDays);
 	}
-	if (!colony.currentResearch || colony.currentResearch.paused || colony.installations.lab <= 0)
-		return;
-
-	const [def, defFound] = getResearchDef(colony.currentResearch.techId);
-	if (!defFound) return;
-
-	const assignedLabs = Math.max(
-		1,
-		Math.min(colony.installations.lab, colony.currentResearch.assignedLabs),
-	);
-	const rpGain = BASE_RESEARCH_RATE * assignedLabs * qualities.research * simDtDays;
-	colony.currentResearch.progressRp += rpGain;
-	colony.researchPoints += rpGain;
-
-	if (colony.currentResearch.progressRp >= def.rpCost) {
-		applyCompletedTech(def.id);
-		colony.currentResearch = colony.researchQueue.shift() ?? null;
+	for (const scientist of getScientistsAtColony(colony.bodyName)) {
+		maybeActivateNextProject(scientist);
 	}
 }
 
@@ -620,7 +1010,9 @@ export function tickColony(colony: ColonyState, simDtDays: number): void {
 	const qualities = computeColonyQualities(colony);
 	tickConstruction(colony, simDtDays, qualities);
 	tickMining(colony, simDtDays, qualities);
-	tickResearch(colony, simDtDays, qualities);
+	tickResearch(colony, simDtDays);
+	routeTransferQueue(colony);
+	settleTransfers(colony);
 }
 
 export function tickColonies(simDtDays: number): void {
