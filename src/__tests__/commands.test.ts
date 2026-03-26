@@ -1846,6 +1846,7 @@ describe("deliverColonyShuttle (via tickShipSimulation)", () => {
 
 		expect(ship.fuelKg).toBe(50_000); // topped up to full
 		const [colony] = getColony("Earth");
+		if (!colony) throw new Error("expected colony");
 		expect(colony.stockpile.fuelKg).toBe(40_000); // lost 10 000, not 12 500
 	});
 
@@ -1862,6 +1863,7 @@ describe("deliverColonyShuttle (via tickShipSimulation)", () => {
 		// Deficit is 50 000, but shuttle cap is 25% = 12 500
 		expect(ship.fuelKg).toBe(12_500);
 		const [colony] = getColony("Earth");
+		if (!colony) throw new Error("expected colony");
 		expect(colony.stockpile.fuelKg).toBe(87_500);
 	});
 
@@ -1876,6 +1878,7 @@ describe("deliverColonyShuttle (via tickShipSimulation)", () => {
 		tickShipSimulation(ship, SIM_DT, SIM_TIME);
 
 		const [colony] = getColony("Earth");
+		if (!colony) throw new Error("expected colony");
 		expect(colony.stockpile.fuelKg).toBe(50_000); // colony unchanged
 	});
 
@@ -1892,6 +1895,7 @@ describe("deliverColonyShuttle (via tickShipSimulation)", () => {
 
 		expect(ship.fuelKg).toBe(43_000); // only 3 000 available
 		const [colony] = getColony("Earth");
+		if (!colony) throw new Error("expected colony");
 		expect(colony.stockpile.fuelKg).toBe(0);
 	});
 
@@ -1913,6 +1917,7 @@ describe("deliverColonyShuttle (via tickShipSimulation)", () => {
 		tickShipSimulation(ship, SIM_DT, SIM_TIME);
 
 		const [colony] = getColony("Earth");
+		if (!colony) throw new Error("expected colony");
 		// tickActionRecovery draws ~1 500 kg (refuelRate * capacity * simDt). Shuttle (10 000) must NOT fire.
 		expect(colony.stockpile.fuelKg).toBeGreaterThan(40_000);
 	});
@@ -1941,6 +1946,7 @@ describe("deliverColonyShuttle (via tickShipSimulation)", () => {
 		tickShipSimulation(ship, SIM_DT, SIM_TIME);
 
 		const [colony] = getColony("Earth");
+		if (!colony) throw new Error("expected colony");
 		// Shuttle would have taken up to 25 supplies. Only tickActionRecovery (~0.375) should fire.
 		expect(colony.stockpile.supplies).toBeGreaterThan(50_000 - 25);
 	});
