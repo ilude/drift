@@ -100,6 +100,7 @@ describe("resolveEntity", () => {
 		rebuildEntityMaps();
 		const [result, found] = resolveEntity("Mars");
 		expect(found).toBe(true);
+		if (!result) throw new Error("expected result");
 		expect(result.name).toBe("Mars");
 		expect(result.type).toBe("Planet");
 		expect(result.bodyEntry).toBeDefined();
@@ -111,6 +112,7 @@ describe("resolveEntity", () => {
 		rebuildEntityMaps();
 		const [result, found] = resolveEntity("Titan");
 		expect(found).toBe(true);
+		if (!result) throw new Error("expected result");
 		expect(result.isMoon).toBe(true);
 	});
 
@@ -119,6 +121,7 @@ describe("resolveEntity", () => {
 		rebuildEntityMaps();
 		const [result, found] = resolveEntity("Halley");
 		expect(found).toBe(true);
+		if (!result) throw new Error("expected result");
 		expect(result.type).toBe("Comet");
 	});
 
@@ -127,6 +130,7 @@ describe("resolveEntity", () => {
 		rebuildEntityMaps();
 		const [result, found] = resolveEntity("Endeavour");
 		expect(found).toBe(true);
+		if (!result) throw new Error("expected result");
 		expect(result.type).toBe("Ship");
 	});
 
@@ -135,6 +139,7 @@ describe("resolveEntity", () => {
 		rebuildEntityMaps();
 		const [result, found] = resolveEntity("MB-0042");
 		expect(found).toBe(true);
+		if (!result) throw new Error("expected result");
 		expect(result.name).toBe("MB-0042");
 		expect(result.type).toBe("Asteroid");
 		expect(result.asteroidHit).toBeDefined();
@@ -152,6 +157,7 @@ describe("resolveEntity", () => {
 		rebuildEntityMaps();
 		const [r1] = resolveEntity("Venus");
 		const [r2] = resolveEntity("Venus");
+		if (!r1 || !r2) throw new Error("expected results");
 		expect(r1.position).not.toBe(r2.position);
 	});
 
@@ -160,6 +166,7 @@ describe("resolveEntity", () => {
 		rebuildEntityMaps();
 		const [r1] = resolveEntity("MB-0001");
 		const [r2] = resolveEntity("MB-0001");
+		if (!r1 || !r2) throw new Error("expected results");
 		expect(r1.position).not.toBe(r2.position);
 	});
 
@@ -168,6 +175,7 @@ describe("resolveEntity", () => {
 		rebuildEntityMaps();
 		const [result] = resolveEntity("MB-0001");
 		// beltIndex 0 → positions[0]=5, [1]=0, [2]=3
+		if (!result) throw new Error("expected result");
 		expect(result.position.x).toBe(5);
 		expect(result.position.y).toBe(0);
 		expect(result.position.z).toBe(3);
@@ -242,6 +250,7 @@ describe("findAsteroidEntity", () => {
 		rebuildEntityMaps();
 		const [hit, found] = findAsteroidEntity("MB-0007");
 		expect(found).toBe(true);
+		if (!hit) throw new Error("expected hit");
 		expect(hit.asteroid.designation).toBe("MB-0007");
 	});
 
@@ -258,6 +267,7 @@ describe("findShip", () => {
 		rebuildEntityMaps();
 		const [ship, found] = findShip("Argo");
 		expect(found).toBe(true);
+		if (!ship) throw new Error("expected ship");
 		expect(ship.data.name).toBe("Argo");
 	});
 
@@ -266,6 +276,7 @@ describe("findShip", () => {
 		rebuildEntityMaps();
 		const [ship, found] = findShip();
 		expect(found).toBe(true);
+		if (!ship) throw new Error("expected ship");
 		expect(ship.data.type).toBe("Ship");
 	});
 
@@ -296,6 +307,7 @@ describe("findStar", () => {
 		rebuildEntityMaps();
 		const [star, found] = findStar();
 		expect(found).toBe(true);
+		if (!star) throw new Error("expected star");
 		expect(star.data.type).toBe("Star");
 	});
 

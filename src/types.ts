@@ -228,8 +228,7 @@ export interface ColonyState {
 	stockpile: ColonyStockpile;
 	researchPoints: number;
 	constructionProjects: ColonyConstructionProject[];
-	currentResearch: ColonyResearchProject | null;
-	researchQueue: ColonyResearchProject[];
+	transferQueue: ScientistTransferRequest[];
 }
 
 export interface ColonyWorkforce {
@@ -265,9 +264,60 @@ export interface ColonyConstructionProject {
 
 export interface ColonyResearchProject {
 	techId: string;
+	colonyBodyName: string;
+	leadScientistId: string | null;
 	assignedLabs: number;
 	progressRp: number;
 	paused: boolean;
+	queuedAt: number;
+	startedAt: number | null;
+	difficulty: number;
+}
+
+export interface ScientistState {
+	id: string;
+	name: string;
+	colonyBodyName: string;
+	primaryCategory: string;
+	secondaryCategory: string;
+	activeProjectTechId: string | null;
+	projectQueue: string[];
+	assignedLabs: number;
+	adminCap: number;
+	categoryBonuses: Record<string, number>;
+	completedProjects: string[];
+	experienceByCategory: Record<string, number>;
+}
+
+export interface ScientistTransferRequest {
+	id: string;
+	scientistId: string;
+	originBodyName: string;
+	destinationBodyName: string;
+	requestedAt: number;
+	status: "queued" | "in-transit" | "complete";
+	estimatedArrivalDay: number | null;
+	assignedShipName: string | null;
+}
+
+export type GameLogCategory = "Research" | "Colony" | "Logistics" | "Ship" | "System";
+
+export interface GameLogEntry {
+	id: number;
+	category: GameLogCategory;
+	simTime: number;
+	message: string;
+	meta?: Record<string, string | number | boolean | null>;
+}
+
+export interface ScientistDashboardRow {
+	techId: string;
+	status: "active" | "paused" | "queued";
+	leadScientistId: string | null;
+	leadScientistName: string;
+	assignedLabs: number;
+	progressRp: number;
+	etaSimDay: number | null;
 }
 
 export interface ShipMaintenance {
@@ -597,6 +647,9 @@ export interface AppState {
 	depotQuality: number;
 	shipIntents: Map<string, ShipIntent>;
 	colonies: Map<string, ColonyState>;
+	scientists: Map<string, ScientistState>;
+	researchProjects: Map<string, ColonyResearchProject>;
+	gameLog: GameLogEntry[];
 	researchedTechs: Set<string>;
 }
 
@@ -657,6 +710,9 @@ export interface SavedStateData {
 	discoveredSystems: Array<{ key: string; name: string; seed: number }>;
 	ships: SavedShipData[];
 	colonies?: ColonyState[];
+	scientists?: ScientistState[];
+	researchProjects?: ColonyResearchProject[];
+	gameLog?: GameLogEntry[];
 	researchedTechs?: string[];
 }
 

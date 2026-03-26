@@ -62,7 +62,7 @@ export function speedLabel(timeSpeed: number): string {
 
 export const MASTER_SEED: number = 42;
 const SAVE_KEY = "solar-sim-state";
-const SAVE_VERSION = 7;
+const SAVE_VERSION = 8;
 
 export const state: AppState = {
 	bodyMeshes: [],
@@ -112,6 +112,9 @@ export const state: AppState = {
 	depotQuality: 1,
 	shipIntents: new Map(),
 	colonies: new Map(),
+	scientists: new Map(),
+	researchProjects: new Map(),
+	gameLog: [],
 	researchedTechs: new Set(),
 	notifications: [],
 	notificationPauseConfig: {
@@ -184,8 +187,19 @@ export function saveState(): void {
 				resources: { ...colony.stockpile.resources },
 			},
 			constructionProjects: (colony.constructionProjects ?? []).map((project) => ({ ...project })),
-			currentResearch: colony.currentResearch ? { ...colony.currentResearch } : null,
-			researchQueue: (colony.researchQueue ?? []).map((project) => ({ ...project })),
+			transferQueue: (colony.transferQueue ?? []).map((request) => ({ ...request })),
+		})),
+		scientists: Array.from(state.scientists.values()).map((scientist) => ({
+			...scientist,
+			projectQueue: [...scientist.projectQueue],
+			categoryBonuses: { ...scientist.categoryBonuses },
+			completedProjects: [...scientist.completedProjects],
+			experienceByCategory: { ...scientist.experienceByCategory },
+		})),
+		researchProjects: Array.from(state.researchProjects.values()).map((project) => ({ ...project })),
+		gameLog: state.gameLog.map((entry) => ({
+			...entry,
+			meta: entry.meta ? { ...entry.meta } : undefined,
 		})),
 		researchedTechs: Array.from(state.researchedTechs.values()),
 	};
@@ -194,6 +208,27 @@ export function saveState(): void {
 	} catch (_) {
 		/* storage full or unavailable */
 	}
+}
+
+function migrateVersionedState(migrated: SavedStateData): SavedStateData {
+	if (migrated.version === 4) {
+		migrated.version = 5;
+	}
+	if (migrated.version === 5) {
+		for (const ship of migrated.ships) {
+			const m = ship.maintenance as unknown as Record<string, unknown>;
+			if (m.totalAge === undefined) m.totalAge = m.age;
+			if (m.lastRefitAge === undefined) m.lastRefitAge = 0;
+		}
+		migrated.version = 6;
+	}
+	if (migrated.version === 6) {
+		migrated.version = 7;
+	}
+	if (migrated.version === 7) {
+		migrated.version = 8;
+	}
+	return migrated;
 }
 
 function migrateSavedState(data: SavedStateData | Record<string, unknown>): SavedStateData | null {
@@ -211,21 +246,7 @@ function migrateSavedState(data: SavedStateData | Record<string, unknown>): Save
 		} as SavedStateData;
 	}
 
-	const migrated = data as SavedStateData;
-	if (migrated.version === 4) {
-		migrated.version = 5;
-	}
-	if (migrated.version === 5) {
-		for (const ship of migrated.ships) {
-			const m = ship.maintenance as unknown as Record<string, unknown>;
-			if (m.totalAge === undefined) m.totalAge = m.age;
-			if (m.lastRefitAge === undefined) m.lastRefitAge = 0;
-		}
-		migrated.version = 6;
-	}
-	if (migrated.version === 6) {
-		migrated.version = 7;
-	}
+	const migrated = migrateVersionedState(data as SavedStateData);
 	return migrated.version === SAVE_VERSION ? migrated : null;
 }
 
@@ -291,6 +312,9 @@ export function restoreShipState(savedData: SavedStateData | null): void {
 
 export function restoreColonyState(savedData: SavedStateData | null): void {
 	state.colonies.clear();
+	state.scientists.clear();
+	state.researchProjects.clear();
+	state.gameLog = [];
 	if (!savedData?.colonies) return;
 	for (const colony of savedData.colonies) {
 		state.colonies.set(colony.bodyName, {
@@ -302,9 +326,24 @@ export function restoreColonyState(savedData: SavedStateData | null): void {
 				resources: { ...colony.stockpile.resources },
 			},
 			constructionProjects: (colony.constructionProjects ?? []).map((project) => ({ ...project })),
-			currentResearch: colony.currentResearch ? { ...colony.currentResearch } : null,
-			researchQueue: (colony.researchQueue ?? []).map((project) => ({ ...project })),
+			transferQueue: (colony.transferQueue ?? []).map((request) => ({ ...request })),
 		});
 	}
+	for (const scientist of savedData.scientists ?? []) {
+		state.scientists.set(scientist.id, {
+			...scientist,
+			projectQueue: [...scientist.projectQueue],
+			categoryBonuses: { ...scientist.categoryBonuses },
+			completedProjects: [...scientist.completedProjects],
+			experienceByCategory: { ...scientist.experienceByCategory },
+		});
+	}
+	for (const project of savedData.researchProjects ?? []) {
+		state.researchProjects.set(project.techId, { ...project });
+	}
+	state.gameLog = (savedData.gameLog ?? []).map((entry) => ({
+		...entry,
+		meta: entry.meta ? { ...entry.meta } : undefined,
+	}));
 	state.researchedTechs = new Set(savedData.researchedTechs ?? []);
 }

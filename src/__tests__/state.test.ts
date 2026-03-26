@@ -556,11 +556,13 @@ describe("transfer state persistence", () => {
 					},
 					researchPoints: 42,
 					constructionProjects: [],
-					currentResearch: null,
-					researchQueue: [],
+					transferQueue: [],
 				},
 			],
 		]) as typeof state.colonies;
+		state.scientists = new Map();
+		state.researchProjects = new Map();
+		state.gameLog = [];
 		state.bodyMeshes = [];
 		state.currentSystemKey = "sol";
 		state.randomClickCount = 0;
