@@ -153,8 +153,21 @@ Drift aims for **depth without complexity** — the gap between component comple
 - **Fixing skillful exploits:** If players discover non-obvious strategies through system interaction, that's emergence working as intended. Only fix genuinely broken interactions, not creative use of consistent rules.
 - **Abstract counters over persistent entities:** Entities with identity, relationships, and history enable emergence. Anonymous numbers don't.
 
+### Core Game Vision
+- **Two primary player systems:** Ship Design (early game, persistent) and Nodal Production Chains (mid/late game optimization). Everything else serves these two loops.
+- **Earth starts at the margin.** Player grows factories → farming → mines → flat-packed modules → first ship design → first colony. No ships without a player-authored design.
+- **Flat-packed modules:** Colony infrastructure is manufactured at Earth (or any factory colony), shipped by cargo, assembled at destination. Physical logistics, not instant placement.
+- **Mines are counts, not entities.** `colony.installations.mine` and `colony.installations.automatedMine` are integers. Transfer via cargo ship = subtract/add counts. Resource-specific targeting is a future mechanic.
+- **Factory allocation:** Both queue and percentage-based. Each job has a desired capacity %; unused % flows to next waiting job. Multiple jobs run in parallel proportional to actual allocated capacity.
+- **Governor system:** Deterministic colony AI (mirrors commander judgment pattern). Player constrains scope. Research always stays with the player — governors build labs/academies but never assign scientists.
+- **Ship order system:** Multi-step sequential mission orders with loop/repeat (Aurora-style). Separate from the autonomous command tree. Architecture TBD pending Aurora research. See `tasks/ship-order-system-design.md`.
+
 ### Design Research Library
 Detailed research references in `tasks/`:
+- `v1-design-constraints.md` — Accepted v1 rules: factory allocation, mine model, ship design, research rules
+- `game-vision-early-game.md` — Early game loop and "The Factory Must Grow" hook
+- `governor-system-design.md` — Deterministic colony governor AI design
+- `ship-order-system-design.md` — Multi-step order loop system (Aurora-style)
 - `research-game-depth-theory.md` — Game depth theory, Shannon number, combinatorial depth
 - `research-combinatorial-depth.md` — CCG patterns (MTG, Slay the Spire), 4X application
 - `emergent-systems-research.md` — Emergent interactions, 10 principles, 7 anti-patterns

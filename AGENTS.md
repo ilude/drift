@@ -60,7 +60,11 @@ These are repeated here because they directly affect safe autonomous edits:
 
 Extensive design research lives in `tasks/`. Key files:
 - `tasks/research-synthesis-report.md` — Full synthesis of all research (start here)
+- `tasks/v1-design-constraints.md` — Accepted v1 design rules: factory allocation model, mine counts, ship design requirements, research rules
+- `tasks/game-vision-early-game.md` — Early game loop: Earth at margin, flat-packed modules, ship design gate, "The Factory Must Grow" hook
 - `tasks/colony-system-design.md` — Colony system design notes and phased build plan
+- `tasks/governor-system-design.md` — Deterministic colony governor AI: scope constraints, skill-driven priorities, relationship to commander judgment
+- `tasks/ship-order-system-design.md` — Multi-step ship order loop system (Aurora-style sequential missions with repeat/loop)
 - `tasks/aurora-*-implementation.md` — Aurora 4X mechanics mapped to Drift (colonies, economy, research, logistics, exploration, commanders, ship design)
 - `tasks/production-chain-*.md` — Nodal production chain design research (factory patterns, graph theory, 4X patterns, UX)
 

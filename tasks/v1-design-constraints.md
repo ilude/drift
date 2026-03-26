@@ -30,15 +30,49 @@
 ## 4) Colonization and Industry Direction
 
 - North star remains Aurora-like ship design and shipyard tonnage/capacity constraints.
-- No fixed ship templates as long-term design; player-designed ships are core.
+- No fixed ship templates as long-term design; player-designed ships are core. No ship can be built without a player-authored design.
+- Ship components (engines, life support, cargo bays, maintenance bays, hibernation tubes) are research unlocks with mass, crew requirements, and performance characteristics. No visual placement — component list only.
 - Colonization depends on researched capabilities and logistics (cargo lift, infrastructure/supplies, industrial staging).
+- Earth starts "at the margin" — constrained but functional. Player must grow factories, farming, and mines before expansion is viable.
+- Colony infrastructure is manufactured as **flat-packed modules** at Earth (or any colony with factories), loaded onto cargo ships, and assembled at the destination. A colony cannot build installations it hasn't received modules for (or manufactured locally).
 - Production chains are non-spatial abstract entities (spreadsheet-style I/O systems), not map placement gameplay.
 - Blueprinted production chains are detached copies.
 - Blueprint construction requires required facilities/modules to exist in inventory/warehouse.
 - No v1 blueprint retrofit propagation (YAGNI).
 
+## 4a) Factory Allocation Model
+
+Factory capacity is allocated by percentage across a construction queue. Both queue order and allocation % matter:
+
+- Each queued job has an assigned desired capacity % (e.g., 20% of all factories work on this job)
+- The tick assigns actual capacity dynamically: fill each job up to its desired %, roll any unused % to the next waiting job
+- If a job cannot reach its desired %, it waits for another job to free capacity, then claims that capacity up to its desired % or until the job completes
+- No factory capacity is wasted — unused allocation always flows to the next available job
+- Multiple jobs run in parallel, each progressing proportional to actual allocated capacity
+
+## 4b) Mines
+
+Two mine types:
+- **Standard mine** — requires workforce to operate; cheaper and faster to build
+- **Automated mine** — no workforce required; more expensive and slower to build
+
+Mines are tracked as counts on a colony (`colony.installations.mine`, `colony.installations.automatedMine`). They are not individual entities. Mine output is computed from the count each tick — no explicit assignment needed.
+
+Mines can be physically transferred between colonies via cargo ship orders: subtract from source colony count, add to ship cargo, subtract from ship cargo at destination, add to destination colony count. The cargo ship order system handles the logistics sequence.
+
+Resource-specific mine targeting (e.g., "80% iron output") is a future mechanic. In v1, mines extract whatever deposits are available on the body.
+
 ## 5) Research System (V1 Rules)
 
+**Implementation Status (2026-03-26):**
+- Tech tree: 20 techs across 5 categories with prerequisites ✓
+- Project management UI: Global research popout screen ✓
+- Project tracking: Active/paused/queued groups with ETAs ✓
+- Scientist assignment: Single-assignment model (one active project per scientist) ✓
+- Project persistence: Full pause/resume ✓
+- Still pending: Tech effects applying to game systems (engine gates, survey/industry bonuses); academy scientist generation; eureka breakthroughs
+
+**Rules:**
 - Many projects may run in parallel, constrained by scientists/labs.
 - Progress persistence is full (pause/resume with no decay).
 - Scientists are single-assignment only (one active project per scientist).

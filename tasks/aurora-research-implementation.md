@@ -15,8 +15,10 @@ Aurora's research system organizes technology into nine categories (Power & Prop
 - **Rate modifier pattern:** `effectiveRate = baseRate * quality / hardnessMultiplier`
 - **Colony structure (existing):** `labs` (ColonyInstallations.lab), `researchPoints` field, constructionProjects, `ColonyResearchProject` with techId, assignedLabs, progressRp, leadScientistId, difficulty
 - **Research structure (existing):** `researchedTechs` Set in AppState; Scientists have `categoryBonuses`, `adminCap`, `activeProjectTechId`, `projectQueue`
-- **5 techs in RESEARCH_DEFS** — survey-automation, mining-drills, maintenance-doctrine, lab-instrumentation, fabrication-methods
-- **Planned:** Colony-local research only (no pooling across colonies); eureka-style survey breakthroughs; specialists trained at academies
+- **20 techs in RESEARCH_DEFS** (2026-03-26) — 5 categories with 4 techs each: Survey (survey-automation, advanced-telemetry, predictive-analysis, deep-scan-array), Industry (mining-drills, fabrication-methods, advanced-metallurgy, nano-manufacturing), Logistics (maintenance-doctrine, supply-optimization, fleet-logistics, rapid-refit), Research (lab-instrumentation, sensor-theory, applied-physics, unified-field-theory), Biology (basic-hydroponics, genetic-medicine, closed-cycle-life-support, xenobiology) ✓
+- **Prerequisites implemented** (2026-03-26) — `ResearchDefinition` now includes `prerequisites: string[]`; `canStartProject()` validates prereqs ✓
+- **Global research management screen** (2026-03-26) — `src/ui/research-viewer.ts` (popout, popout-style with category/state filters, scientist queue management, project progress tracking) ✓
+- **Still pending:** Tech effects actually applying to game systems (engine gates, survey/industry bonuses); eureka-style survey breakthroughs; scientist generation at academies
 
 ---
 
@@ -37,7 +39,7 @@ interface TechDefinition extends ResearchDefinition {
 }
 ```
 
-**Proposed tech tree (~16 techs, 4 categories):**
+**Proposed tech tree (~20 techs, 5 categories):**
 
 | Category | Tier 1 (120 RP) | Tier 2 (250 RP) | Tier 3 (500 RP) | Tier 4 (1000 RP) |
 |----------|-----------------|-----------------|-----------------|-------------------|
@@ -45,6 +47,9 @@ interface TechDefinition extends ResearchDefinition {
 | Industry | Mining Drills | Fabrication Methods | Advanced Metallurgy | Nano-Manufacturing |
 | Logistics | Maintenance Doctrine | Supply Optimization | Fleet Logistics | Rapid Refit |
 | Research | Lab Instrumentation | Sensor Theory | Applied Physics | Unified Field Theory |
+| Biology | Basic Hydroponics | Genetic Medicine | Xenobiology | Terraforming |
+
+**Biology/Genetics gates:** food production (colony population stability), health and life expectancy (population growth, scientist/officer career length), ship life support improvements (supply endurance), and terraforming (long-duration habitability modification of colony bodies). Implementation of these downstream systems is deferred — the category exists in the tree to reserve the design space.
 
 **Why:** Matches Aurora's branching structure without 100+ technologies. Small chains create visible progression goals.
 
@@ -184,14 +189,19 @@ const allowedEngines = ENGINE_TYPES.filter(e =>
 
 ---
 
+## Completed (2026-03-26)
+
+1. **Expand tech tree data** ✓ — 20 techs across 5 categories with prerequisites chain defined
+2. **Implement prerequisite check in canStartProject()** ✓ — Blocks queueing on unmet prereqs
+3. **Global research management screen** ✓ — Category filter tabs, project list, scientist queue, progress tracking, ETAs
+
 ## Recommended Next Steps (Prioritized)
 
-1. **Expand tech tree data** — Create TechDefinition interface with prerequisites; define ~15 techs. No code changes needed beyond data structure. Validate: each tech has 1–3 prerequisites, no cycles.
-2. **Implement prerequisite check in canStartProject()** — 1-hour change. Block queueing; show unmet prereqs in UI.
-3. **Gate engine tiers behind research** — Add `requiredTech` field to EngineType; filter in ship designer.
-4. **Academy scientist generation** — Tie scientist spawn to academy construction completion.
-5. **Eureka breakthroughs** — Add `eurekaSourceTechs` to TechDefinition; hook into survey completion.
-6. **Tech unlock UI polish** — Show prerequisite chain clearly; gray locked techs; highlight available next.
+1. **Gate engine tiers behind research** — Add `requiredTech` field to EngineType; filter in ship designer.
+2. **Tech effects enforcement** — Wire tech unlocks to survey/industry bonuses, ship capabilities
+3. **Academy scientist generation** — Tie scientist spawn to academy construction completion.
+4. **Eureka breakthroughs** — Add `eurekaSourceTechs` to TechDefinition; hook into survey completion.
+5. **Tech unlock UI polish** — Show prerequisite chain clearly; gray locked techs; highlight available next.
 
 ---
 

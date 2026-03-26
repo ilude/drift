@@ -1,6 +1,6 @@
 # Colony System Design Notes
 
-> **Status:** Phase 0 implemented (2026-03-25). `src/core/colonies.ts` and `src/ui/colony-panel.ts` are live. Save version 7 includes colony state. See `tasks/decisions.md` for accepted design decisions. This doc captures broader design direction for Phase 1+.
+> **Status:** Phase 1 implementation in progress (2026-03-26). Phase 0 complete: colonies, workforce, installations. Phase 1 live: Research management screen (global popout), construction panel improvements. Save version 7 includes colony state. See `tasks/decisions.md` for accepted design decisions. This doc captures broader design direction for Phase 2+.
 
 ## Core Philosophy
 
@@ -79,12 +79,15 @@ Design for the full vision but build incrementally. Each phase extends the previ
 - `depotQuality` becomes per-colony, calculated from installations present
 - Ships "return to base" now means a real colony with real quality
 
-### Phase 1: Workforce & Buildings
-- Population splits into working-age vs dependents (cohort model activates)
-- More installations: factories, research labs, academies
-- Workforce competition becomes real — labs vs mines vs factories
-- Scientists (from commander/crew system) assigned to colony labs
-- Research system comes online, gated by colony infrastructure
+### Phase 1: Workforce & Buildings (IN PROGRESS)
+- Population splits into working-age vs dependents (cohort model activates) ✓
+- More installations: factories, research labs, academies ✓
+- Workforce competition becomes real — labs vs mines vs factories ✓
+- Scientists (from commander/crew system) assigned to colony labs ✓
+- Research system comes online, gated by colony infrastructure ✓
+- Global research management screen (popout) ✓
+- Construction panel now shows BP/day capacity bar + per-project ETA ✓
+- **Note:** Colony panel research UI removed — global screen handles all research management
 
 ### Phase 2: Demographics & Specialists
 - Full cohort aging pipeline (children → students → workers → elderly)
