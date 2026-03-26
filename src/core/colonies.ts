@@ -709,14 +709,20 @@ export function removeFromScientistQueue(scientistId: string, techId: string): b
 
 export function cancelResearchProject(techId: string): boolean {
 	const project = state.researchProjects.get(techId);
-	if (!project) return false;
-	state.researchProjects.delete(techId);
-	if (!project.leadScientistId) return true;
-	const scientist = state.scientists.get(project.leadScientistId);
-	if (!scientist) return true;
-	if (scientist.activeProjectTechId === techId) {
-		scientist.activeProjectTechId = null;
-		maybeActivateNextProject(scientist);
+	if (project) {
+		state.researchProjects.delete(techId);
+		if (project.leadScientistId) {
+			const scientist = state.scientists.get(project.leadScientistId);
+			if (scientist && scientist.activeProjectTechId === techId) {
+				scientist.activeProjectTechId = null;
+				maybeActivateNextProject(scientist);
+			}
+		}
+	}
+	// Also remove from all scientist queues so the tech returns to available
+	for (const scientist of state.scientists.values()) {
+		const idx = scientist.projectQueue.indexOf(techId);
+		if (idx !== -1) scientist.projectQueue.splice(idx, 1);
 	}
 	return true;
 }
