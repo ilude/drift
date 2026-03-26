@@ -210,7 +210,8 @@ function buildProjectSnapshots(): ProjectSnapshot[] {
 function buildTechSnapshots(): TechSnapshot[] {
 	return RESEARCH_DEFS.map((def) => {
 		const completed = state.researchedTechs.has(def.id);
-		const inProgress = state.researchProjects.has(def.id);
+		const queued = [...state.scientists.values()].some((s) => s.projectQueue.includes(def.id));
+		const inProgress = state.researchProjects.has(def.id) || queued;
 		const available = !completed && canResearchTech(def.id);
 		const techState = completed
 			? "completed"
@@ -265,6 +266,8 @@ function buildSnapshot(): ResearchSnapshot {
 // Popout management
 // ---------------------------------------------------------------------------
 
+let _tickInterval: ReturnType<typeof setInterval> | null = null;
+
 export function isResearchViewerOpen(): boolean {
 	return popoutWindow !== null && !popoutWindow.closed;
 }
@@ -279,7 +282,15 @@ export function openResearchViewer(): boolean {
 	const html = generatePopoutHTML();
 	const blob = new Blob([html], { type: "text/html" });
 	const url = URL.createObjectURL(blob);
-	popoutWindow = window.open(url, "drift-research", "width=1300,height=740,menubar=no,toolbar=no");
+	const pw = 1300,
+		ph = 740;
+	const pl = window.screenX + Math.round((window.outerWidth - pw) / 2);
+	const pt = window.screenY + Math.round((window.outerHeight - ph) / 2);
+	popoutWindow = window.open(
+		url,
+		"drift-research",
+		`width=${pw},height=${ph},left=${pl},top=${pt},menubar=no,toolbar=no,location=no`,
+	);
 	URL.revokeObjectURL(url);
 
 	if (!popoutWindow) {
@@ -290,6 +301,7 @@ export function openResearchViewer(): boolean {
 	window.addEventListener("message", handlePopoutMessage);
 	window.addEventListener("beforeunload", cleanupPopout);
 	window.addEventListener("research-state-changed", onResearchStateChanged);
+	_tickInterval = setInterval(() => pushResearchUpdate(), 1000);
 	setTimeout(() => pushResearchUpdate(), 300);
 	return true;
 }
@@ -301,6 +313,10 @@ export function closeResearchViewer(): void {
 
 function cleanupPopout(): void {
 	popoutWindow = null;
+	if (_tickInterval !== null) {
+		clearInterval(_tickInterval);
+		_tickInterval = null;
+	}
 	window.removeEventListener("message", handlePopoutMessage);
 	window.removeEventListener("beforeunload", cleanupPopout);
 	window.removeEventListener("research-state-changed", onResearchStateChanged);
@@ -376,7 +392,7 @@ body {
 #colony-sidebar {
   width: 160px; flex-shrink: 0;
   display: flex; flex-direction: column;
-  border-right: 2px solid #334433;
+  border-right: 2px solid #3a3a3a;
   background: #0a0a12;
   transition: width 0.15s ease;
 }
@@ -384,7 +400,7 @@ body {
 .sidebar-header {
   padding: 6px 8px; font-size: 10px; color: #556655;
   text-transform: uppercase; letter-spacing: 0.05em;
-  background: #0f0f1c; border-bottom: 1px solid #1a2a1a;
+  background: #0f0f1c; border-bottom: 1px solid #1e1e1e;
   flex-shrink: 0; cursor: pointer; display: flex;
   align-items: center; gap: 4px; user-select: none;
   white-space: nowrap; overflow: hidden;
@@ -405,7 +421,7 @@ body {
 .colony-labs { font-size: 10px; color: #556655; margin-top: 1px; }
 .colony-labs .avail { color: #88aa88; }
 .system-label {
-  padding: 6px 8px 3px; font-size: 10px; color: #334433;
+  padding: 6px 8px 3px; font-size: 10px; color: #3a3a3a;
   text-transform: uppercase; letter-spacing: 0.05em;
 }
 
@@ -416,12 +432,12 @@ body {
 
 /* ---- Colony tabs ---- */
 #colony-tabs {
-  display: flex; border-bottom: 2px solid #334433;
+  display: flex; border-bottom: 2px solid #3a3a3a;
   background: #0a0a12; flex-shrink: 0; overflow-x: auto;
 }
 .colony-tab {
   padding: 7px 16px; font-size: 10px; cursor: pointer;
-  border-right: 1px solid #1a2a1a; color: #556655;
+  border-right: 1px solid #1e1e1e; color: #556655;
   text-transform: uppercase; letter-spacing: 0.06em;
   white-space: nowrap; border-bottom: 2px solid transparent;
   margin-bottom: -2px; user-select: none;
@@ -436,7 +452,7 @@ body {
 .section-bar {
   display: flex; align-items: center; gap: 12px;
   padding: 4px 10px; background: #111120;
-  border-bottom: 1px solid #223322; flex-shrink: 0;
+  border-bottom: 1px solid #282828; flex-shrink: 0;
   font-size: 10px; color: #556655;
 }
 .section-bar .title { color: #aaddaa; font-weight: 600; font-size: 11px; }
@@ -445,7 +461,7 @@ body {
 .proj-table th {
   text-align: left; padding: 4px 8px; font-size: 10px; color: #556655;
   text-transform: uppercase; letter-spacing: 0.04em;
-  background: #0f0f1c; border-bottom: 1px solid #1a2a1a;
+  background: #0f0f1c; border-bottom: 1px solid #1e1e1e;
   position: sticky; top: 0; white-space: nowrap;
 }
 .proj-table th.sortable { cursor: pointer; user-select: none; }
@@ -468,14 +484,16 @@ body {
 .tag-paused { background: #2a2a1a; color: #aaaa55; }
 .tag-queued { background: #1a1a2e; color: #7788aa; }
 .btn-sm {
-  background: #1a1a2e; border: 1px solid #334433; color: #88cc88;
+  background: #1a1a2e; border: 1px solid #3a3a3a; color: #88cc88;
   padding: 2px 7px; border-radius: 2px; cursor: pointer; font-size: 9px;
   font-family: inherit; margin-left: 3px;
 }
 .btn-sm:hover { border-color: #55aa55; }
+.btn-paused { background: #2a2a10; border-color: #aaaa44; color: #dddd66; }
+.btn-paused:hover { border-color: #dddd44; color: #ffff88; }
 .btn-del { border-color: #553333; color: #cc7777; }
 .btn-del:hover { border-color: #cc4444; color: #ffaaaa; background: #2a1a1a; }
-.empty-cell { color: #334433; font-style: italic; text-align: center; padding: 14px 8px; }
+.empty-cell { color: #3a3a3a; font-style: italic; text-align: center; padding: 14px 8px; }
 
 /* ---- Area 3: Browser ---- */
 #browser-section { display: flex; flex: 1; overflow: hidden; }
@@ -483,14 +501,14 @@ body {
 /* Tech browser */
 #tech-browser {
   width: 42%; flex-shrink: 0; display: flex; flex-direction: column;
-  border-right: 1px solid #223322;
+  border-right: 1px solid #282828;
 }
 .browser-toolbar {
   display: flex; align-items: center; gap: 8px; padding: 5px 8px;
-  background: #111120; border-bottom: 1px solid #1a2a1a; flex-shrink: 0;
+  background: #111120; border-bottom: 1px solid #1e1e1e; flex-shrink: 0;
 }
 .cat-select {
-  background: #1a1a2e; border: 1px solid #334433; color: #88cc88;
+  background: #1a1a2e; border: 1px solid #3a3a3a; color: #88cc88;
   padding: 3px 6px; border-radius: 3px; font-size: 10px; font-family: inherit;
   flex: 1; cursor: pointer;
 }
@@ -502,11 +520,12 @@ input[type=checkbox] { accent-color: #88cc88; color-scheme: dark; }
 .tech-table th {
   text-align: left; padding: 4px 8px; font-size: 10px; color: #556655;
   text-transform: uppercase; letter-spacing: 0.04em;
-  background: #0f0f1c; border-bottom: 1px solid #1a2a1a; position: sticky; top: 0;
+  background: #0f0f1c; border-bottom: 1px solid #1e1e1e; position: sticky; top: 0;
 }
 .tech-table td { padding: 5px 8px; border-bottom: 1px solid #0f0f1c; cursor: pointer; }
 .tech-table tr:hover td { background: #141424; }
-.tech-table tr.selected td { background: #1a2a1a; border-left: 2px solid #55aa55; }
+.tech-table tr.selected td { background: #1a2a1a; }
+.tech-table tr.selected td:first-child { border-left: 2px solid #55aa55; }
 .tech-table tr.state-locked { opacity: 0.35; cursor: default; }
 .tech-table tr.state-completed { opacity: 0.4; cursor: default; }
 .tech-name-col { font-weight: 500; }
@@ -516,7 +535,7 @@ input[type=checkbox] { accent-color: #88cc88; color-scheme: dark; }
 .state-completed .tech-name-col { color: #7799bb; }
 .tech-cost-col { color: #88aaff; text-align: right; white-space: nowrap; }
 .tech-detail {
-  padding: 6px 8px; background: #0c0c18; border-top: 1px solid #1a2a1a;
+  padding: 6px 8px; background: #0c0c18; border-top: 1px solid #1e1e1e;
   font-size: 10px; color: #778877; flex-shrink: 0; min-height: 46px;
 }
 .det-name { color: #aaffaa; font-weight: 600; margin-bottom: 3px; font-size: 11px; }
@@ -527,7 +546,7 @@ input[type=checkbox] { accent-color: #88cc88; color-scheme: dark; }
 #scientist-browser { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
 .sci-avail-bar {
   display: flex; align-items: center; gap: 8px; padding: 5px 10px;
-  background: #111120; border-bottom: 1px solid #1a2a1a;
+  background: #111120; border-bottom: 1px solid #1e1e1e;
   flex-shrink: 0; font-size: 10px;
 }
 .sci-avail-bar .fac-label { color: #aaddaa; }
@@ -537,11 +556,12 @@ input[type=checkbox] { accent-color: #88cc88; color-scheme: dark; }
 .sci-table th {
   text-align: left; padding: 4px 8px; font-size: 10px; color: #556655;
   text-transform: uppercase; letter-spacing: 0.04em;
-  background: #0f0f1c; border-bottom: 1px solid #1a2a1a; position: sticky; top: 0;
+  background: #0f0f1c; border-bottom: 1px solid #1e1e1e; position: sticky; top: 0;
 }
 .sci-table td { padding: 5px 8px; border-bottom: 1px solid #0f0f1c; cursor: pointer; font-size: 10px; }
 .sci-table tr:hover td { background: #111120; }
-.sci-table tr.selected td { background: #1a2a1a; border-left: 2px solid #55aa55; }
+.sci-table tr.selected td { background: #1a2a1a; }
+.sci-table tr.selected td:first-child { border-left: 2px solid #55aa55; }
 /* Busy = has active project */
 .sci-table tr.sci-busy td { color: #ddaa44; }
 .sci-table tr.sci-busy td:first-child::before { content: "● "; font-size: 8px; }
@@ -550,45 +570,35 @@ input[type=checkbox] { accent-color: #88cc88; color-scheme: dark; }
 .sci-table tr.sci-idle td:first-child::before { content: "⚠ "; }
 .sci-match { font-weight: 600 !important; }
 
-/* ---- Confirm strip ---- */
-#confirm-strip {
-  display: flex; align-items: center; gap: 0;
-  background: #0a120a; border-top: 2px solid #334433;
-  flex-shrink: 0; font-size: 11px; min-height: 46px;
+/* ---- Confirm row (single bar below browser section) ---- */
+#confirm-row {
+  display: flex; align-items: stretch; flex-shrink: 0;
+  background: #0a0a12; border-top: 2px solid #3a3a3a; min-height: 46px;
 }
-.confirm-slot {
+.cf-slot {
   display: flex; flex-direction: column; justify-content: center;
-  padding: 6px 14px; border-right: 1px solid #1e2e1e; min-width: 0;
+  padding: 4px 10px; min-width: 0;
 }
-.confirm-slot-label {
+.cf-tech-slot { flex: 0 0 42%; border-right: 1px solid #282828; overflow: hidden; }
+.cf-sci-slot { flex: 1; }
+.cf-labs-slot { flex-shrink: 0; border-left: 1px solid #282828; }
+.cf-label {
   font-size: 9px; color: #446644; text-transform: uppercase;
   letter-spacing: 0.07em; margin-bottom: 3px;
 }
-.confirm-slot-value {
+.cf-value {
   font-size: 12px; font-weight: 500; color: #aaffaa;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;
 }
-.confirm-slot-value.placeholder { color: #2a3a2a; font-style: italic; font-weight: 400; }
-.confirm-arrow {
-  padding: 0 6px; color: #334433; font-size: 16px; flex-shrink: 0; align-self: center;
-}
-.confirm-labs-slot {
-  display: flex; flex-direction: column; justify-content: center;
-  padding: 6px 14px; border-right: 1px solid #1e2e1e;
-}
-.confirm-labs-row {
-  display: flex; align-items: baseline; gap: 6px; margin-top: 3px;
-}
+.cf-value.placeholder { color: #2a2a2a; font-style: italic; font-weight: 400; }
 .labs-input {
   width: 52px; background: #111a11; border: 1px solid #3a5a3a; color: #aaffaa;
   padding: 3px 6px; border-radius: 3px; font-size: 13px; font-family: inherit;
   text-align: center;
 }
 .labs-input:focus { outline: none; border-color: #55aa55; }
-.avail-label { color: #446644; font-size: 10px; }
-.avail-label .avail-n { color: #88cc88; font-weight: 500; }
 .create-btn {
-  margin-left: auto; align-self: stretch;
+  align-self: stretch;
   background: #152515; border: none; border-left: 2px solid #3a6a3a;
   color: #88cc88; padding: 0 28px; cursor: pointer;
   font-size: 12px; font-family: inherit; letter-spacing: 0.03em;
@@ -599,7 +609,7 @@ input[type=checkbox] { accent-color: #88cc88; color-scheme: dark; }
 
 /* ---- Resize handles ---- */
 .resize-handle {
-  flex-shrink: 0; background: #1a2a1a; transition: background 0.1s; z-index: 1;
+  flex-shrink: 0; background: #1a1a2a; transition: background 0.1s; z-index: 1;
 }
 .resize-handle.rh { width: 4px; cursor: col-resize; }
 .resize-handle.rv { height: 4px; width: 100%; cursor: row-resize; }
@@ -607,7 +617,7 @@ input[type=checkbox] { accent-color: #88cc88; color-scheme: dark; }
 
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: #0d0d14; }
-::-webkit-scrollbar-thumb { background: #2a3a2a; border-radius: 3px; }
+::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 3px; }
 </style>
 </head>
 <body>
@@ -645,6 +655,7 @@ input[type=checkbox] { accent-color: #88cc88; color-scheme: dark; }
           <th class="sortable" data-key="labs" style="text-align:right">Labs<span class="sort-ind"></span></th>
           <th class="sortable" data-key="annrp" style="text-align:right">Ann. RP<span class="sort-ind"></span></th>
           <th class="sortable" data-key="remaining" style="text-align:right">RP Remaining<span class="sort-ind"></span></th>
+          <th class="sortable" data-key="days" style="text-align:right">Days Remaining<span class="sort-ind"></span></th>
           <th class="sortable" data-key="eta">Completion Date<span class="sort-ind"></span></th>
           <th></th>
         </tr></thead>
@@ -683,7 +694,7 @@ input[type=checkbox] { accent-color: #88cc88; color-scheme: dark; }
         </table>
       </div>
       <div id="tech-detail" class="tech-detail">
-        <div style="color:#334433;font-style:italic;">Select a technology to see details.</div>
+        <div style="color:#3a3a3a;font-style:italic;">Select a technology to see details.</div>
       </div>
     </div>
 
@@ -708,22 +719,19 @@ input[type=checkbox] { accent-color: #88cc88; color-scheme: dark; }
     </div>
   </div>
 
-  <!-- Confirm strip -->
-  <div id="confirm-strip">
-    <div class="confirm-slot" style="flex:2">
-      <div class="confirm-slot-label">Technology</div>
-      <div id="confirm-tech" class="confirm-slot-value placeholder">—</div>
+  <!-- Confirm row: single bar spanning full width -->
+  <div id="confirm-row">
+    <div class="cf-slot cf-tech-slot">
+      <div class="cf-label">Selected Technology</div>
+      <div id="confirm-tech" class="cf-value placeholder">—</div>
     </div>
-    <span class="confirm-arrow">▸</span>
-    <div class="confirm-slot" style="flex:2">
-      <div class="confirm-slot-label">Project Leader</div>
-      <div id="confirm-sci" class="confirm-slot-value placeholder">—</div>
+    <div class="cf-slot cf-sci-slot">
+      <div class="cf-label">Project Leader</div>
+      <div id="confirm-sci" class="cf-value placeholder">—</div>
     </div>
-    <div class="confirm-labs-slot">
-      <div class="confirm-slot-label">Assign Labs</div>
-      <div class="confirm-labs-row">
-        <input class="labs-input" type="number" id="assign-input" min="0" value="0">
-      </div>
+    <div class="cf-slot cf-labs-slot">
+      <div class="cf-label">Assign Labs</div>
+      <input class="labs-input" type="number" id="assign-input" min="0" value="0">
     </div>
     <button class="create-btn" id="btn-create" disabled>Create Project</button>
   </div>
@@ -774,7 +782,7 @@ function renderTabs() {
 function renderColonies() {
   const list = document.getElementById('colony-list');
   if (snap.colonies.length === 0) {
-    list.innerHTML = '<div style="padding:8px;color:#334433;font-style:italic;font-size:10px;">No research labs built.</div>';
+    list.innerHTML = '<div style="padding:8px;color:#3a3a3a;font-style:italic;font-size:10px;">No research labs built.</div>';
     return;
   }
   let html = '<div class="system-label">Sol System</div>';
@@ -801,6 +809,7 @@ function getSortVal(p, key) {
     case 'labs': return p.assignedLabs;
     case 'annrp': return p.annualRp;
     case 'remaining': return p.totalRp - p.progressRp;
+    case 'days': return p.etaDay == null ? Infinity : p.etaDay - snap.simTimeDays;
     case 'eta': return p.etaDay ?? Infinity;
     default: return 0;
   }
@@ -820,7 +829,7 @@ function renderProjects() {
     if (th.dataset.key === sortKey) th.classList.add(sortDir === 1 ? 'sort-asc' : 'sort-desc');
   });
   if (sorted.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="10" class="empty-cell">No active research projects. Select a technology and scientist below, then click Create Project.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="11" class="empty-cell">No active research projects. Select a technology and scientist below, then click Create Project.</td></tr>';
     return;
   }
   let html = '';
@@ -828,8 +837,11 @@ function renderProjects() {
     const sci = snap.scientists.find(s => s.id === p.leadScientistId);
     const bonusPct = sci ? sci.bonusPct : 0;
     const rpRemaining = Math.round(p.totalRp - p.progressRp);
+    const daysRemaining = p.etaDay == null ? '—' : Math.max(0, Math.round(p.etaDay - snap.simTimeDays)).toLocaleString();
     const tag = \`<span class="status-tag tag-\${p.status}">\${p.status}</span>\`;
-    const pauseLabel = p.status === 'paused' ? 'Resume' : 'Pause';
+    const isPaused = p.status === 'paused';
+    const pauseCls = isPaused ? ' btn-paused' : '';
+    const pauseLabel = isPaused ? 'Resume' : 'Pause';
     html += \`<tr class="status-\${p.status}">
       <td class="col-field">\${p.category}</td>
       <td class="col-tech">\${p.techName}\${tag}</td>
@@ -839,9 +851,10 @@ function renderProjects() {
       <td class="col-num">\${p.assignedLabs}</td>
       <td class="col-num">\${p.annualRp.toLocaleString()}</td>
       <td class="col-num">\${rpRemaining.toLocaleString()}</td>
+      <td class="col-num">\${daysRemaining}</td>
       <td class="col-eta">\${formatDay(p.etaDay)}</td>
       <td class="col-actions">
-        <button class="btn-sm btn-pause" data-tid="\${p.techId}" data-paused="\${p.status === 'paused' ? '1' : '0'}">\${pauseLabel}</button>
+        <button class="btn-sm btn-pause\${pauseCls}" data-tid="\${p.techId}" data-paused="\${isPaused ? '1' : '0'}">\${pauseLabel}</button>
         <button class="btn-sm btn-del btn-cancel" data-tid="\${p.techId}">×</button>
       </td>
     </tr>\`;
@@ -894,7 +907,7 @@ function renderTechs() {
 function renderTechDetail() {
   const panel = document.getElementById('tech-detail');
   if (!selectedTechId) {
-    panel.innerHTML = '<div style="color:#334433;font-style:italic;">Select a technology to see details.</div>';
+    panel.innerHTML = '<div style="color:#3a3a3a;font-style:italic;">Select a technology to see details.</div>';
     return;
   }
   const t = snap.techs.find(x => x.id === selectedTechId);
@@ -964,7 +977,8 @@ function updateAvailCount() {
     const sci = snap.scientists.find(s => s.id === selectedSciId);
     countEl.textContent = sci ? String(sci.colonyAvailableLabs) : '—';
   } else {
-    countEl.textContent = '—';
+    const total = snap.colonies.reduce((sum, c) => sum + c.availableLabs, 0);
+    countEl.textContent = snap.colonies.length ? String(total) : '—';
   }
 }
 

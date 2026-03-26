@@ -179,7 +179,15 @@ export function openResourceViewer(): boolean {
 	const blob = new Blob([html], { type: "text/html" });
 	const url = URL.createObjectURL(blob);
 
-	popoutWindow = window.open(url, "drift-resources", "width=1100,height=600,menubar=no,toolbar=no");
+	const pw = 1100,
+		ph = 600;
+	const pl = window.screenX + Math.round((window.outerWidth - pw) / 2);
+	const pt = window.screenY + Math.round((window.outerHeight - ph) / 2);
+	popoutWindow = window.open(
+		url,
+		"drift-resources",
+		`width=${pw},height=${ph},left=${pl},top=${pt},menubar=no,toolbar=no,location=no`,
+	);
 	URL.revokeObjectURL(url);
 
 	if (!popoutWindow) {
