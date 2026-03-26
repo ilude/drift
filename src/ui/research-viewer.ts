@@ -431,8 +431,7 @@ body {
 
 /* ---- Area 2: Projects ---- */
 #projects-section {
-  flex: 0 0 40%; display: flex; flex-direction: column;
-  border-bottom: 2px solid #334433;
+  flex-shrink: 0; height: 220px; display: flex; flex-direction: column;
 }
 .section-bar {
   display: flex; align-items: center; gap: 12px;
@@ -600,9 +599,10 @@ input[type=checkbox] { accent-color: #88cc88; color-scheme: dark; }
 
 /* ---- Resize handles ---- */
 .resize-handle {
-  flex-shrink: 0; width: 4px; background: #1a2a1a; cursor: col-resize;
-  transition: background 0.1s; z-index: 1;
+  flex-shrink: 0; background: #1a2a1a; transition: background 0.1s; z-index: 1;
 }
+.resize-handle.rh { width: 4px; cursor: col-resize; }
+.resize-handle.rv { height: 4px; width: 100%; cursor: row-resize; }
 .resize-handle:hover, .resize-handle.dragging { background: #446644; }
 
 ::-webkit-scrollbar { width: 6px; }
@@ -621,7 +621,7 @@ input[type=checkbox] { accent-color: #88cc88; color-scheme: dark; }
   <div id="colony-list"></div>
 </div>
 
-<div class="resize-handle" id="sidebar-handle"></div>
+<div class="resize-handle rh" id="sidebar-handle"></div>
 
 <!-- Right content -->
 <div id="right-content">
@@ -652,6 +652,8 @@ input[type=checkbox] { accent-color: #88cc88; color-scheme: dark; }
       </table>
     </div>
   </div>
+
+  <div class="resize-handle rv" id="proj-browser-handle"></div>
 
   <!-- Area 3: Browser section -->
   <div id="browser-section">
@@ -684,8 +686,6 @@ input[type=checkbox] { accent-color: #88cc88; color-scheme: dark; }
         <div style="color:#334433;font-style:italic;">Select a technology to see details.</div>
       </div>
     </div>
-
-    <div class="resize-handle" id="tech-sci-handle"></div>
 
     <!-- Right: Scientist list -->
     <div id="scientist-browser">
@@ -720,10 +720,9 @@ input[type=checkbox] { accent-color: #88cc88; color-scheme: dark; }
       <div id="confirm-sci" class="confirm-slot-value placeholder">—</div>
     </div>
     <div class="confirm-labs-slot">
-      <div class="confirm-slot-label">Assign Research Facilities</div>
+      <div class="confirm-slot-label">Assign Labs</div>
       <div class="confirm-labs-row">
         <input class="labs-input" type="number" id="assign-input" min="0" value="0">
-        <span class="avail-label">of <span id="confirm-avail" class="avail-n">—</span> available</span>
       </div>
     </div>
     <button class="create-btn" id="btn-create" disabled>Create Project</button>
@@ -742,16 +741,12 @@ let showCompleted = false;
 let activeCat = 'all';
 let matchingOnly = false;
 
+const SIM_EPOCH_MS = new Date(2038, 0, 20).getTime();
 function formatDay(day) {
   if (day == null) return '—';
-  const d = Math.floor(day);
-  const year = Math.floor(d / 365) + 2025;
-  const doy = d % 365;
+  const date = new Date(SIM_EPOCH_MS + Math.floor(day) * 86400000);
   const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  const lens = [31,28,31,30,31,30,31,31,30,31,30,31];
-  let rem = doy; let m = 0;
-  while (m < 11 && rem >= lens[m]) { rem -= lens[m]; m++; }
-  return \`\${months[m]} \${rem + 1}, \${year}\`;
+  return \`\${months[date.getMonth()]} \${date.getDate()}, \${date.getFullYear()}\`;
 }
 
 function setColony(bodyName) {
@@ -865,7 +860,7 @@ function renderProjects() {
 }
 
 function getTechVisible(t) {
-  const stateOk = t.state === 'available' || t.state === 'in-progress' || (showCompleted && t.state === 'completed');
+  const stateOk = t.state === 'available' || (showCompleted && t.state === 'completed');
   const catOk = activeCat === 'all' || t.category === activeCat;
   const matchOk = !matchingOnly || !selectedSciId || (() => {
     const sci = snap.scientists.find(s => s.id === selectedSciId);
@@ -976,7 +971,6 @@ function updateAvailCount() {
 function updateConfirmStrip() {
   const techEl = document.getElementById('confirm-tech');
   const sciEl = document.getElementById('confirm-sci');
-  const availEl = document.getElementById('confirm-avail');
   const input = document.getElementById('assign-input');
   const btn = document.getElementById('btn-create');
   const tech = selectedTechId ? snap.techs.find(t => t.id === selectedTechId) : null;
@@ -986,12 +980,10 @@ function updateConfirmStrip() {
   if (sci) { sciEl.textContent = sci.name; sciEl.classList.remove('placeholder'); }
   else { sciEl.textContent = '—'; sciEl.classList.add('placeholder'); }
   if (sci) {
-    availEl.textContent = String(sci.colonyAvailableLabs);
     const suggested = sci.assignedLabs > 0 ? sci.assignedLabs : Math.min(1, sci.colonyAvailableLabs);
     input.value = String(Math.min(suggested, sci.adminCap));
     input.max = String(Math.min(sci.adminCap, sci.colonyLabs));
   } else {
-    availEl.textContent = '—';
     input.value = '0';
   }
   btn.disabled = !(tech && sci);
@@ -1024,16 +1016,18 @@ function selectScientist(id) {
 }
 
 // Resize handles
-function initResize(handleId, getEl, minPx) {
+function initResize(handleId, getEl, minPx, axis) {
   const handle = document.getElementById(handleId);
   handle.addEventListener('mousedown', e => {
     e.preventDefault();
     handle.classList.add('dragging');
-    const startX = e.clientX;
-    const startW = getEl().offsetWidth;
+    const startPos = axis === 'y' ? e.clientY : e.clientX;
+    const startSize = axis === 'y' ? getEl().offsetHeight : getEl().offsetWidth;
     function onMove(e) {
-      const w = Math.max(minPx, startW + e.clientX - startX);
-      getEl().style.width = w + 'px';
+      const delta = (axis === 'y' ? e.clientY : e.clientX) - startPos;
+      const size = Math.max(minPx, startSize + delta);
+      if (axis === 'y') getEl().style.height = size + 'px';
+      else getEl().style.width = size + 'px';
     }
     function onUp() {
       handle.classList.remove('dragging');
@@ -1055,7 +1049,7 @@ function initResize(handleId, getEl, minPx) {
     const startX = e.clientX;
     const startW = sidebar.offsetWidth;
     function onMove(e) {
-      const w = Math.max(28, startW + e.clientX - startX);
+      const w = Math.max(120, startW + (e.clientX - startX));
       sidebar.style.width = w + 'px';
       if (w > 60) {
         sidebar.classList.remove('collapsed');
@@ -1072,7 +1066,7 @@ function initResize(handleId, getEl, minPx) {
   });
 })();
 
-initResize('tech-sci-handle', () => document.getElementById('tech-browser'), 150);
+initResize('proj-browser-handle', () => document.getElementById('projects-section'), 80, 'y');
 
 // Sidebar collapse toggle
 document.getElementById('sidebar-header').addEventListener('click', () => {
