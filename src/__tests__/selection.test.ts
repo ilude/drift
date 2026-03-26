@@ -165,7 +165,7 @@ describe("formatShipDuration", () => {
 		expect(formatShipDuration(ship)).toBe("0.5d / 0.8d");
 	});
 
-	it("shows action progress when orbiting with active action", () => {
+	it("shows action remaining/total when orbiting with active action", () => {
 		state.simTime = new GameClock(50);
 		const ship = mockShip({
 			shipState: "orbiting",
@@ -178,8 +178,25 @@ describe("formatShipDuration", () => {
 				target: "Mars",
 			},
 		});
-		// elapsed=floor(0.5*20)=10, dur=floor(20)=20
+		// elapsed=0.5*20=10, remaining=20-10=10, total=20
 		expect(formatShipDuration(ship)).toBe("10d / 20d");
+	});
+
+	it("shows full duration remaining at start of action (progress=0)", () => {
+		state.simTime = new GameClock(50);
+		const ship = mockShip({
+			shipState: "orbiting",
+			action: {
+				type: "survey-nearest",
+				commandId: null,
+				startTime: 50,
+				duration: 10,
+				progress: 0,
+				target: "Mars",
+			},
+		});
+		// remaining=10-0=10, total=10 — not "0d / 10d"
+		expect(formatShipDuration(ship)).toBe("10d / 10d");
 	});
 
 	it("returns empty string when orbiting with no active action", () => {

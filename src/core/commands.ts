@@ -2,11 +2,18 @@
 // This is the "dumb computer" — it evaluates rules top-to-bottom without judgment.
 // The commander (commander.ts) interprets these results and applies judgment overrides.
 
-import type { BodyEntry, CommandCondition, CommandResult, ShipEntry } from "../types";
+import type { BodyEntry, CommandCondition, CommandResult, Result, ShipEntry } from "../types";
 import { isCometEntry, isShipEntry, isSurveyable } from "../types";
+import {
+	consumeColonyFuel,
+	consumeColonySupplies,
+	getRefuelQualityForShip,
+	getServiceQualityForShip,
+} from "./colonies";
 import { isAtColony, learnFromMalfunction } from "./commander";
 import { findBody, findShip } from "./entities";
 import { getClaimedTargets, onIntentChange } from "./intents";
+import { err, ok } from "./result";
 import { state } from "./state";
 import { seededRandom } from "./utils";
 
@@ -51,19 +58,19 @@ function commandToResult(
 	}
 }
 
-export function evaluateCommandTree(ship: ShipEntry): CommandResult | null {
+export function evaluateCommandTree(ship: ShipEntry): Result<CommandResult> {
 	if (ship.immediateCommand?.enabled) {
-		return commandToResult(ship.immediateCommand.command, ship.immediateCommand.target);
+		return ok(commandToResult(ship.immediateCommand.command, ship.immediateCommand.target));
 	}
 
 	for (const entry of ship.commandTree.entries) {
 		if (!entry.enabled) continue;
 		if (checkCondition(entry.condition, ship)) {
-			return commandToResult(entry.command, entry.target);
+			return ok(commandToResult(entry.command, entry.target));
 		}
 	}
 
-	return null;
+	return err();
 }
 
 export function computeMorale(daysSinceLeave: number, deploymentLimit: number): number {
@@ -151,19 +158,16 @@ const _cachedRates: SimRates = {
 	refuelRate: 0,
 	supplyRate: 0,
 };
-let _ratesKey = "";
 
-function computeSimRates(): SimRates {
-	const key = `${state.depotQuality}|${state.moraleMultiplier}|${state.repairMultiplier}|${state.refuelMultiplier}|${state.supplyMultiplier}`;
-	if (key === _ratesKey) return _cachedRates;
-	_ratesKey = key;
-	const dq = state.depotQuality;
-	_cachedRates.moraleRate = (MORALE_RECOVERY_PER_DAY * dq) / state.moraleMultiplier;
-	_cachedRates.overhaulMoraleRate = (OVERHAUL_MORALE_PER_DAY * dq) / state.moraleMultiplier;
-	_cachedRates.repairRate = (HULL_REPAIR_PER_DAY * dq) / state.repairMultiplier;
-	_cachedRates.repairCrewRate = (SHORE_LEAVE_REPAIR_PER_DAY * dq) / state.repairMultiplier;
-	_cachedRates.refuelRate = (REFUEL_RATE_PER_DAY * dq) / state.refuelMultiplier;
-	_cachedRates.supplyRate = (SUPPLY_RESTOCK_PER_DAY * dq) / state.supplyMultiplier;
+function computeSimRates(ship: ShipEntry): SimRates {
+	const dqRepair = getServiceQualityForShip(ship);
+	const dqRefuel = getRefuelQualityForShip(ship);
+	_cachedRates.moraleRate = (MORALE_RECOVERY_PER_DAY * dqRepair) / state.moraleMultiplier;
+	_cachedRates.overhaulMoraleRate = (OVERHAUL_MORALE_PER_DAY * dqRepair) / state.moraleMultiplier;
+	_cachedRates.repairRate = (HULL_REPAIR_PER_DAY * dqRepair) / state.repairMultiplier;
+	_cachedRates.repairCrewRate = (SHORE_LEAVE_REPAIR_PER_DAY * dqRepair) / state.repairMultiplier;
+	_cachedRates.refuelRate = (REFUEL_RATE_PER_DAY * dqRefuel) / state.refuelMultiplier;
+	_cachedRates.supplyRate = (SUPPLY_RESTOCK_PER_DAY * dqRepair) / state.supplyMultiplier;
 	return _cachedRates;
 }
 
@@ -205,7 +209,8 @@ function tickActionRecovery(
 ): void {
 	if (isOrbiting && ship.action.type === "refuel") {
 		const fuelPerFrame = rates.refuelRate * ship.fuelCapacityKg * simDt;
-		ship.fuelKg = Math.min(ship.fuelCapacityKg, ship.fuelKg + fuelPerFrame);
+		const deliveredFuel = consumeColonyFuel(ship.hostPlanetName, fuelPerFrame);
+		ship.fuelKg = Math.min(ship.fuelCapacityKg, ship.fuelKg + deliveredFuel);
 	}
 
 	if (isOrbiting && (ship.action.type === "overhaul" || ship.action.type === "major-refit")) {
@@ -218,9 +223,10 @@ function tickActionRecovery(
 			ceiling,
 			ship.maintenance.hullIntegrity + rates.repairRate * simDt,
 		);
+		const supplyDelivered = consumeColonySupplies(ship.hostPlanetName, rates.supplyRate * simDt);
 		ship.maintenance.supplies = Math.min(
 			ship.maintenance.maxSupplies,
-			ship.maintenance.supplies + rates.supplyRate * simDt,
+			ship.maintenance.supplies + supplyDelivered,
 		);
 	}
 }
@@ -239,21 +245,51 @@ function tickColonyServices(
 	const daysCrossed = Math.min(dayNow - dayPrev, 30);
 	if (daysCrossed <= 0) return;
 
-	if (daysCrossed >= dayNow - dayPrev) {
-		// Normal case: deliver for each day boundary crossed
-		for (let day = dayPrev + 1; day <= dayNow; day++) {
-			const fuelPerShuttle = ship.fuelCapacityKg * 0.25;
-			ship.fuelKg = Math.min(ship.fuelCapacityKg, ship.fuelKg + fuelPerShuttle);
-			const supplyPerShuttle = Math.ceil(ship.maintenance.maxSupplies * 0.25);
+	if (daysCrossed < dayNow - dayPrev) {
+		deliverColonyFill(ship);
+		return;
+	}
+	for (let day = dayPrev + 1; day <= dayNow; day++) {
+		deliverColonyShuttle(ship);
+	}
+}
+
+function deliverColonyShuttle(ship: ShipEntry): void {
+	if (ship.action.type !== "refuel") {
+		const fuelNeeded = ship.fuelCapacityKg - ship.fuelKg;
+		if (fuelNeeded > 0) {
+			const fuelPerShuttle = Math.min(ship.fuelCapacityKg * 0.25, fuelNeeded);
+			const deliveredFuel = consumeColonyFuel(ship.hostPlanetName, fuelPerShuttle);
+			ship.fuelKg = Math.min(ship.fuelCapacityKg, ship.fuelKg + deliveredFuel);
+		}
+	}
+	if (ship.action.type !== "overhaul" && ship.action.type !== "major-refit") {
+		const supplyNeeded = ship.maintenance.maxSupplies - ship.maintenance.supplies;
+		if (supplyNeeded > 0) {
+			const supplyPerShuttle = Math.min(Math.ceil(ship.maintenance.maxSupplies * 0.25), supplyNeeded);
+			const deliveredSupplies = consumeColonySupplies(ship.hostPlanetName, supplyPerShuttle);
 			ship.maintenance.supplies = Math.min(
 				ship.maintenance.maxSupplies,
-				ship.maintenance.supplies + supplyPerShuttle,
+				ship.maintenance.supplies + deliveredSupplies,
 			);
 		}
-	} else {
-		// Capped case: fill to capacity directly
-		ship.fuelKg = ship.fuelCapacityKg;
-		ship.maintenance.supplies = ship.maintenance.maxSupplies;
+	}
+}
+
+function deliverColonyFill(ship: ShipEntry): void {
+	if (ship.action.type !== "refuel") {
+		const deliveredFuel = consumeColonyFuel(ship.hostPlanetName, ship.fuelCapacityKg - ship.fuelKg);
+		ship.fuelKg = Math.min(ship.fuelCapacityKg, ship.fuelKg + deliveredFuel);
+	}
+	if (ship.action.type !== "overhaul" && ship.action.type !== "major-refit") {
+		const deliveredSupplies = consumeColonySupplies(
+			ship.hostPlanetName,
+			ship.maintenance.maxSupplies - ship.maintenance.supplies,
+		);
+		ship.maintenance.supplies = Math.min(
+			ship.maintenance.maxSupplies,
+			ship.maintenance.supplies + deliveredSupplies,
+		);
 	}
 }
 
@@ -320,7 +356,7 @@ function tickRoutineMaintenance(ship: ShipEntry, simDt: number): void {
 export function tickShipSimulation(ship: ShipEntry, simDt: number, simTime: number): void {
 	const atColony = isAtColony(ship);
 	const isOrbiting = ship.shipState === "orbiting";
-	const rates = computeSimRates();
+	const rates = computeSimRates(ship);
 
 	tickMoraleDecay(ship, simDt, simTime, atColony, isOrbiting, rates);
 	tickActionRecovery(ship, simDt, isOrbiting, rates);
@@ -336,11 +372,11 @@ const FLEET_FUEL_THRESHOLD = 50; // ships below this % are candidates
 const TANKER_TRANSFER_RATE_PER_DAY = 10_000; // kg/day ship-to-ship
 const TANKER_RESERVE_FLOOR = 0.15; // keep 15% for return trip
 
-const _refuelTargetCache = new Map<string, string | null>();
+const _refuelTargetCache = new Map<string, Result<string>>();
 
-export function selectNextRefuelTarget(tanker: ShipEntry): string | null {
+export function selectNextRefuelTarget(tanker: ShipEntry): Result<string> {
 	const shipName = tanker.data.name;
-	if (_refuelTargetCache.has(shipName)) return _refuelTargetCache.get(shipName) ?? null;
+	if (_refuelTargetCache.has(shipName)) return _refuelTargetCache.get(shipName) as Result<string>;
 
 	const claimed = getClaimedTargets(shipName);
 	const candidates: { name: string; fuelPct: number }[] = [];
@@ -356,14 +392,20 @@ export function selectNextRefuelTarget(tanker: ShipEntry): string | null {
 	}
 
 	const result =
-		candidates.length === 0 ? null : candidates.sort((a, b) => a.fuelPct - b.fuelPct)[0].name;
+		candidates.length === 0
+			? err<string>()
+			: ok(candidates.sort((a, b) => a.fuelPct - b.fuelPct)[0].name);
 	_refuelTargetCache.set(shipName, result);
 	return result;
 }
 
 export function tickTankerTransfer(ship: ShipEntry, simDt: number): boolean {
-	const target = findShip(ship.action.target ?? undefined);
-	if (!target || target.hostPlanetName !== ship.hostPlanetName || target.shipState !== "orbiting") {
+	const [target, targetFound] = findShip(ship.action.target ?? undefined);
+	if (
+		!targetFound ||
+		target.hostPlanetName !== ship.hostPlanetName ||
+		target.shipState !== "orbiting"
+	) {
 		return true; // abort -- target moved or departed
 	}
 
@@ -381,7 +423,7 @@ export function tickTankerTransfer(ship: ShipEntry, simDt: number): boolean {
 	return false;
 }
 
-const _surveyTargetCache = new Map<string, string | null>();
+const _surveyTargetCache = new Map<string, Result<string>>();
 
 // Invalidate both caches whenever intents change (claimed targets affect selection results)
 onIntentChange(() => {
@@ -437,9 +479,9 @@ function collectAsteroidCandidates(
 	return out;
 }
 
-export function selectNextSurveyTarget(ship: ShipEntry): string | null {
+export function selectNextSurveyTarget(ship: ShipEntry): Result<string> {
 	const shipName = ship.data.name;
-	if (_surveyTargetCache.has(shipName)) return _surveyTargetCache.get(shipName) ?? null;
+	if (_surveyTargetCache.has(shipName)) return _surveyTargetCache.get(shipName) as Result<string>;
 
 	const sx = ship.mesh.position.x;
 	const sz = ship.mesh.position.z;
@@ -450,13 +492,15 @@ export function selectNextSurveyTarget(ship: ShipEntry): string | null {
 	];
 
 	const result =
-		candidates.length === 0 ? null : candidates.sort((a, b) => a.distSq - b.distSq)[0].name;
+		candidates.length === 0
+			? err<string>()
+			: ok(candidates.sort((a, b) => a.distSq - b.distSq)[0].name);
 	_surveyTargetCache.set(shipName, result);
 	return result;
 }
 
 export function getUnsurvevedMoonsOfHost(ship: ShipEntry): BodyEntry[] {
-	const host = findBody(ship.hostPlanetName);
-	if (!host) return [];
+	const [host, found] = findBody(ship.hostPlanetName);
+	if (!found) return [];
 	return host.moons.filter((moon) => isSurveyable(moon) && moon.survey.surveyLevel === 0);
 }

@@ -8,14 +8,14 @@ import {
 } from "../data/resources";
 
 describe("RESOURCES catalog", () => {
-	it("has exactly 27 entries", () => {
-		expect(RESOURCES).toHaveLength(27);
+	it("has exactly 24 entries", () => {
+		expect(RESOURCES).toHaveLength(24);
 	});
 
 	it("all ids are unique", () => {
 		const ids = RESOURCES.map((r) => r.id);
 		const unique = new Set(ids);
-		expect(unique.size).toBe(27);
+		expect(unique.size).toBe(24);
 	});
 
 	it("all entries have non-empty name, symbol, description", () => {
@@ -46,8 +46,8 @@ describe("getResourcesByCategory", () => {
 		expect(getResourcesByCategory("umbral")).toHaveLength(8);
 	});
 
-	it("returns exactly 6 radioactive resources", () => {
-		expect(getResourcesByCategory("radioactive")).toHaveLength(6);
+	it("returns exactly 4 radioactive resources", () => {
+		expect(getResourcesByCategory("radioactive")).toHaveLength(4);
 	});
 
 	it("returns exactly 5 metal resources", () => {
@@ -56,11 +56,10 @@ describe("getResourcesByCategory", () => {
 });
 
 describe("getMinableResources", () => {
-	it("returns exactly 24 entries (excludes enriched-uranium, plutonium, tritium)", () => {
+	it("returns exactly 22 entries (excludes plutonium, tritium)", () => {
 		const minable = getMinableResources();
-		expect(minable).toHaveLength(24);
+		expect(minable).toHaveLength(22);
 		const ids = minable.map((r) => r.id);
-		expect(ids).not.toContain("enriched-uranium");
 		expect(ids).not.toContain("plutonium");
 		expect(ids).not.toContain("tritium");
 	});
@@ -169,10 +168,10 @@ describe("generateDeposits", () => {
 	});
 
 	it("centaur body type uses centaur pool", () => {
-		// Centaur pool includes unique resources like helium-3 and hydrocarbons
+		// Centaur pool includes unique resources like methane and heliate
 		// with high weights, distinctive from rocky planets
 		let foundUniqueResource = false;
-		const uniqueResources = new Set(["helium-3", "hydrocarbons"]);
+		const uniqueResources = new Set(["methane", "heliate"]);
 		// Search through multiple seeds to find deposits with unique centaur resources
 		for (let seed = 1; seed < 100 && !foundUniqueResource; seed++) {
 			const deposits = generateDeposits(seed, `Centaur${seed}`, "Centaur", 500);

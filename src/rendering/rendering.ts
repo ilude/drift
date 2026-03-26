@@ -97,10 +97,10 @@ type TrailData = ShipEntry["trail"];
 /** Resolve host or transfer-target body, including asteroid belt proxy. */
 function resolveTarget(name: string | undefined | null) {
 	if (!name) return null;
-	const body = findBody(name);
-	if (body) return body;
-	const hit = findAsteroidEntity(name);
-	return hit ? asteroidProxy(hit.asteroid, hit.beltEntry) : null;
+	const [body, bodyFound] = findBody(name);
+	if (bodyFound) return body;
+	const [hit, hitFound] = findAsteroidEntity(name);
+	return hitFound ? asteroidProxy(hit.asteroid, hit.beltEntry) : null;
 }
 
 /** Update ship angle and mesh position while it is station-keeping. */

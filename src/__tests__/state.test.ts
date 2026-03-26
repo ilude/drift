@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	formatDateTime,
 	loadSavedState,
+	restoreColonyState,
 	restoreShipState,
 	saveState,
 	simTimeToDate,
@@ -529,6 +530,59 @@ describe("transfer state persistence", () => {
 		});
 	});
 
+	it("saveState and restoreColonyState round-trip colonies", () => {
+		state.colonies = new Map([
+			[
+				"Earth",
+				{
+					bodyName: "Earth",
+					name: "Earth Colony",
+					population: 5_000_000_000,
+					habitability: 1,
+					installations: {
+						constructionFactory: 4,
+						repairYard: 4,
+						fuelDepot: 4,
+						mine: 2,
+						lab: 6,
+						academy: 2,
+						storage: 6,
+						shipyard: 1,
+					},
+					stockpile: {
+						fuelKg: 12345,
+						supplies: 678,
+						resources: { iron: 99 },
+					},
+					researchPoints: 42,
+					constructionProjects: [],
+					currentResearch: null,
+					researchQueue: [],
+				},
+			],
+		]) as typeof state.colonies;
+		state.bodyMeshes = [];
+		state.currentSystemKey = "sol";
+		state.randomClickCount = 0;
+		state.discoveredSystems = new Map();
+
+		saveState();
+		const loaded = loadSavedState();
+		if (!loaded) throw new Error("loadSavedState returned null");
+
+		state.colonies.clear();
+		restoreColonyState(loaded);
+
+		expect(state.colonies.get("Earth")).toEqual(
+			expect.objectContaining({
+				bodyName: "Earth",
+				population: 5_000_000_000,
+				researchPoints: 42,
+			}),
+		);
+		expect(state.colonies.get("Earth")?.stockpile.resources.iron).toBe(99);
+	});
+
 	it("loadSavedState migrates v3 save with singular .ship to v5", () => {
 		const v3Save = JSON.stringify({
 			version: 3,
@@ -545,7 +599,7 @@ describe("transfer state persistence", () => {
 		});
 		localStorage.setItem("solar-sim-state", v3Save);
 
-		// v3 → v4 migration wraps .ship into .ships array, then v4 → v5 bumps version
+		// v3 → v4 migration wraps .ship into .ships array, then later versions bump forward
 		const loaded = loadSavedState();
 		expect(loaded).not.toBeNull();
 		expect(loaded?.ships).toHaveLength(1);

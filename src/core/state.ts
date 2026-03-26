@@ -62,7 +62,7 @@ export function speedLabel(timeSpeed: number): string {
 
 export const MASTER_SEED: number = 42;
 const SAVE_KEY = "solar-sim-state";
-const SAVE_VERSION = 6;
+const SAVE_VERSION = 7;
 
 export const state: AppState = {
 	bodyMeshes: [],
@@ -110,6 +110,8 @@ export const state: AppState = {
 	supplyMultiplier: 1,
 	depotQuality: 1,
 	shipIntents: new Map(),
+	colonies: new Map(),
+	researchedTechs: new Set(),
 	notifications: [],
 	notificationPauseConfig: {
 		info: false,
@@ -135,6 +137,7 @@ export function saveState(): void {
 	const ships: SavedShipData[] = state.bodyMeshes.filter(isShipEntry).map((ship) => ({
 		name: ship.data.name,
 		hostPlanetName: ship.hostPlanetName,
+		keelDate: ship.keelDate,
 		fuelKg: ship.fuelKg,
 		engineId: ship.engineId,
 		crew: { ...ship.crew },
@@ -171,6 +174,19 @@ export function saveState(): void {
 		randomClickCount: state.randomClickCount,
 		discoveredSystems: systems,
 		ships,
+		colonies: Array.from(state.colonies.values()).map((colony) => ({
+			...colony,
+			installations: { ...colony.installations },
+			stockpile: {
+				fuelKg: colony.stockpile.fuelKg,
+				supplies: colony.stockpile.supplies,
+				resources: { ...colony.stockpile.resources },
+			},
+			constructionProjects: (colony.constructionProjects ?? []).map((project) => ({ ...project })),
+			currentResearch: colony.currentResearch ? { ...colony.currentResearch } : null,
+			researchQueue: (colony.researchQueue ?? []).map((project) => ({ ...project })),
+		})),
+		researchedTechs: Array.from(state.researchedTechs.values()),
 	};
 	try {
 		localStorage.setItem(SAVE_KEY, JSON.stringify(data));
@@ -179,45 +195,51 @@ export function saveState(): void {
 	}
 }
 
+function migrateSavedState(data: SavedStateData | Record<string, unknown>): SavedStateData | null {
+	if ((data as Record<string, unknown>).version === 3 && (data as Record<string, unknown>).ship) {
+		return {
+			...(data as SavedStateData),
+			version: 4,
+			ships: [
+				{
+					name: "ISS Explorer",
+					hostPlanetName: "Earth",
+					...(((data as Record<string, unknown>).ship as object) ?? {}),
+				},
+			],
+		} as SavedStateData;
+	}
+
+	const migrated = data as SavedStateData;
+	if (migrated.version === 4) {
+		migrated.version = 5;
+	}
+	if (migrated.version === 5) {
+		for (const ship of migrated.ships) {
+			const m = ship.maintenance as unknown as Record<string, unknown>;
+			if (m.totalAge === undefined) m.totalAge = m.age;
+			if (m.lastRefitAge === undefined) m.lastRefitAge = 0;
+		}
+		migrated.version = 6;
+	}
+	if (migrated.version === 6) {
+		migrated.version = 7;
+	}
+	return migrated.version === SAVE_VERSION ? migrated : null;
+}
+
 export function loadSavedState(): SavedStateData | null {
 	try {
 		const raw = localStorage.getItem(SAVE_KEY);
 		if (!raw) return null;
-		const data = JSON.parse(raw) as SavedStateData;
-		if (data.version === 3 && (data as unknown as Record<string, unknown>).ship) {
-			return {
-				...data,
-				version: 4,
-				ships: [
-					{
-						name: "ISS Explorer",
-						hostPlanetName: "Earth",
-						...((data as unknown as Record<string, unknown>).ship as object),
-					},
-				],
-			} as SavedStateData;
-		}
-		if (data.version === 4) {
-			// v4 → v5: transfer fields added as optional; no structural change needed
-			data.version = 5;
-		}
-		if (data.version === 5) {
-			// v5 → v6: add totalAge and lastRefitAge to maintenance
-			for (const ship of data.ships) {
-				const m = ship.maintenance as unknown as Record<string, unknown>;
-				if (m.totalAge === undefined) m.totalAge = m.age;
-				if (m.lastRefitAge === undefined) m.lastRefitAge = 0;
-			}
-			data.version = 6;
-		}
-		if (data.version !== SAVE_VERSION) return null;
-		return data;
+		return migrateSavedState(JSON.parse(raw) as SavedStateData);
 	} catch (_) {
 		return null;
 	}
 }
 
 function restoreShipFields(ship: ShipEntry, saved: SavedShipData): void {
+	ship.keelDate = saved.keelDate ?? 0;
 	ship.fuelKg = saved.fuelKg;
 	ship.engineId = saved.engineId;
 	if (saved.crew) ship.crew = saved.crew;
@@ -264,4 +286,24 @@ export function restoreShipState(savedData: SavedStateData | null): void {
 		restoreShipFields(shipEntry, savedShip);
 		restoreTransferState(shipEntry, savedShip);
 	}
+}
+
+export function restoreColonyState(savedData: SavedStateData | null): void {
+	state.colonies.clear();
+	if (!savedData?.colonies) return;
+	for (const colony of savedData.colonies) {
+		state.colonies.set(colony.bodyName, {
+			...colony,
+			installations: { ...colony.installations },
+			stockpile: {
+				fuelKg: colony.stockpile.fuelKg,
+				supplies: colony.stockpile.supplies,
+				resources: { ...colony.stockpile.resources },
+			},
+			constructionProjects: (colony.constructionProjects ?? []).map((project) => ({ ...project })),
+			currentResearch: colony.currentResearch ? { ...colony.currentResearch } : null,
+			researchQueue: (colony.researchQueue ?? []).map((project) => ({ ...project })),
+		});
+	}
+	state.researchedTechs = new Set(savedData.researchedTechs ?? []);
 }

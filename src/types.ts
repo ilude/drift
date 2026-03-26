@@ -1,6 +1,11 @@
 import type * as THREE from "three";
 import type { GameClock } from "./core/game-clock";
 
+// Go-style result tuple: [value, true] on success, [null, false] on failure.
+// Usage: const [body, found] = findBody("Earth");
+//        if (!found) return;  // body is BodyEntry here (non-null guaranteed)
+export type Result<T> = readonly [T, true] | readonly [null, false];
+
 export interface Vector3Like {
 	x: number;
 	y: number;
@@ -187,6 +192,84 @@ export interface Commander {
 	experience: number;
 }
 
+export type ColonyInstallationId =
+	| "construction-factory"
+	| "repair-yard"
+	| "fuel-depot"
+	| "mine"
+	| "lab"
+	| "academy"
+	| "storage"
+	| "shipyard";
+
+export interface ColonyInstallations {
+	constructionFactory: number;
+	repairYard: number;
+	fuelDepot: number;
+	mine: number;
+	lab: number;
+	academy: number;
+	storage: number;
+	shipyard: number;
+}
+
+export interface ColonyStockpile {
+	fuelKg: number;
+	supplies: number;
+	resources: Record<string, number>;
+}
+
+export interface ColonyState {
+	bodyName: string;
+	name: string;
+	population: number;
+	habitability: number;
+	installations: ColonyInstallations;
+	stockpile: ColonyStockpile;
+	researchPoints: number;
+	constructionProjects: ColonyConstructionProject[];
+	currentResearch: ColonyResearchProject | null;
+	researchQueue: ColonyResearchProject[];
+}
+
+export interface ColonyWorkforce {
+	totalPopulation: number;
+	workforceRatio: number;
+	habitability: number;
+	availableWorkers: number;
+	usedWorkers: number;
+	staffingRatio: number;
+}
+
+export interface ColonyQualities {
+	construction: number;
+	repair: number;
+	refuel: number;
+	research: number;
+	training: number;
+	mining: number;
+	shipbuilding: number;
+	storageCapacity: number;
+	staffingRatio: number;
+}
+
+export interface ColonyConstructionProject {
+	id: string;
+	installationId: ColonyInstallationId;
+	quantityRemaining: number;
+	totalQuantity: number;
+	allocationPct: number;
+	progressBp: number;
+	paused: boolean;
+}
+
+export interface ColonyResearchProject {
+	techId: string;
+	assignedLabs: number;
+	progressRp: number;
+	paused: boolean;
+}
+
 export interface ShipMaintenance {
 	age: number;
 	totalAge: number;
@@ -344,6 +427,8 @@ export interface ShipEntry extends BaseEntry {
 	action: ShipAction;
 	// Station-keeping: track a non-planet body (comet, moon) instead of orbiting host
 	stationTarget: string | null;
+	// Commissioning date in sim-days (set at creation, never changes)
+	keelDate: number;
 }
 
 export type BodyEntry = PlanetEntry | CometEntry | ShipEntry;
@@ -510,6 +595,8 @@ export interface AppState {
 	// Depot quality (1.0 = 100% = standard facilities, eventually per-location)
 	depotQuality: number;
 	shipIntents: Map<string, ShipIntent>;
+	colonies: Map<string, ColonyState>;
+	researchedTechs: Set<string>;
 }
 
 // --- System data ---
@@ -539,6 +626,7 @@ export interface SavedShipData {
 	commander?: Commander;
 	maintenance: ShipMaintenance;
 	commandTree: CommandTree;
+	keelDate?: number;
 	// Transfer state (optional — only present if ship was transferring)
 	shipState?: ShipState;
 	transferTarget?: string;
@@ -567,6 +655,8 @@ export interface SavedStateData {
 	randomClickCount: number;
 	discoveredSystems: Array<{ key: string; name: string; seed: number }>;
 	ships: SavedShipData[];
+	colonies?: ColonyState[];
+	researchedTechs?: string[];
 }
 
 // --- Hohmann transfer result ---

@@ -3,16 +3,16 @@
 // The commander interprets those rules, applying experience and judgment to override them
 // when the situation calls for it. The result is passed to the ship's crew to execute.
 
-import type { CommandCondition, CommandResult, ShipEntry } from "../types";
+import type { CommandCondition, CommandResult, Result, ShipEntry } from "../types";
 import { isSurveyable } from "../types";
+import { hasColony } from "./colonies";
 import { checkCondition, evaluateCommandTree } from "./commands";
 import { findBody } from "./entities";
-
-// Colony names -- ships at these locations get shore leave and resupply automatically
-const COLONY_NAMES = new Set(["Earth"]);
+import { isTankerInboundFor } from "./intents";
+import { err, ok } from "./result";
 
 export function isAtColony(ship: ShipEntry): boolean {
-	return ship.shipState === "orbiting" && COLONY_NAMES.has(ship.hostPlanetName);
+	return ship.shipState === "orbiting" && hasColony(ship.hostPlanetName);
 }
 
 // --- Judgment constants ---
@@ -85,7 +85,7 @@ export function checkPreemptiveService(
 		return null;
 	}
 	// Only applies when at a colony (where servicing is possible)
-	if (ship.shipState !== "orbiting" || !COLONY_NAMES.has(ship.hostPlanetName)) {
+	if (ship.shipState !== "orbiting" || !hasColony(ship.hostPlanetName)) {
 		return null;
 	}
 
@@ -134,6 +134,15 @@ function isMaintenanceAction(action: CommandResult["action"]): boolean {
 	);
 }
 
+// "Hold for inbound tanker" — if a tanker has been dispatched to refuel this ship,
+// hold orbit instead of departing. The tanker's intent is cleared when it finishes.
+export function checkHoldForTanker(ship: ShipEntry, result: CommandResult): CommandResult | null {
+	// Only intercept departure actions (survey or transfer)
+	if (result.action !== "survey" && result.action !== "transfer") return null;
+	if (isTankerInboundFor(ship.data.name)) return { action: "idle" };
+	return null;
+}
+
 // "Finish the job before heading home" — defer maintenance when already at an unsurveyed
 // body, if the commander judges it safe enough to complete the survey first.
 function checkDeferMaintenance(
@@ -145,11 +154,11 @@ function checkDeferMaintenance(
 	// Only applies while orbiting (not mid-transfer)
 	if (ship.shipState !== "orbiting") return null;
 	// Only applies at non-colony locations (at a colony, just do the maintenance)
-	if (COLONY_NAMES.has(ship.hostPlanetName)) return null;
+	if (hasColony(ship.hostPlanetName)) return null;
 
 	// Check if the current host is unsurveyed
-	const host = findBody(ship.hostPlanetName);
-	if (!host || !isSurveyable(host) || host.survey.surveyLevel > 0) return null;
+	const [host, hostFound] = findBody(ship.hostPlanetName);
+	if (!hostFound || !isSurveyable(host) || host.survey.surveyLevel > 0) return null;
 
 	const j = ship.commander.judgment;
 	// Low-judgment commanders don't defer -- they follow orders literally
@@ -180,13 +189,18 @@ function checkDeferMaintenance(
 // --- The single decision entry point ---
 
 // The commander evaluates standing orders, then applies judgment.
-// Returns the final decision for the crew to execute, or null if nothing to do.
-export function commanderDecide(ship: ShipEntry): CommandResult | null {
-	const result = evaluateCommandTree(ship);
-	if (!result) return null;
+// Returns the final decision for the crew to execute, or err() if nothing to do.
+export function commanderDecide(ship: ShipEntry): Result<CommandResult> {
+	const [result, found] = evaluateCommandTree(ship);
+	if (!found) return err();
 
 	// Judgment overrides: preemptive service at colony, defer maintenance in the field
-	return checkPreemptiveService(ship, result) ?? checkDeferMaintenance(ship, result) ?? result;
+	const decided =
+		checkPreemptiveService(ship, result) ??
+		checkHoldForTanker(ship, result) ??
+		checkDeferMaintenance(ship, result) ??
+		result;
+	return ok(decided);
 }
 
 // --- Learning ---

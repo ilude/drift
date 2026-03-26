@@ -61,6 +61,14 @@ export function invalidateIntentsCache(): void {
 	_intentsDirty = true;
 }
 
+/** Check if any other ship has a tanking intent targeting the given ship name. */
+export function isTankerInboundFor(shipName: string): boolean {
+	for (const intent of state.shipIntents.values()) {
+		if (intent.type === "tanking" && intent.target === shipName) return true;
+	}
+	return false;
+}
+
 /** Get all target names claimed by ships other than the given one. Returns a Set for O(1) lookups. */
 export function getClaimedTargets(excludeShipName: string): Set<string> {
 	if (_intentsDirty) rebuildClaimsCache();

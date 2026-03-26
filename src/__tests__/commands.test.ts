@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+	checkHoldForTanker,
 	checkPreemptiveService,
 	commanderDecide,
 	incrementExperience,
@@ -160,14 +161,17 @@ describe("checkCondition", () => {
 describe("evaluateCommandTree", () => {
 	it("empty tree → null", () => {
 		const ship = mockShip();
-		expect(evaluateCommandTree(ship)).toBeNull();
+		const [, found] = evaluateCommandTree(ship);
+		expect(found).toBe(false);
 	});
 
 	it("single 'always → idle' entry returns { action: 'idle' }", () => {
 		const ship = mockShip({
 			commandTree: { entries: [mockEntry("1", "idle")] },
 		});
-		expect(evaluateCommandTree(ship)).toEqual({ action: "idle" });
+		const [result, found] = evaluateCommandTree(ship);
+		expect(found).toBe(true);
+		expect(result).toEqual({ action: "idle" });
 	});
 
 	it("disabled entry is skipped", () => {
@@ -176,7 +180,8 @@ describe("evaluateCommandTree", () => {
 				entries: [mockEntry("1", "idle", { enabled: false })],
 			},
 		});
-		expect(evaluateCommandTree(ship)).toBeNull();
+		const [, found] = evaluateCommandTree(ship);
+		expect(found).toBe(false);
 	});
 
 	it("first matching entry wins (priority order)", () => {
@@ -185,7 +190,9 @@ describe("evaluateCommandTree", () => {
 				entries: [mockEntry("1", "idle"), mockEntry("2", "survey-nearest")],
 			},
 		});
-		expect(evaluateCommandTree(ship)).toEqual({ action: "idle" });
+		const [result, found] = evaluateCommandTree(ship);
+		expect(found).toBe(true);
+		expect(result).toEqual({ action: "idle" });
 	});
 
 	it("non-matching entry is skipped, next matching entry wins", () => {
@@ -200,14 +207,18 @@ describe("evaluateCommandTree", () => {
 				],
 			},
 		});
-		expect(evaluateCommandTree(ship)).toEqual({ action: "idle" });
+		const [result, found] = evaluateCommandTree(ship);
+		expect(found).toBe(true);
+		expect(result).toEqual({ action: "idle" });
 	});
 
 	it("survey-nearest maps to { action: 'survey' }", () => {
 		const ship = mockShip({
 			commandTree: { entries: [mockEntry("1", "survey-nearest")] },
 		});
-		expect(evaluateCommandTree(ship)).toEqual({ action: "survey" });
+		const [result, found] = evaluateCommandTree(ship);
+		expect(found).toBe(true);
+		expect(result).toEqual({ action: "survey" });
 	});
 
 	it("transfer-to with target maps to { action: 'transfer', target: 'Mars' }", () => {
@@ -216,7 +227,9 @@ describe("evaluateCommandTree", () => {
 				entries: [mockEntry("1", "transfer-to", { target: "Mars" })],
 			},
 		});
-		expect(evaluateCommandTree(ship)).toEqual({ action: "transfer", target: "Mars" });
+		const [result, found] = evaluateCommandTree(ship);
+		expect(found).toBe(true);
+		expect(result).toEqual({ action: "transfer", target: "Mars" });
 	});
 
 	it("immediateCommand takes priority over tree entries", () => {
@@ -225,7 +238,9 @@ describe("evaluateCommandTree", () => {
 			immediateCommand: immediate,
 			commandTree: { entries: [mockEntry("1", "idle")] },
 		});
-		expect(evaluateCommandTree(ship)).toEqual({ action: "shore-leave" });
+		const [result, found] = evaluateCommandTree(ship);
+		expect(found).toBe(true);
+		expect(result).toEqual({ action: "shore-leave" });
 	});
 
 	it("disabled immediateCommand falls through to tree", () => {
@@ -234,7 +249,9 @@ describe("evaluateCommandTree", () => {
 			immediateCommand: immediate,
 			commandTree: { entries: [mockEntry("1", "idle")] },
 		});
-		expect(evaluateCommandTree(ship)).toEqual({ action: "idle" });
+		const [result, found] = evaluateCommandTree(ship);
+		expect(found).toBe(true);
+		expect(result).toEqual({ action: "idle" });
 	});
 });
 
@@ -368,6 +385,7 @@ describe("tickShipSimulation", () => {
 
 	it("refuel gradually tops off fuel", () => {
 		const ship = mockShip({
+			hostPlanetName: "Earth",
 			fuelKg: 25000,
 			fuelCapacityKg: 50000,
 			action: { type: "refuel", commandId: "1", startTime: 0, duration: 5, progress: 0 },
@@ -379,6 +397,7 @@ describe("tickShipSimulation", () => {
 
 	it("refuel does not consume fuel while refueling", () => {
 		const ship = mockShip({
+			hostPlanetName: "Earth",
 			fuelKg: 25000,
 			fuelCapacityKg: 50000,
 			action: { type: "refuel", commandId: "1", startTime: 0, duration: 5, progress: 0 },
@@ -389,7 +408,7 @@ describe("tickShipSimulation", () => {
 
 	it("overhaul gradually repairs hull, restocks supplies, and recovers morale", () => {
 		const ship = mockShip({
-			hostPlanetName: "Mars",
+			hostPlanetName: "Earth",
 			maintenance: {
 				age: 100,
 				totalAge: 0,
@@ -410,6 +429,7 @@ describe("tickShipSimulation", () => {
 
 	it("overhaul does not exceed maximums", () => {
 		const ship = mockShip({
+			hostPlanetName: "Earth",
 			maintenance: {
 				age: 100,
 				totalAge: 0,
@@ -552,19 +572,23 @@ describe("selectNextSurveyTarget", () => {
 		const moon = mockBodyEntry("Luna", { isMoon: true });
 		const planet = mockBodyEntry("Mars");
 		state.bodyMeshes = [moon, planet] as BodyEntry[];
-		expect(selectNextSurveyTarget(mockShipWithMesh())).toBe("Mars");
+		const [target, targetFound] = selectNextSurveyTarget(mockShipWithMesh());
+		expect(targetFound).toBe(true);
+		expect(target).toBe("Mars");
 	});
 
 	it("returns null when only moon candidates exist", () => {
 		const moon = mockBodyEntry("Luna", { isMoon: true });
 		state.bodyMeshes = [moon] as BodyEntry[];
-		expect(selectNextSurveyTarget(mockShipWithMesh())).toBeNull();
+		const [, notFound] = selectNextSurveyTarget(mockShipWithMesh());
+		expect(notFound).toBe(false);
 	});
 
 	it("skips already-surveyed bodies", () => {
 		const surveyed = mockBodyEntry("Venus", { survey: { surveyLevel: 1, deposits: [] } });
 		state.bodyMeshes = [surveyed] as BodyEntry[];
-		expect(selectNextSurveyTarget(mockShipWithMesh())).toBeNull();
+		const [, notFound] = selectNextSurveyTarget(mockShipWithMesh());
+		expect(notFound).toBe(false);
 	});
 });
 
@@ -629,7 +653,9 @@ describe("selectNextSurveyTarget -- asteroids", () => {
 			makeBeltEntry([{ designation: "MB-0001", beltIndex: 0, surveyLevel: 0, x: 10, z: 10 }]),
 		];
 		const ship = shipAt(0, 0);
-		expect(selectNextSurveyTarget(ship)).toBe("MB-0001");
+		const [asteroidTarget, asteroidFound] = selectNextSurveyTarget(ship);
+		expect(asteroidFound).toBe(true);
+		expect(asteroidTarget).toBe("MB-0001");
 	});
 
 	it("skips already-surveyed asteroids", () => {
@@ -641,7 +667,9 @@ describe("selectNextSurveyTarget -- asteroids", () => {
 		];
 		const ship = shipAt(0, 0);
 		// MB-0001 is surveyed (level 1), so the result should be MB-0002
-		expect(selectNextSurveyTarget(ship)).toBe("MB-0002");
+		const [asteroidTarget, asteroidFound] = selectNextSurveyTarget(ship);
+		expect(asteroidFound).toBe(true);
+		expect(asteroidTarget).toBe("MB-0002");
 	});
 
 	it("returns a planet when it is closer than any asteroid", () => {
@@ -654,7 +682,9 @@ describe("selectNextSurveyTarget -- asteroids", () => {
 			makeBeltEntry([{ designation: "MB-0001", beltIndex: 0, surveyLevel: 0, x: 1000, z: 1000 }]),
 		];
 		const ship = shipAt(0, 0);
-		expect(selectNextSurveyTarget(ship)).toBe("Venus");
+		const [closestTarget, closestFound] = selectNextSurveyTarget(ship);
+		expect(closestFound).toBe(true);
+		expect(closestTarget).toBe("Venus");
 	});
 });
 
@@ -682,7 +712,9 @@ describe("selectNextSurveyTarget -- intents", () => {
 		state.bodyMeshes = [mars, jupiter] as BodyEntry[];
 		state.shipIntents.set("Ship-A", { type: "surveying", target: "Mars", shipName: "Ship-A" });
 		const ship = shipAt(0, 0);
-		expect(selectNextSurveyTarget(ship)).toBe("Jupiter");
+		const [claimTarget, claimFound] = selectNextSurveyTarget(ship);
+		expect(claimFound).toBe(true);
+		expect(claimTarget).toBe("Jupiter");
 	});
 
 	it("skips bodies being transferred to by other ships", () => {
@@ -695,7 +727,9 @@ describe("selectNextSurveyTarget -- intents", () => {
 			shipName: "Ship-A",
 		});
 		const ship = shipAt(0, 0);
-		expect(selectNextSurveyTarget(ship)).toBe("Jupiter");
+		const [transferTarget, transferFound] = selectNextSurveyTarget(ship);
+		expect(transferFound).toBe(true);
+		expect(transferTarget).toBe("Jupiter");
 	});
 
 	it("does not skip own claims", () => {
@@ -703,7 +737,9 @@ describe("selectNextSurveyTarget -- intents", () => {
 		state.bodyMeshes = [mars] as BodyEntry[];
 		state.shipIntents.set("Ship", { type: "surveying", target: "Mars", shipName: "Ship" });
 		const ship = shipAt(0, 0);
-		expect(selectNextSurveyTarget(ship)).toBe("Mars");
+		const [ownTarget, ownFound] = selectNextSurveyTarget(ship);
+		expect(ownFound).toBe(true);
+		expect(ownTarget).toBe("Mars");
 	});
 });
 
@@ -770,10 +806,10 @@ describe("selectNextSurveyTarget -- NaN safety", () => {
 			} as unknown as ShipEntry["mesh"],
 		});
 
-		const result = selectNextSurveyTarget(ship);
-		expect(result).not.toBeNull();
+		const [nanTarget, nanFound] = selectNextSurveyTarget(ship);
+		expect(nanFound).toBe(true);
 		// Venus is closer (dist^2 = 50^2+30^2 = 3400 vs 100^2+20^2 = 10400)
-		expect(result).toBe("Venus");
+		expect(nanTarget).toBe("Venus");
 	});
 
 	it("handles mix of bodies and asteroids without NaN in distance calculation", () => {
@@ -809,9 +845,10 @@ describe("selectNextSurveyTarget -- NaN safety", () => {
 			} as unknown as ShipEntry["mesh"],
 		});
 
-		const result = selectNextSurveyTarget(ship);
+		const [mixTarget, mixFound] = selectNextSurveyTarget(ship);
 		// Asteroid at (10,10) is closer than Jupiter at (500,0)
-		expect(result).toBe("AST-001");
+		expect(mixFound).toBe(true);
+		expect(mixTarget).toBe("AST-001");
 	});
 });
 
@@ -1056,7 +1093,9 @@ describe("commander defers maintenance", () => {
 		});
 		state.bodyMeshes = [mockUnsurveyed("Earth")] as BodyEntry[];
 		rebuildEntityMaps();
-		expect(commanderDecide(ship)).toEqual({ action: "overhaul" });
+		const [colonyResult, colonyFound] = commanderDecide(ship);
+		expect(colonyFound).toBe(true);
+		expect(colonyResult).toEqual({ action: "overhaul" });
 	});
 
 	it("does not defer when host is already surveyed", () => {
@@ -1081,7 +1120,9 @@ describe("commander defers maintenance", () => {
 		});
 		state.bodyMeshes = [mockSurveyed("Mars")] as BodyEntry[];
 		rebuildEntityMaps();
-		expect(commanderDecide(ship)).toEqual({ action: "overhaul" });
+		const [surveyedResult, surveyedFound] = commanderDecide(ship);
+		expect(surveyedFound).toBe(true);
+		expect(surveyedResult).toEqual({ action: "overhaul" });
 	});
 
 	it("does not defer when commander judgment is too low", () => {
@@ -1106,7 +1147,9 @@ describe("commander defers maintenance", () => {
 		});
 		state.bodyMeshes = [mockUnsurveyed("Ceres")] as BodyEntry[];
 		rebuildEntityMaps();
-		expect(commanderDecide(ship)).toEqual({ action: "overhaul" });
+		const [lowJudgmentResult, lowJudgmentFound] = commanderDecide(ship);
+		expect(lowJudgmentFound).toBe(true);
+		expect(lowJudgmentResult).toEqual({ action: "overhaul" });
 	});
 
 	it("high judgment commander defers overhaul at unsurveyed body", () => {
@@ -1134,7 +1177,9 @@ describe("commander defers maintenance", () => {
 		});
 		state.bodyMeshes = [mockUnsurveyed("Ceres")] as BodyEntry[];
 		rebuildEntityMaps();
-		expect(commanderDecide(ship)).toEqual({ action: "survey" });
+		const [deferResult, deferFound] = commanderDecide(ship);
+		expect(deferFound).toBe(true);
+		expect(deferResult).toEqual({ action: "survey" });
 	});
 
 	it("does not defer when hull is below commander's personal floor", () => {
@@ -1162,7 +1207,9 @@ describe("commander defers maintenance", () => {
 		});
 		state.bodyMeshes = [mockUnsurveyed("Ceres")] as BodyEntry[];
 		rebuildEntityMaps();
-		expect(commanderDecide(ship)).toEqual({ action: "overhaul" });
+		const [floorResult, floorFound] = commanderDecide(ship);
+		expect(floorFound).toBe(true);
+		expect(floorResult).toEqual({ action: "overhaul" });
 	});
 
 	it("defers refuel when fuel is above personal floor", () => {
@@ -1184,7 +1231,9 @@ describe("commander defers maintenance", () => {
 		});
 		state.bodyMeshes = [mockUnsurveyed("Ceres")] as BodyEntry[];
 		rebuildEntityMaps();
-		expect(commanderDecide(ship)).toEqual({ action: "survey" });
+		const [deferFuelResult, deferFuelFound] = commanderDecide(ship);
+		expect(deferFuelFound).toBe(true);
+		expect(deferFuelResult).toEqual({ action: "survey" });
 	});
 
 	it("does not defer when below critical fuel threshold", () => {
@@ -1206,7 +1255,9 @@ describe("commander defers maintenance", () => {
 		});
 		state.bodyMeshes = [mockUnsurveyed("Ceres")] as BodyEntry[];
 		rebuildEntityMaps();
-		expect(commanderDecide(ship)).toEqual({ action: "refuel" });
+		const [criticalFuelResult, criticalFuelFound] = commanderDecide(ship);
+		expect(criticalFuelFound).toBe(true);
+		expect(criticalFuelResult).toEqual({ action: "refuel" });
 	});
 });
 
@@ -1219,7 +1270,8 @@ describe("commanderDecide", () => {
 
 	it("returns null when command tree is empty", () => {
 		const ship = mockShip({ commandTree: { entries: [] } });
-		expect(commanderDecide(ship)).toBeNull();
+		const [, emptyFound] = commanderDecide(ship);
+		expect(emptyFound).toBe(false);
 	});
 
 	it("returns command tree result when no judgment override applies", () => {
@@ -1229,7 +1281,9 @@ describe("commanderDecide", () => {
 				entries: [mockEntry("survey", "survey-nearest")],
 			},
 		});
-		expect(commanderDecide(ship)).toEqual({ action: "survey" });
+		const [treeResult, treeFound] = commanderDecide(ship);
+		expect(treeFound).toBe(true);
+		expect(treeResult).toEqual({ action: "survey" });
 	});
 
 	it("integrates preemptive service at colony", () => {
@@ -1247,8 +1301,9 @@ describe("commanderDecide", () => {
 				],
 			},
 		});
-		const result = commanderDecide(ship);
-		expect(result).toEqual({ action: "shore-leave" });
+		const [preemptResult, preemptFound] = commanderDecide(ship);
+		expect(preemptFound).toBe(true);
+		expect(preemptResult).toEqual({ action: "shore-leave" });
 	});
 
 	it("integrates defer maintenance in the field", () => {
@@ -1281,8 +1336,9 @@ describe("commanderDecide", () => {
 				],
 			},
 		});
-		const result = commanderDecide(ship);
-		expect(result).toEqual({ action: "survey" });
+		const [fieldResult, fieldFound] = commanderDecide(ship);
+		expect(fieldFound).toBe(true);
+		expect(fieldResult).toEqual({ action: "survey" });
 	});
 });
 
@@ -1331,6 +1387,87 @@ describe("checkPreemptiveService -- command mappings", () => {
 	});
 });
 
+// --- checkHoldForTanker ---
+
+describe("checkHoldForTanker", () => {
+	beforeEach(() => {
+		state.shipIntents.clear();
+		invalidateIntentsCache();
+	});
+
+	it("returns null when no tanker is targeting this ship", () => {
+		const ship = mockShip({ data: { name: "ISS Explorer" } } as Partial<ShipEntry>);
+		expect(checkHoldForTanker(ship, { action: "survey" })).toBeNull();
+	});
+
+	it("returns idle when a tanker is inbound and action is survey", () => {
+		const ship = mockShip({ data: { name: "ISS Explorer" } } as Partial<ShipEntry>);
+		state.shipIntents.set("ISS Sheetz", {
+			type: "tanking",
+			target: "ISS Explorer",
+			shipName: "ISS Sheetz",
+		});
+		invalidateIntentsCache();
+		expect(checkHoldForTanker(ship, { action: "survey" })).toEqual({ action: "idle" });
+	});
+
+	it("returns idle when a tanker is inbound and action is transfer", () => {
+		const ship = mockShip({ data: { name: "ISS Explorer" } } as Partial<ShipEntry>);
+		state.shipIntents.set("ISS Sheetz", {
+			type: "tanking",
+			target: "ISS Explorer",
+			shipName: "ISS Sheetz",
+		});
+		invalidateIntentsCache();
+		expect(checkHoldForTanker(ship, { action: "transfer", target: "Mars" })).toEqual({
+			action: "idle",
+		});
+	});
+
+	it("does not intercept maintenance actions even when tanker is inbound", () => {
+		const ship = mockShip({ data: { name: "ISS Explorer" } } as Partial<ShipEntry>);
+		state.shipIntents.set("ISS Sheetz", {
+			type: "tanking",
+			target: "ISS Explorer",
+			shipName: "ISS Sheetz",
+		});
+		invalidateIntentsCache();
+		expect(checkHoldForTanker(ship, { action: "refuel" })).toBeNull();
+		expect(checkHoldForTanker(ship, { action: "overhaul" })).toBeNull();
+		expect(checkHoldForTanker(ship, { action: "shore-leave" })).toBeNull();
+		expect(checkHoldForTanker(ship, { action: "idle" })).toBeNull();
+	});
+
+	it("does not intercept when tanker is targeting a different ship", () => {
+		const ship = mockShip({ data: { name: "ISS Explorer" } } as Partial<ShipEntry>);
+		state.shipIntents.set("ISS Sheetz", {
+			type: "tanking",
+			target: "ISS Discovery",
+			shipName: "ISS Sheetz",
+		});
+		invalidateIntentsCache();
+		expect(checkHoldForTanker(ship, { action: "survey" })).toBeNull();
+	});
+
+	it("commanderDecide returns idle when tanker is inbound and tree says survey", () => {
+		const ship = mockShip({
+			data: { name: "ISS Explorer" },
+			commandTree: {
+				entries: [mockEntry("survey", "survey-nearest")],
+			},
+		} as Partial<ShipEntry>);
+		state.shipIntents.set("ISS Sheetz", {
+			type: "tanking",
+			target: "ISS Explorer",
+			shipName: "ISS Sheetz",
+		});
+		invalidateIntentsCache();
+		const [result, found] = commanderDecide(ship);
+		expect(found).toBe(true);
+		expect(result).toEqual({ action: "idle" });
+	});
+});
+
 // --- checkDeferMaintenance: morale-below case ---
 
 describe("checkDeferMaintenance -- morale-below case", () => {
@@ -1364,7 +1501,9 @@ describe("checkDeferMaintenance -- morale-below case", () => {
 		});
 		state.bodyMeshes = [mockUnsurveyed("Ceres")] as BodyEntry[];
 		rebuildEntityMaps();
-		expect(commanderDecide(ship)).toEqual({ action: "survey" });
+		const [deferMoraleResult, deferMoraleFound] = commanderDecide(ship);
+		expect(deferMoraleFound).toBe(true);
+		expect(deferMoraleResult).toEqual({ action: "survey" });
 	});
 
 	it("does not defer shore-leave when morale is below commander's personal floor", () => {
@@ -1385,7 +1524,9 @@ describe("checkDeferMaintenance -- morale-below case", () => {
 		});
 		state.bodyMeshes = [mockUnsurveyed("Ceres")] as BodyEntry[];
 		rebuildEntityMaps();
-		expect(commanderDecide(ship)).toEqual({ action: "shore-leave" });
+		const [lowMoraleResult, lowMoraleFound] = commanderDecide(ship);
+		expect(lowMoraleFound).toBe(true);
+		expect(lowMoraleResult).toEqual({ action: "shore-leave" });
 	});
 });
 

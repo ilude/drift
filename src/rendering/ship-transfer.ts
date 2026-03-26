@@ -287,10 +287,10 @@ export function createShip(config: ShipConfig): ShipEntry | undefined {
 	}
 
 	// Find host planet by name; fall back to planet closest to 1 AU
-	const hostPlanetEntry = findBody(config.hostPlanetName);
+	const [hostPlanetEntry, hostFound] = findBody(config.hostPlanetName);
 	const planets = state.BODIES?.filter((b) => b.type === "Planet");
-	if (!hostPlanetEntry && (!planets || planets.length === 0)) return undefined;
-	const homePlanetData = hostPlanetEntry
+	if (!hostFound && (!planets || planets.length === 0)) return undefined;
+	const homePlanetData = hostFound
 		? hostPlanetEntry.data
 		: (planets?.find((b) => b.name === config.hostPlanetName) ??
 			planets?.reduce((best, b) =>
@@ -452,6 +452,7 @@ export function createShip(config: ShipConfig): ShipEntry | undefined {
 		},
 		action: { type: null, commandId: null, startTime: 0, duration: 0, progress: 0 },
 		stationTarget: null,
+		keelDate: state.simTime.days,
 	} as ShipEntry;
 
 	// Velocity tail -- always visible, short trail showing direction
@@ -462,7 +463,7 @@ export function createShip(config: ShipConfig): ShipEntry | undefined {
 	scene.add(entry.tailLine);
 
 	// Snap ship to host planet's station-keeping orbit on creation
-	if (hostPlanetEntry) {
+	if (hostFound) {
 		const offset = stationKeepingOffset(hostPlanetEntry);
 		mesh.position.set(
 			hostPlanetEntry.mesh.position.x + Math.cos(entry.angle) * offset,
@@ -493,11 +494,11 @@ export function completeTransfer(entry: ShipEntry, entryAngle = 0): void {
 	const transferTarget = entry.transferTarget ?? "";
 
 	// Find the target body -- could be a planet, moon, or comet
-	const target = findBody(transferTarget);
+	const [target, targetFound] = findBody(transferTarget);
 
 	entry.shipState = "orbiting";
 	// If target is a moon, use parent planet name for station-keeping
-	if (target?.isMoon && target.parentMesh) {
+	if (targetFound && target.isMoon && target.parentMesh) {
 		const parent = state.bodyMeshes.find((e) => e.mesh === target.parentMesh);
 		entry.hostPlanetName = parent ? parent.data.name : transferTarget;
 	} else {
@@ -508,7 +509,7 @@ export function completeTransfer(entry: ShipEntry, entryAngle = 0): void {
 	entry.pendingTransfer = null;
 	entry.speed = SHIP_LOCAL_SPEED;
 
-	if (target) {
+	if (targetFound) {
 		entry.data.distance = target.data.distance || entry.data.distance;
 		entry.orbitA = entry.data.distance;
 		entry.angle = entryAngle;
@@ -522,8 +523,8 @@ export function completeTransfer(entry: ShipEntry, entryAngle = 0): void {
 		);
 	} else {
 		// Check if target is an asteroid
-		const hit = findAsteroidEntity(transferTarget);
-		if (hit) {
+		const [hit, hitFound] = findAsteroidEntity(transferTarget);
+		if (hitFound) {
 			const proxy = asteroidProxy(hit.asteroid, hit.beltEntry);
 			const offset = stationKeepingOffset(proxy);
 			entry.data.distance = hit.asteroid.au;
@@ -658,10 +659,11 @@ export function initiateTransfer(
 	if (!entry.isShip || entry.shipState === "transferring") return false;
 
 	// Find current host body for distance calculation (body or asteroid)
-	let host: BodyEntry | undefined = findBody(entry.hostPlanetName);
+	const [hostBody, hostBodyFound] = findBody(entry.hostPlanetName);
+	let host: BodyEntry | undefined = hostBodyFound ? hostBody : undefined;
 	if (!host) {
-		const hit = findAsteroidEntity(entry.hostPlanetName);
-		if (hit) host = asteroidProxy(hit.asteroid, hit.beltEntry);
+		const [hit, hitFound] = findAsteroidEntity(entry.hostPlanetName);
+		if (hitFound) host = asteroidProxy(hit.asteroid, hit.beltEntry);
 	}
 	if (!host) return false;
 

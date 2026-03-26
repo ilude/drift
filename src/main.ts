@@ -1,5 +1,12 @@
 import "./style.css";
 import * as THREE from "three";
+import {
+	getNearestColonyForShip,
+	getServiceQualityForShip,
+	getSurveySpeedMultiplier,
+	seedStartingColonies,
+	tickColonies,
+} from "./core/colonies";
 import { commanderDecide, incrementExperience, learnFromEmergencyReturn } from "./core/commander";
 import {
 	getUnsurvevedMoonsOfHost,
@@ -77,7 +84,8 @@ import {
 let starEntry: PlanetEntry | null = null;
 
 function cacheStarEntry(): void {
-	starEntry = findStar() ?? null;
+	const [star, starFound] = findStar();
+	starEntry = starFound ? star : null;
 }
 
 state.masterRng = seededRandom(MASTER_SEED);
@@ -144,10 +152,11 @@ createShip({
 });
 state.asteroidBelts = createAsteroidBelts();
 rebuildEntityMaps();
+seedStartingColonies();
 
 // Mark Earth as fully surveyed (home world — all resources available)
-const earthEntry = findBody("Earth");
-if (earthEntry && isSurveyable(earthEntry)) {
+const [earthEntry, earthFound] = findBody("Earth");
+if (earthFound && isSurveyable(earthEntry)) {
 	earthEntry.survey = {
 		surveyLevel: 3,
 		deposits: generateEarthDeposits(),
@@ -158,8 +167,8 @@ buildBodyList();
 cacheStarEntry();
 
 // Select ship by default
-const shipEntry = findShip();
-if (shipEntry) selectBody(shipEntry);
+const [shipEntry, shipFound] = findShip();
+if (shipFound) selectBody(shipEntry);
 
 // Register transfer completion hook for command dispatch
 setOnTransferComplete(onTransferComplete);
@@ -269,6 +278,7 @@ function loadSystem(systemData: SystemData): void {
 	});
 	state.asteroidBelts = createAsteroidBelts();
 	rebuildEntityMaps();
+	seedStartingColonies();
 
 	buildBodyList();
 	cacheStarEntry();
@@ -301,7 +311,10 @@ function getSurveyDuration(mass: number, ship: ShipEntry): number {
 	const base = Math.max(1, Math.round(1 + (logRatio / maxLog) * 39)); // 1–40 days
 	const morale = Math.max(10, ship.crew.morale) / 100;
 	const hull = Math.max(10, ship.maintenance.hullIntegrity) / 100;
-	return Math.max(1, Math.ceil((base / (morale * hull)) * state.surveyMultiplier));
+	return Math.max(
+		1,
+		Math.ceil((base / (morale * hull)) * state.surveyMultiplier * getSurveySpeedMultiplier()),
+	);
 }
 
 function getSystemSeed(): number {
@@ -328,8 +341,8 @@ function completeSurvey(ship: ShipEntry): void {
 	const bodyName = ship.action.target ?? ship.hostPlanetName;
 
 	// Try body first, then asteroid
-	const body = findBody(bodyName);
-	if (body && isSurveyable(body)) {
+	const [body, bodyFound] = findBody(bodyName);
+	if (bodyFound && isSurveyable(body)) {
 		const deposits = generateDeposits(
 			getSystemSeed(),
 			body.data.name,
@@ -355,8 +368,8 @@ function completeSurvey(ship: ShipEntry): void {
 			body.data.name,
 		);
 	} else {
-		const hit = findAsteroidEntity(bodyName);
-		if (hit) {
+		const [hit, hitFound] = findAsteroidEntity(bodyName);
+		if (hitFound) {
 			const deposits = generateDeposits(
 				getSystemSeed(),
 				hit.asteroid.designation,
@@ -394,10 +407,6 @@ function completeSurvey(ship: ShipEntry): void {
 	pushResourceUpdate();
 }
 
-function findColony(): PlanetEntry | undefined {
-	return findPlanet("Earth") ?? findPlanet(state.bodyMeshes[0]?.data.name ?? "");
-}
-
 /** Compute AU of a body from its world position or data.distance. */
 function bodyAU(body: BodyEntry): number {
 	if (body.data.distance > 0 && !body.isMoon) return body.data.distance;
@@ -412,10 +421,10 @@ function bodyDistanceKm(a: BodyEntry, b: BodyEntry): number {
 
 /** Check if ship has enough fuel for a hop to target AND return to nearest colony. */
 function canAffordRoundTrip(ship: ShipEntry, target: BodyEntry): boolean {
-	const hostResolved = resolveEntity(ship.hostPlanetName);
-	if (!hostResolved) return false;
-	const colony = findColony();
-	if (!colony) return false;
+	const [hostResolved, hostFound] = resolveEntity(ship.hostPlanetName);
+	if (!hostFound) return false;
+	const [colony, colonyFound] = getNearestColonyForShip(ship);
+	if (!colonyFound) return false;
 
 	// Fuel cost: host → target
 	const distToTarget = Math.abs(bodyAU(target) - hostResolved.distance) * AU_TO_KM;
@@ -444,8 +453,8 @@ function routeToColony(
 	strandedMsg: string,
 	atColonyOverride?: () => void,
 ): void {
-	const colony = findColony();
-	if (colony && colony.data.name !== ship.hostPlanetName) {
+	const [colony, colonyFound] = getNearestColonyForShip(ship);
+	if (colonyFound && colony.data.name !== ship.hostPlanetName) {
 		if (initiateTransfer(ship, colony)) {
 			ship.action = mkAction(actionId, actionId as string);
 			learnFromEmergencyReturn(ship);
@@ -461,8 +470,8 @@ function routeToColony(
 }
 
 function handleSurveyMoonFirst(ship: ShipEntry): boolean {
-	const hostEntry = findBody(ship.hostPlanetName);
-	const hostSurveyed = hostEntry && isSurveyable(hostEntry) && hostEntry.survey.surveyLevel > 0;
+	const [hostEntry, hostFound] = findBody(ship.hostPlanetName);
+	const hostSurveyed = hostFound && isSurveyable(hostEntry) && hostEntry.survey.surveyLevel > 0;
 	if (!hostSurveyed) return false;
 	const unsurvevedMoons = getUnsurvevedMoonsOfHost(ship);
 	if (unsurvevedMoons.length === 0) return false;
@@ -485,8 +494,8 @@ function handleSurveyAtLocation(ship: ShipEntry, target: string, targetMass: num
 }
 
 function handleSurveyLowFuel(ship: ShipEntry): void {
-	const colony = findColony();
-	if (colony && colony.data.name !== ship.hostPlanetName) {
+	const [colony, colonyFound] = getNearestColonyForShip(ship);
+	if (colonyFound && colony.data.name !== ship.hostPlanetName) {
 		if (initiateTransfer(ship, colony)) {
 			ship.action = mkAction("refuel", "refuel");
 		} else {
@@ -494,8 +503,7 @@ function handleSurveyLowFuel(ship: ShipEntry): void {
 			ship.action = noAction();
 		}
 	} else {
-		ship.fuelKg = ship.fuelCapacityKg;
-		ship.action = noAction();
+		ship.action = mkAction("refuel", "refuel", state.simTime.days, 5);
 	}
 }
 
@@ -517,8 +525,8 @@ function handleSurveyTransfer(ship: ShipEntry, target: string, targetBody: BodyE
 function handleSurveyCommand(ship: ShipEntry): void {
 	if (handleSurveyMoonFirst(ship)) return;
 
-	const target = selectNextSurveyTarget(ship);
-	if (!target) {
+	const [target, hasTarget] = selectNextSurveyTarget(ship);
+	if (!hasTarget) {
 		addCoalescedNotification("mission-complete", "System survey complete -- all bodies surveyed");
 		ship.action = mkAction("idle", "idle");
 		publishIntent(ship.data.name, {
@@ -529,8 +537,8 @@ function handleSurveyCommand(ship: ShipEntry): void {
 		return;
 	}
 
-	const resolved = resolveEntity(target);
-	if (!resolved) return;
+	const [resolved, resolvedFound] = resolveEntity(target);
+	if (!resolvedFound) return;
 	const targetBody =
 		resolved.bodyEntry ??
 		(resolved.asteroidHit
@@ -556,8 +564,8 @@ function handleSurveyCommand(ship: ShipEntry): void {
 
 function handleTransferCommand(ship: ShipEntry, result: CommandResult): void {
 	if (!result.target) return;
-	const te = findPlanet(result.target);
-	if (te) initiateTransfer(ship, te);
+	const [te, teFound] = findPlanet(result.target);
+	if (teFound) initiateTransfer(ship, te);
 	publishIntent(ship.data.name, {
 		type: "transferring",
 		destination: result.target,
@@ -566,9 +574,9 @@ function handleTransferCommand(ship: ShipEntry, result: CommandResult): void {
 }
 
 function handleRefuelCommand(ship: ShipEntry): void {
-	const earth = findColony();
-	if (earth && earth.data.name !== ship.hostPlanetName) {
-		if (initiateTransfer(ship, earth)) {
+	const [colony, colonyFound] = getNearestColonyForShip(ship);
+	if (colonyFound && colony.data.name !== ship.hostPlanetName) {
+		if (initiateTransfer(ship, colony)) {
 			ship.action = mkAction("refuel", "refuel");
 			learnFromEmergencyReturn(ship);
 		} else {
@@ -576,18 +584,17 @@ function handleRefuelCommand(ship: ShipEntry): void {
 			ship.action = noAction();
 		}
 	} else {
-		ship.fuelKg = ship.fuelCapacityKg;
-		ship.action = noAction();
+		ship.action = mkAction("refuel", "refuel", state.simTime.days, 5);
 	}
 	publishIntent(ship.data.name, {
 		type: "refueling",
-		location: earth?.data.name ?? ship.hostPlanetName,
+		location: colonyFound ? colony.data.name : ship.hostPlanetName,
 		shipName: ship.data.name,
 	});
 }
 
 function handleShoreLeaveCommand(ship: ShipEntry): void {
-	const colony = findColony();
+	const [colony, colonyFound] = getNearestColonyForShip(ship);
 	routeToColony(
 		ship,
 		"shore-leave",
@@ -598,13 +605,13 @@ function handleShoreLeaveCommand(ship: ShipEntry): void {
 	);
 	publishIntent(ship.data.name, {
 		type: "shore-leave",
-		location: colony?.data.name ?? ship.hostPlanetName,
+		location: colonyFound ? colony.data.name : ship.hostPlanetName,
 		shipName: ship.data.name,
 	});
 }
 
 function handleOverhaulCommand(ship: ShipEntry): void {
-	const yard = findColony();
+	const [yard, yardFound] = getNearestColonyForShip(ship);
 	routeToColony(
 		ship,
 		"overhaul",
@@ -620,7 +627,7 @@ function handleOverhaulCommand(ship: ShipEntry): void {
 	);
 	publishIntent(ship.data.name, {
 		type: "overhauling",
-		location: yard?.data.name ?? ship.hostPlanetName,
+		location: yardFound ? yard.data.name : ship.hostPlanetName,
 		shipName: ship.data.name,
 	});
 }
@@ -628,11 +635,14 @@ function handleOverhaulCommand(ship: ShipEntry): void {
 function computeRefitDuration(ship: ShipEntry): number {
 	const ageDays = ship.maintenance.totalAge * 0.01;
 	const baseDays = REFIT_BASE_DAYS + ageDays;
-	return Math.max(30, Math.ceil((baseDays / state.depotQuality) * state.repairMultiplier));
+	return Math.max(
+		30,
+		Math.ceil((baseDays / getServiceQualityForShip(ship)) * state.repairMultiplier),
+	);
 }
 
 function handleMajorRefitCommand(ship: ShipEntry): void {
-	const yard = findColony();
+	const [yard, yardFound] = getNearestColonyForShip(ship);
 	routeToColony(
 		ship,
 		"major-refit",
@@ -648,7 +658,7 @@ function handleMajorRefitCommand(ship: ShipEntry): void {
 	);
 	publishIntent(ship.data.name, {
 		type: "refitting",
-		location: yard?.data.name ?? ship.hostPlanetName,
+		location: yardFound ? yard.data.name : ship.hostPlanetName,
 		shipName: ship.data.name,
 	});
 }
@@ -659,8 +669,8 @@ function computeRefuelShipDuration(target: ShipEntry): number {
 }
 
 function handleRefuelShipCommand(ship: ShipEntry): void {
-	const targetName = selectNextRefuelTarget(ship);
-	if (!targetName) {
+	const [targetName, hasTarget] = selectNextRefuelTarget(ship);
+	if (!hasTarget) {
 		// No ships need fuel -- idle (will re-evaluate next frame)
 		ship.action = noAction();
 		publishIntent(ship.data.name, {
@@ -671,8 +681,8 @@ function handleRefuelShipCommand(ship: ShipEntry): void {
 		return;
 	}
 
-	const targetShip = findShip(targetName);
-	if (!targetShip) return;
+	const [targetShip, targetShipFound] = findShip(targetName);
+	if (!targetShipFound) return;
 
 	publishIntent(ship.data.name, {
 		type: "tanking",
@@ -685,8 +695,13 @@ function handleRefuelShipCommand(ship: ShipEntry): void {
 		const duration = computeRefuelShipDuration(targetShip);
 		ship.action = mkAction("refuel-ship", "refuel-fleet", state.simTime.days, duration, targetName);
 	} else {
-		// Need to travel to the target ship's host body
-		const hostBody = findBody(targetShip.hostPlanetName);
+		// Need to travel to the target ship's host body (may be a planet or asteroid)
+		const [hostBody1] = findBody(targetShip.hostPlanetName);
+		let hostBody = hostBody1 ?? null;
+		if (!hostBody) {
+			const [hit, hitFound] = findAsteroidEntity(targetShip.hostPlanetName);
+			if (hitFound) hostBody = asteroidProxy(hit.asteroid, hit.beltEntry);
+		}
 		if (hostBody && initiateTransfer(ship, hostBody)) {
 			ship.action = mkAction("refuel-ship", "refuel-fleet", 0, 0, targetName);
 		} else {
@@ -807,8 +822,8 @@ function completeAction(ship: ShipEntry): void {
 	}
 
 	// Commander evaluates standing orders + applies judgment for next action
-	const decision = commanderDecide(ship);
-	if (decision) dispatchCommand(ship, decision);
+	const [decision, hasDecision] = commanderDecide(ship);
+	if (hasDecision) dispatchCommand(ship, decision);
 }
 
 /** Tick the active action timer for a ship. Returns true if action completed or still running. */
@@ -834,8 +849,8 @@ function tickIdleCommander(ship: ShipEntry): void {
 	if (state.simTime.days - lastEval < 0.5) return;
 	_lastCommandEval.set(ship.data.name, state.simTime.days);
 	gameLog(`[tickShip] ${ship.data.name}: idle, commander deciding`);
-	const decision = commanderDecide(ship);
-	if (decision) dispatchCommand(ship, decision);
+	const [decision, hasDecision] = commanderDecide(ship);
+	if (hasDecision) dispatchCommand(ship, decision);
 }
 
 /** Called each frame for every ship. Handles simulation + action timers. */
@@ -870,7 +885,7 @@ function computeOverhaulDuration(ship: ShipEntry): number {
 	const ceiling = hullCeiling(ship.maintenance.totalAge, ship.maintenance.lastRefitAge);
 	const hullDeficit = Math.max(0, ceiling - ship.maintenance.hullIntegrity);
 	const supplyDeficit = ship.maintenance.maxSupplies - ship.maintenance.supplies;
-	const dq = state.depotQuality;
+	const dq = getServiceQualityForShip(ship);
 	const hullDays = hullDeficit / ((HULL_REPAIR_PER_DAY * dq) / state.repairMultiplier);
 	const supplyDays = supplyDeficit / ((SUPPLY_RESTOCK_PER_DAY * dq) / state.supplyMultiplier);
 	return Math.max(1, Math.ceil(Math.max(hullDays, supplyDays)));
@@ -878,7 +893,10 @@ function computeOverhaulDuration(ship: ShipEntry): number {
 
 function startSurveyOnArrival(ship: ShipEntry): void {
 	const surveyTarget = ship.action.target;
-	const resolved = surveyTarget ? resolveEntity(surveyTarget) : null;
+	const [resolvedVal, resolvedFound] = surveyTarget
+		? resolveEntity(surveyTarget)
+		: ([null, false] as const);
+	const resolved = resolvedFound ? resolvedVal : null;
 	const targetBody = resolved?.bodyEntry ?? null;
 
 	// Guard: skip survey if target was already surveyed (e.g., by another ship mid-transfer)
@@ -887,8 +905,8 @@ function startSurveyOnArrival(ship: ShipEntry): void {
 		(resolved?.asteroidHit && resolved.asteroidHit.asteroid.survey.surveyLevel > 0);
 	if (alreadySurveyed) {
 		ship.action = noAction();
-		const decision = commanderDecide(ship);
-		if (decision) dispatchCommand(ship, decision);
+		const [decision, hasDecision] = commanderDecide(ship);
+		if (hasDecision) dispatchCommand(ship, decision);
 		return;
 	}
 
@@ -931,18 +949,18 @@ export function onTransferComplete(ship: ShipEntry): void {
 	} else if (actionType === "major-refit") {
 		startActionTimer(ship, computeRefitDuration(ship));
 	} else if (actionType === "refuel-ship") {
-		const targetShip = findShip(ship.action.target ?? undefined);
-		if (targetShip) {
-			startActionTimer(ship, computeRefuelShipDuration(targetShip));
+		const [targetShip2, targetShip2Found] = findShip(ship.action.target ?? undefined);
+		if (targetShip2Found) {
+			startActionTimer(ship, computeRefuelShipDuration(targetShip2));
 		} else {
 			ship.action = noAction();
-			const decision = commanderDecide(ship);
-			if (decision) dispatchCommand(ship, decision);
+			const [decision, hasDecision] = commanderDecide(ship);
+			if (hasDecision) dispatchCommand(ship, decision);
 		}
 	} else {
 		// No pending action -- commander decides
-		const decision = commanderDecide(ship);
-		if (decision) dispatchCommand(ship, decision);
+		const [decision, hasDecision] = commanderDecide(ship);
+		if (hasDecision) dispatchCommand(ship, decision);
 	}
 }
 
@@ -976,6 +994,25 @@ controls.addEventListener("change", markDirty);
 window.addEventListener("resize", markDirty);
 window.addEventListener("wake-render", markDirty);
 
+// Pause simulation when tab is hidden to prevent ships aging while unattended
+let _speedBeforeHide = 0;
+document.addEventListener("visibilitychange", () => {
+	if (document.hidden) {
+		_speedBeforeHide = state.timeSpeed;
+		if (state.timeSpeed !== 0) {
+			state.timeSpeed = 0;
+			window.dispatchEvent(new Event("wake-render"));
+		}
+	} else {
+		if (_speedBeforeHide !== 0 && state.timeSpeed === 0) {
+			state.timeSpeed = _speedBeforeHide;
+			// Reset the clock delta so returning to the tab doesn't produce a giant dt
+			timer.update();
+			startLoop();
+		}
+	}
+});
+
 function startLoop(): void {
 	if (loopRunning) return;
 	loopRunning = true;
@@ -995,8 +1032,8 @@ function tickDebugStep(): void {
 	if (state.debugStepFrames !== 0) return;
 	state.timeSpeed = 0;
 	window.dispatchEvent(new Event("debug-step-done"));
-	const ship = findShip();
-	if (ship) {
+	const [ship, shipDbgFound] = findShip();
+	if (shipDbgFound) {
 		const elapsed: number = state.simTime.days - ship.transferStartTime;
 		const t: number = ship.transferTimeDays > 0 ? elapsed / ship.transferTimeDays : 0;
 		gameLog("DEBUG STEP PAUSED:", {
@@ -1014,6 +1051,7 @@ function tickSimulation(dt: number, simActive: boolean): [number, number, number
 	const t0 = performance.now();
 	if (simActive) {
 		const simDt = dt * state.timeSpeed;
+		tickColonies(simDt);
 		for (const entry of state.bodyMeshes) {
 			if (isShipEntry(entry)) {
 				tickShip(entry, simDt);

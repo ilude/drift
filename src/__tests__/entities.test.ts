@@ -64,13 +64,15 @@ describe("rebuildEntityMaps", () => {
 	it("populates bodyMap from state.bodyMeshes", () => {
 		state.bodyMeshes = [mockBody("Earth", "Planet")];
 		rebuildEntityMaps();
-		expect(findBody("Earth")).toBeDefined();
+		const [, foundBody] = findBody("Earth");
+		expect(foundBody).toBe(true);
 	});
 
 	it("populates asteroidMap from state.asteroidBelts", () => {
 		state.asteroidBelts = [mockBeltEntry(["MB-0001"])];
 		rebuildEntityMaps();
-		expect(findAsteroidEntity("MB-0001")).toBeDefined();
+		const [, foundAsteroid] = findAsteroidEntity("MB-0001");
+		expect(foundAsteroid).toBe(true);
 	});
 
 	it("clears stale entries on subsequent calls", () => {
@@ -78,7 +80,8 @@ describe("rebuildEntityMaps", () => {
 		rebuildEntityMaps();
 		state.bodyMeshes = [];
 		rebuildEntityMaps();
-		expect(findBody("Earth")).toBeUndefined();
+		const [, foundBody] = findBody("Earth");
+		expect(foundBody).toBe(false);
 	});
 
 	it("clears stale asteroid entries on subsequent calls", () => {
@@ -86,7 +89,8 @@ describe("rebuildEntityMaps", () => {
 		rebuildEntityMaps();
 		state.asteroidBelts = [];
 		rebuildEntityMaps();
-		expect(findAsteroidEntity("MB-0001")).toBeUndefined();
+		const [, foundAsteroid] = findAsteroidEntity("MB-0001");
+		expect(foundAsteroid).toBe(false);
 	});
 });
 
@@ -94,78 +98,79 @@ describe("resolveEntity", () => {
 	it("returns body for a planet", () => {
 		state.bodyMeshes = [mockBody("Mars", "Planet")];
 		rebuildEntityMaps();
-		const result = resolveEntity("Mars");
-		expect(result).not.toBeNull();
-		expect(result?.name).toBe("Mars");
-		expect(result?.type).toBe("Planet");
-		expect(result?.bodyEntry).toBeDefined();
-		expect(result?.asteroidHit).toBeUndefined();
+		const [result, found] = resolveEntity("Mars");
+		expect(found).toBe(true);
+		expect(result.name).toBe("Mars");
+		expect(result.type).toBe("Planet");
+		expect(result.bodyEntry).toBeDefined();
+		expect(result.asteroidHit).toBeUndefined();
 	});
 
 	it("returns body for a moon", () => {
 		state.bodyMeshes = [mockBody("Titan", "Moon", { isMoon: true })];
 		rebuildEntityMaps();
-		const result = resolveEntity("Titan");
-		expect(result).not.toBeNull();
-		expect(result?.isMoon).toBe(true);
+		const [result, found] = resolveEntity("Titan");
+		expect(found).toBe(true);
+		expect(result.isMoon).toBe(true);
 	});
 
 	it("returns body for a comet", () => {
 		state.bodyMeshes = [mockBody("Halley", "Comet", { isComet: true, isShip: false })];
 		rebuildEntityMaps();
-		const result = resolveEntity("Halley");
-		expect(result).not.toBeNull();
-		expect(result?.type).toBe("Comet");
+		const [result, found] = resolveEntity("Halley");
+		expect(found).toBe(true);
+		expect(result.type).toBe("Comet");
 	});
 
 	it("returns body for a ship", () => {
 		state.bodyMeshes = [mockBody("Endeavour", "Ship", { isShip: true, isComet: false })];
 		rebuildEntityMaps();
-		const result = resolveEntity("Endeavour");
-		expect(result).not.toBeNull();
-		expect(result?.type).toBe("Ship");
+		const [result, found] = resolveEntity("Endeavour");
+		expect(found).toBe(true);
+		expect(result.type).toBe("Ship");
 	});
 
 	it("returns asteroid entity for a designation", () => {
 		state.asteroidBelts = [mockBeltEntry(["MB-0042"])];
 		rebuildEntityMaps();
-		const result = resolveEntity("MB-0042");
-		expect(result).not.toBeNull();
-		expect(result?.name).toBe("MB-0042");
-		expect(result?.type).toBe("Asteroid");
-		expect(result?.asteroidHit).toBeDefined();
-		expect(result?.bodyEntry).toBeUndefined();
+		const [result, found] = resolveEntity("MB-0042");
+		expect(found).toBe(true);
+		expect(result.name).toBe("MB-0042");
+		expect(result.type).toBe("Asteroid");
+		expect(result.asteroidHit).toBeDefined();
+		expect(result.bodyEntry).toBeUndefined();
 	});
 
 	it("returns null for unknown name", () => {
 		rebuildEntityMaps();
-		expect(resolveEntity("Unknown-9999")).toBeNull();
+		const [, found] = resolveEntity("Unknown-9999");
+		expect(found).toBe(false);
 	});
 
 	it("returns a fresh position object per call (no aliasing)", () => {
 		state.bodyMeshes = [mockBody("Venus", "Planet")];
 		rebuildEntityMaps();
-		const r1 = resolveEntity("Venus");
-		const r2 = resolveEntity("Venus");
-		expect(r1?.position).not.toBe(r2?.position);
+		const [r1] = resolveEntity("Venus");
+		const [r2] = resolveEntity("Venus");
+		expect(r1.position).not.toBe(r2.position);
 	});
 
 	it("returns fresh asteroid position per call", () => {
 		state.asteroidBelts = [mockBeltEntry(["MB-0001"])];
 		rebuildEntityMaps();
-		const r1 = resolveEntity("MB-0001");
-		const r2 = resolveEntity("MB-0001");
-		expect(r1?.position).not.toBe(r2?.position);
+		const [r1] = resolveEntity("MB-0001");
+		const [r2] = resolveEntity("MB-0001");
+		expect(r1.position).not.toBe(r2.position);
 	});
 
 	it("asteroid position matches Float32Array data", () => {
 		state.asteroidBelts = [mockBeltEntry(["MB-0001"])];
 		rebuildEntityMaps();
-		const result = resolveEntity("MB-0001");
+		const [result] = resolveEntity("MB-0001");
 		// beltIndex 0 → positions[0]=5, [1]=0, [2]=3
-		expect(result?.position.x).toBe(5);
-		expect(result?.position.y).toBe(0);
-		expect(result?.position.z).toBe(3);
+		expect(result.position.x).toBe(5);
+		expect(result.position.y).toBe(0);
+		expect(result.position.z).toBe(3);
 	});
 });
 
@@ -173,18 +178,21 @@ describe("findBody", () => {
 	it("returns BodyEntry for known name", () => {
 		state.bodyMeshes = [mockBody("Jupiter", "Planet")];
 		rebuildEntityMaps();
-		expect(findBody("Jupiter")).toBeDefined();
+		const [, found] = findBody("Jupiter");
+		expect(found).toBe(true);
 	});
 
 	it("returns undefined for unknown name", () => {
 		rebuildEntityMaps();
-		expect(findBody("Nonexistent")).toBeUndefined();
+		const [, found] = findBody("Nonexistent");
+		expect(found).toBe(false);
 	});
 
 	it("returns ships too", () => {
 		state.bodyMeshes = [mockBody("Pioneer", "Ship", { isShip: true })];
 		rebuildEntityMaps();
-		expect(findBody("Pioneer")).toBeDefined();
+		const [, found] = findBody("Pioneer");
+		expect(found).toBe(true);
 	});
 });
 
@@ -192,7 +200,8 @@ describe("findPlanet", () => {
 	it("returns PlanetEntry for a planet", () => {
 		state.bodyMeshes = [mockBody("Saturn", "Planet")];
 		rebuildEntityMaps();
-		expect(findPlanet("Saturn")).toBeDefined();
+		const [, found] = findPlanet("Saturn");
+		expect(found).toBe(true);
 	});
 
 	it("rejects moons (isComet undefined, but isMoon true -- isPlanetEntry passes, so moon IS a PlanetEntry)", () => {
@@ -202,24 +211,28 @@ describe("findPlanet", () => {
 		state.bodyMeshes = [moon];
 		rebuildEntityMaps();
 		// isPlanetEntry(moon) is true since isShip and isComet are false
-		expect(findPlanet("Phobos")).toBeDefined();
+		const [, found] = findPlanet("Phobos");
+		expect(found).toBe(true);
 	});
 
 	it("rejects ships", () => {
 		state.bodyMeshes = [mockBody("Voyager", "Ship", { isShip: true, isComet: false })];
 		rebuildEntityMaps();
-		expect(findPlanet("Voyager")).toBeUndefined();
+		const [, found] = findPlanet("Voyager");
+		expect(found).toBe(false);
 	});
 
 	it("rejects comets", () => {
 		state.bodyMeshes = [mockBody("Comet-X", "Comet", { isComet: true, isShip: false })];
 		rebuildEntityMaps();
-		expect(findPlanet("Comet-X")).toBeUndefined();
+		const [, found] = findPlanet("Comet-X");
+		expect(found).toBe(false);
 	});
 
 	it("returns undefined for unknown name", () => {
 		rebuildEntityMaps();
-		expect(findPlanet("Unknown")).toBeUndefined();
+		const [, found] = findPlanet("Unknown");
+		expect(found).toBe(false);
 	});
 });
 
@@ -227,14 +240,15 @@ describe("findAsteroidEntity", () => {
 	it("returns hit for known designation", () => {
 		state.asteroidBelts = [mockBeltEntry(["MB-0007"])];
 		rebuildEntityMaps();
-		const hit = findAsteroidEntity("MB-0007");
-		expect(hit).toBeDefined();
-		expect(hit?.asteroid.designation).toBe("MB-0007");
+		const [hit, found] = findAsteroidEntity("MB-0007");
+		expect(found).toBe(true);
+		expect(hit.asteroid.designation).toBe("MB-0007");
 	});
 
 	it("returns undefined for unknown designation", () => {
 		rebuildEntityMaps();
-		expect(findAsteroidEntity("ZZ-9999")).toBeUndefined();
+		const [, found] = findAsteroidEntity("ZZ-9999");
+		expect(found).toBe(false);
 	});
 });
 
@@ -242,33 +256,37 @@ describe("findShip", () => {
 	it("returns ship by name", () => {
 		state.bodyMeshes = [mockBody("Argo", "Ship", { isShip: true })];
 		rebuildEntityMaps();
-		const ship = findShip("Argo");
-		expect(ship).toBeDefined();
-		expect(ship?.data.name).toBe("Argo");
+		const [ship, found] = findShip("Argo");
+		expect(found).toBe(true);
+		expect(ship.data.name).toBe("Argo");
 	});
 
 	it("returns first ship when no name given", () => {
 		state.bodyMeshes = [mockBody("Earth", "Planet"), mockBody("Hermes", "Ship", { isShip: true })];
 		rebuildEntityMaps();
-		expect(findShip()).toBeDefined();
-		expect(findShip()?.data.type).toBe("Ship");
+		const [ship, found] = findShip();
+		expect(found).toBe(true);
+		expect(ship.data.type).toBe("Ship");
 	});
 
 	it("returns undefined when no ships exist and no name given", () => {
 		state.bodyMeshes = [mockBody("Earth", "Planet")];
 		rebuildEntityMaps();
-		expect(findShip()).toBeUndefined();
+		const [, found] = findShip();
+		expect(found).toBe(false);
 	});
 
 	it("returns undefined when named ship does not exist", () => {
 		rebuildEntityMaps();
-		expect(findShip("Ghost")).toBeUndefined();
+		const [, found] = findShip("Ghost");
+		expect(found).toBe(false);
 	});
 
 	it("returns undefined when named entry exists but is not a ship", () => {
 		state.bodyMeshes = [mockBody("Earth", "Planet")];
 		rebuildEntityMaps();
-		expect(findShip("Earth")).toBeUndefined();
+		const [, found] = findShip("Earth");
+		expect(found).toBe(false);
 	});
 });
 
@@ -276,14 +294,15 @@ describe("findStar", () => {
 	it("returns the star entry", () => {
 		state.bodyMeshes = [mockBody("Sol", "Star")];
 		rebuildEntityMaps();
-		const star = findStar();
-		expect(star).toBeDefined();
-		expect(star?.data.type).toBe("Star");
+		const [star, found] = findStar();
+		expect(found).toBe(true);
+		expect(star.data.type).toBe("Star");
 	});
 
 	it("returns undefined when no star exists", () => {
 		state.bodyMeshes = [mockBody("Earth", "Planet")];
 		rebuildEntityMaps();
-		expect(findStar()).toBeUndefined();
+		const [, found] = findStar();
+		expect(found).toBe(false);
 	});
 });

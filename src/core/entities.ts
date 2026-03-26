@@ -4,10 +4,12 @@ import type {
 	AsteroidInfo,
 	BodyEntry,
 	PlanetEntry,
+	Result,
 	ShipEntry,
 	SurveyState,
 } from "../types";
 import { isPlanetEntry, isShipEntry } from "../types";
+import { err, ok } from "./result";
 import { state } from "./state";
 
 // --- Internal maps ---
@@ -18,7 +20,7 @@ let cachedStar: PlanetEntry | undefined;
 
 // --- Exported interface ---
 
-interface ResolvedEntity {
+export interface ResolvedEntity {
 	name: string;
 	type: string;
 	position: { x: number; y: number; z: number };
@@ -52,11 +54,11 @@ export function rebuildEntityMaps(): void {
 	}
 }
 
-export function resolveEntity(name: string): ResolvedEntity | null {
+export function resolveEntity(name: string): Result<ResolvedEntity> {
 	const bodyEntry = bodyMap.get(name);
 	if (bodyEntry) {
 		const p = bodyEntry.mesh.position;
-		return {
+		return ok({
 			name: bodyEntry.data.name,
 			type: bodyEntry.data.type,
 			position: { x: p.x, y: p.y, z: p.z },
@@ -66,7 +68,7 @@ export function resolveEntity(name: string): ResolvedEntity | null {
 			isMoon: bodyEntry.isMoon,
 			survey: (bodyEntry as { survey?: SurveyState }).survey,
 			bodyEntry,
-		};
+		});
 	}
 
 	const hit = asteroidMap.get(name);
@@ -76,7 +78,7 @@ export function resolveEntity(name: string): ResolvedEntity | null {
 		const x = beltEntry.positions[idx * 3];
 		const y = beltEntry.positions[idx * 3 + 1];
 		const z = beltEntry.positions[idx * 3 + 2];
-		return {
+		return ok({
 			name: asteroid.designation,
 			type: "Asteroid",
 			position: { x, y, z },
@@ -86,40 +88,42 @@ export function resolveEntity(name: string): ResolvedEntity | null {
 			isMoon: false,
 			survey: asteroid.survey,
 			asteroidHit: hit,
-		};
+		});
 	}
 
-	return null;
+	return err();
 }
 
-export function findBody(name: string): BodyEntry | undefined {
-	return bodyMap.get(name);
-}
-
-export function findPlanet(name: string): PlanetEntry | undefined {
+export function findBody(name: string): Result<BodyEntry> {
 	const entry = bodyMap.get(name);
-	if (!entry) return undefined;
-	if (isPlanetEntry(entry)) return entry;
-	return undefined;
+	return entry ? ok(entry) : err();
+}
+
+export function findPlanet(name: string): Result<PlanetEntry> {
+	const entry = bodyMap.get(name);
+	if (entry && isPlanetEntry(entry)) return ok(entry);
+	return err();
 }
 
 export function findAsteroidEntity(
 	name: string,
-): { asteroid: AsteroidInfo; beltEntry: AsteroidBeltEntry } | undefined {
-	return asteroidMap.get(name);
+): Result<{ asteroid: AsteroidInfo; beltEntry: AsteroidBeltEntry }> {
+	const hit = asteroidMap.get(name);
+	return hit ? ok(hit) : err();
 }
 
-export function findShip(name?: string): ShipEntry | undefined {
+export function findShip(name?: string): Result<ShipEntry> {
 	if (name !== undefined) {
 		const entry = bodyMap.get(name);
-		return entry && isShipEntry(entry) ? entry : undefined;
+		if (entry && isShipEntry(entry)) return ok(entry);
+		return err();
 	}
 	for (const entry of bodyMap.values()) {
-		if (isShipEntry(entry)) return entry;
+		if (isShipEntry(entry)) return ok(entry);
 	}
-	return undefined;
+	return err();
 }
 
-export function findStar(): PlanetEntry | undefined {
-	return cachedStar;
+export function findStar(): Result<PlanetEntry> {
+	return cachedStar ? ok(cachedStar) : err();
 }

@@ -387,8 +387,8 @@ function updateAsteroidLabels(
 	const activeAsteroids = new Set<string>();
 	for (const entry of state.bodyMeshes) {
 		if (!isShipEntry(entry) || entry.shipState !== "orbiting") continue;
-		const hit = findAsteroidEntity(entry.hostPlanetName);
-		if (!hit) continue;
+		const [hit, hitFound] = findAsteroidEntity(entry.hostPlanetName);
+		if (!hitFound) continue;
 		activeAsteroids.add(entry.hostPlanetName);
 		const idx = hit.asteroid.beltIndex ?? 0;
 		const ax = hit.beltEntry.positions[idx * 3];
@@ -679,9 +679,9 @@ function handleDebugStepKey(
 	setUnpaused();
 	state.renderNeeded = true;
 	window.dispatchEvent(new Event("wake-render"));
-	const ship = findShip();
-	const elapsed = ship ? state.simTime.days - ship.transferStartTime : 0;
-	const t = ship && ship.transferTimeDays > 0 ? elapsed / ship.transferTimeDays : 0;
+	const [ship, shipFound] = findShip();
+	const elapsed = shipFound ? state.simTime.days - ship.transferStartTime : 0;
+	const t = shipFound && ship.transferTimeDays > 0 ? elapsed / ship.transferTimeDays : 0;
 	gameLog(`DEBUG STEP [${backward ? "B" : "N"}]:`, {
 		speed,
 		simTime: state.simTime.days.toFixed(3),
@@ -715,8 +715,8 @@ export function setupUI(loadSystem: (systemData: SystemData) => void): void {
 	// Handle body selection from resource viewer popout
 	window.addEventListener("rv-select-body", ((e: CustomEvent<string>) => {
 		const name = e.detail;
-		const body = findBody(name);
-		if (body) selectBody(body);
+		const [body, bodyFound] = findBody(name);
+		if (bodyFound) selectBody(body);
 	}) as EventListener);
 
 	document.getElementById("btn-discover")?.addEventListener("click", () => {
@@ -936,8 +936,8 @@ function renderNotifDropdown(dropdown: HTMLElement): void {
 			markRead(notif.id);
 			if (notif.bodyName) {
 				// TODO: asteroid notifications need resolveEntity + asteroid selection support
-				const body = findBody(notif.bodyName);
-				if (body) selectBody(body);
+				const [body, bodyFound] = findBody(notif.bodyName);
+				if (bodyFound) selectBody(body);
 			}
 			dropdown.classList.add("hidden");
 		});

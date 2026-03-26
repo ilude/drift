@@ -1,7 +1,8 @@
 import * as THREE from "three";
+import { computeColonyWorkforce, getColony } from "../core/colonies";
 import { hullCeiling } from "../core/commands";
 import { findStar } from "../core/entities";
-import { MAX_CLICK_DIST, state } from "../core/state";
+import { MAX_CLICK_DIST, simTimeToDate, state } from "../core/state";
 import { getResourceDef } from "../data/resources";
 import { ENGINE_TYPES } from "../math/ship-physics";
 import { easeOutCubic } from "../math/visual";
@@ -15,7 +16,8 @@ import type {
 	ResourceDeposit,
 	ShipEntry,
 } from "../types";
-import { isCometEntry, isShipEntry, isSurveyable } from "../types";
+import { isCometEntry, isPlanetEntry, isShipEntry, isSurveyable } from "../types";
+import { renderColonyPanel } from "./colony-panel";
 import { renderCommandTree } from "./commands";
 import { pushBodySelected } from "./resource-viewer";
 
@@ -111,9 +113,9 @@ export function formatShipDuration(entry: import("../types").ShipEntry): string 
 	}
 	const action = entry.action;
 	if (action.startTime > 0 && action.duration > 0) {
-		const elapsed = Math.floor(action.progress * action.duration);
-		const dur = Math.floor(action.duration);
-		return `${elapsed}d / ${dur}d`;
+		const elapsed = action.progress * action.duration;
+		const remaining = Math.max(0, action.duration - elapsed);
+		return `${formatDays(remaining)} / ${formatDays(action.duration)}`;
 	}
 	return "";
 }
@@ -173,8 +175,8 @@ export function updateFlyTo(): void {
 }
 
 export function recenterOnStar(): void {
-	const star = findStar();
-	if (!star) return;
+	const [star, starFound] = findStar();
+	if (!starFound) return;
 	if (state.selectedBody) {
 		(state.selectedBody.selRing.material as THREE.MeshBasicMaterial).opacity = 0;
 		state.selectedBody = null;
@@ -191,6 +193,7 @@ const SHIP_ROW_IDS = [
 	"info-leave-row",
 	"info-hull-row",
 	"info-age-row",
+	"info-keel-row",
 	"info-supplies-row",
 	"info-action-row",
 	"info-duration-row",
@@ -227,10 +230,18 @@ function updateBodyInfoTitle(entry: BodyEntry): void {
 
 	const typeEl = document.getElementById("info-type");
 	if (typeEl) {
-		typeEl.textContent =
+		let text =
 			!isShipEntry(entry) && entry.data.distance > 0
 				? `${entry.data.type} — ${entry.data.distance.toFixed(2)} AU`
 				: entry.data.type;
+		if (!isShipEntry(entry)) {
+			const [colony, found] = getColony(entry.data.name);
+			if (found && colony) {
+				const workforce = computeColonyWorkforce(colony);
+				text += ` — Colony • Pop ${colony.population.toLocaleString()} • Workforce ${workforce.usedWorkers.toLocaleString()}/${workforce.availableWorkers.toLocaleString()}`;
+			}
+		}
+		typeEl.textContent = text;
 	}
 
 	document.querySelectorAll(".body-list-item").forEach((el) => {
@@ -253,9 +264,17 @@ function updateHullAndAge(entry: ShipEntry): void {
 
 	const ageEl = document.getElementById("info-age-value");
 	if (ageEl) {
-		const totalYears = Math.floor(entry.maintenance.totalAge / 365);
-		const remainDays = Math.floor(entry.maintenance.totalAge % 365);
-		ageEl.textContent = totalYears > 0 ? `${totalYears}y ${remainDays}d` : `${remainDays}d`;
+		const ageYears = (state.simTime.days - entry.keelDate) / 365;
+		ageEl.textContent = `${ageYears.toFixed(2)}y`;
+	}
+
+	const keelEl = document.getElementById("info-keel-value");
+	if (keelEl) {
+		const d = simTimeToDate(entry.keelDate);
+		const y = d.getFullYear();
+		const mo = String(d.getMonth() + 1).padStart(2, "0");
+		const day = String(d.getDate()).padStart(2, "0");
+		keelEl.textContent = `${y}-${mo}-${day}`;
 	}
 }
 
@@ -395,9 +414,13 @@ export function selectBody(entry: BodyEntry): void {
 
 	if (isShipEntry(entry)) {
 		showShipPanel(entry);
+		document.getElementById("info-colony-section")?.classList.add("hidden");
 	} else {
 		hideShipPanel();
 		updateResourcePanel(entry);
+		if (isPlanetEntry(entry)) {
+			renderColonyPanel(entry);
+		}
 	}
 }
 

@@ -414,6 +414,119 @@ body {
 	color: #6a9a6a;
 }
 
+#info-colony-section {
+	margin-top: 8px;
+	padding-top: 6px;
+	border-top: 1px solid #223322;
+}
+
+.colony-grid {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 6px;
+	margin-bottom: 8px;
+}
+
+.colony-card {
+	background: #111722;
+	border: 1px solid #243326;
+	padding: 6px;
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.colony-card-label {
+	color: #6a9a6a;
+	font-size: 10px;
+	text-transform: uppercase;
+	letter-spacing: 0.4px;
+}
+
+.colony-card-value {
+	color: #cceacc;
+	font-size: 11px;
+}
+
+.colony-section-block {
+	margin-top: 8px;
+	padding-top: 6px;
+	border-top: 1px solid #1a2a1a;
+}
+
+.colony-subheader {
+	color: #aaddaa;
+	font-size: 10px;
+	text-transform: uppercase;
+	letter-spacing: 1px;
+	margin-bottom: 6px;
+}
+
+.colony-form {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+	margin-bottom: 6px;
+}
+
+.colony-form select,
+.colony-form input {
+	background: #141420;
+	border: 1px solid #2a3a2a;
+	color: #88cc88;
+	font-family: inherit;
+	font-size: 11px;
+	padding: 3px 6px;
+}
+
+.colony-form input {
+	width: 54px;
+}
+
+.colony-help {
+	color: #6a7a6a;
+	font-size: 10px;
+	line-height: 1.35;
+	margin-bottom: 6px;
+}
+
+.colony-project-list {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.colony-project {
+	display: flex;
+	justify-content: space-between;
+	gap: 8px;
+	padding: 6px;
+	background: #111722;
+	border: 1px solid #243326;
+}
+
+.colony-project-title {
+	color: #cceacc;
+	font-size: 11px;
+}
+
+.colony-project-meta,
+.colony-queue-item,
+.colony-empty {
+	color: #8ea88e;
+	font-size: 10px;
+}
+
+.colony-project-actions {
+	display: flex;
+	gap: 4px;
+	align-items: flex-start;
+}
+
+.colony-stockpile {
+	margin-bottom: 8px;
+}
+
 /* Controls */
 .ctrl-btn {
 	background: #141420;

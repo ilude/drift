@@ -90,8 +90,8 @@ function buildTransferBodyList(
 		}
 
 		item.addEventListener("click", () => {
-			const targetEntry = findBody(dest.data.name);
-			if (targetEntry) initiateTransfer(ship, targetEntry, true);
+			const [targetEntry, targetEntryFound] = findBody(dest.data.name);
+			if (targetEntryFound) initiateTransfer(ship, targetEntry, true);
 			parentDropdown.remove();
 			renderCommandTree(ship, container);
 		});
