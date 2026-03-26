@@ -128,6 +128,41 @@ core/utils.ts, math/orbit.ts, math/visual.ts  (pure math, no app imports)
 - **No circular imports.** Pure math modules have zero app imports.
 - **Biome enforced:** Linter + formatter. Tabs, double quotes, trailing commas. Zero warnings policy. Config in `biome.json`.
 
+## Design Philosophy
+
+Drift aims for **depth without complexity** — the gap between component complexity (how hard each rule is to learn) and emergent complexity (how many surprising outcomes arise) should be maximized. This is what Keith Burgun calls *elegance*.
+
+### Core Design Principles
+
+1. **Complexity is a budget.** Every new rule costs comprehension and tracking. Spend that budget on systems that create depth (harder to find optimal play), not on systems that create verisimilitude for its own sake. (Dan Felder's framework: Comprehension Complexity vs Tracking Complexity vs Depth.)
+2. **Interaction multiplies depth; addition multiplies complexity.** Two interacting simple systems create more depth than two independent complex ones. Every new system must link to 2-3 existing systems or it's patchwork. (Matthias Worch, Keith Burgun's "Elegant vs Patchwork" diagnostic.)
+3. **No dominant strategies.** If one approach always wins, depth collapses regardless of state space size. Every colony type, tech path, and ship build should have meaningful tradeoffs.
+4. **Systems must chain.** One system's output becomes another's input. Tech → ship performance → survey results → resource discovery → colony placement → research capacity → tech. Dead-end outputs (values nothing else reads) are anti-depth.
+5. **Constraints create depth.** Limited workforce, scarce scientists, finite building slots, per-seed tech availability. These FORCE creative solutions — like MTG's color pie turning limitation into creativity.
+6. **Simulate consistent rules, not specific outcomes.** Don't design "combos." Design consistent systems (physics, demographics, resource flow, tech scaling) and let combinations emerge. The mass driver is a transport mechanism; if it also works as a weapon, that's emergence from consistent rules. (Dwarf Fortress philosophy.)
+7. **Player mastery is the real progression.** The player levels up, not just the empire. Understanding the interaction space IS the skill ceiling. 100 hours in, you should still be discovering new strategies. (Raph Koster: "Fun is learning.")
+8. **Remove rote decisions.** If a choice has a dominant strategy, it's not a decision — it's a tax on the player's time. The command tree system is Drift's response to Aurora 4X's micromanagement anti-pattern. (Soren Johnson.)
+9. **Autonomous agents create emergent narrative.** Give ships/commanders enough autonomy to surprise the player, and the player will construct stories. Minimal representation + meaningful mechanical events = rich player-imagined narrative. (Tynan Sylvester's apophenia principle, Tarn Adams' DF philosophy.)
+10. **The Endless Bottleneck.** Never let the player reach a fully "solved" state. Every optimization should shift the constraint rather than remove it. Solving one problem should reveal or create the next.
+
+### Anti-Patterns to Avoid
+- **Aurora's trap:** Extraordinary simulation fidelity, but most players never experience the depth because the complexity budget is overspent on component-level micromanagement.
+- **Dead-end outputs:** Values that nothing else reads. If a system produces data no other system consumes, it's isolated complexity.
+- **Fixing skillful exploits:** If players discover non-obvious strategies through system interaction, that's emergence working as intended. Only fix genuinely broken interactions, not creative use of consistent rules.
+- **Abstract counters over persistent entities:** Entities with identity, relationships, and history enable emergence. Anonymous numbers don't.
+
+### Design Research Library
+Detailed research references in `tasks/`:
+- `research-game-depth-theory.md` — Game depth theory, Shannon number, combinatorial depth
+- `research-combinatorial-depth.md` — CCG patterns (MTG, Slay the Spire), 4X application
+- `emergent-systems-research.md` — Emergent interactions, 10 principles, 7 anti-patterns
+- `design-theory-reference.md` — Emergent gameplay theory, complexity management
+- `design-patterns-depth-longevity.md` — DF, RimWorld, Factorio, Shadow Empire depth patterns
+- `design-patterns-depth-research.md` — CDDA, UnReal World, Caves of Qud, ONI depth patterns
+- `research-academic-depth-bibliography.md` — Academic papers, GDC talks, books annotated bibliography
+- `colony-system-design.md` — Colony system design notes (living document)
+- `resource-system-design.md` — Resource catalog, production chains, mining design
+
 ## Testing
 
 570+ tests across 20 files using Vitest + jsdom. Tests cover:

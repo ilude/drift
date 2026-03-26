@@ -1,31 +1,39 @@
-.PHONY: dev build test test-watch coverage lint clean check install
+.PHONY: dev build test test-watch coverage lint typecheck dead-code clean verify verify-fast check install
 
-node_modules: bun.lock package.json
-	bun install
-	@touch node_modules
-
-dev: node_modules
+dev:
 	bun run dev
 
-build: node_modules
+build:
 	bun run build
 
-test: node_modules
+test:
 	bun run test
 
-test-watch: node_modules
+test-watch:
 	bun run test:watch
 
-coverage: node_modules
+coverage:
 	bun run test:coverage
 
-lint: node_modules
+lint:
 	bun run lint
 
-check: lint test build
+typecheck:
+	bun run typecheck
+
+dead-code:
+	bun run dead-code
+
+verify-fast:
+	bun run verify:fast
+
+verify:
+	bun run verify
+
+check: verify
 
 clean:
-	rm -rf dist coverage
+	bun run clean
 
 install:
 	bun install

@@ -8,7 +8,7 @@ Built with [Three.js](https://threejs.org/) and TypeScript, bundled with [Vite](
 
 ```bash
 bun install
-make dev
+bun run dev
 ```
 
 Open http://localhost:5173 in your browser.
@@ -17,14 +17,36 @@ Open http://localhost:5173 in your browser.
 
 | Command | Description |
 |---|---|
-| `make dev` | Start Vite dev server |
-| `make build` | Production build to `dist/` |
-| `make test` | Run all tests |
-| `make test-watch` | Run tests in watch mode |
-| `make coverage` | Test coverage report (v8) |
-| `make lint` | Biome (linter + formatter) |
-| `make check` | Lint + test + build (full verify) |
-| `make clean` | Remove `dist/` and `coverage/` |
+| `bun run dev` | Start Vite dev server |
+| `bun run build` | Production build to `dist/` |
+| `bun run test` | Run all tests |
+| `bun run test:watch` | Run tests in watch mode |
+| `bun run test:coverage` | Test coverage report (v8) |
+| `bun run lint` | Biome (linter + formatter) |
+| `bun run typecheck` | TypeScript type checking |
+| `bun run dead-code` | Knip unused-code scan |
+| `bun run verify:fast` | Lint + typecheck |
+| `bun run verify` | Lint + typecheck + test + build |
+| `bun run clean` | Remove `dist/` and `coverage/` |
+
+`make` targets remain available as thin wrappers, but `bun run ...` is the canonical workflow.
+
+## Contributor Workflow
+
+- Runtime: Bun `1.3.9+` and Node `20+`
+- Install: `bun install`
+- Fast local verification: `bun run verify:fast`
+- Full verification before handoff: `bun run verify`
+- Generated output: `dist/` should not be edited manually
+- Agent guidance: see [`AGENTS.md`](./AGENTS.md) and [`.claude/CLAUDE.md`](./.claude/CLAUDE.md)
+
+### Targeted Tests
+
+```bash
+bunx vitest run src/__tests__/commands.test.ts
+bunx vitest run src/__tests__/resource-viewer.test.ts
+bunx vitest run src/__tests__/orbit.test.ts
+```
 
 ## Features
 
@@ -81,9 +103,10 @@ src/
 549+ tests across 20 files using [Vitest](https://vitest.dev/) with jsdom.
 
 ```bash
-make test          # single run
-make test-watch    # watch mode
-make coverage      # with v8 coverage
+bun run test                # single run
+bun run test:watch          # watch mode
+bun run test:coverage       # with v8 coverage
+bun run verify              # full repo verification
 ```
 
 ## License
