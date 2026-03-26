@@ -523,6 +523,42 @@ body {
 	align-items: flex-start;
 }
 
+.colony-capacity {
+	margin-bottom: 6px;
+}
+
+.colony-capacity-stats {
+	display: flex;
+	gap: 12px;
+	font-size: 10px;
+	color: #aaaaaa;
+	margin-bottom: 4px;
+}
+
+.colony-capacity-stats b {
+	color: #ccddcc;
+}
+
+.colony-capacity-bar-track {
+	height: 6px;
+	background: #1a2a1a;
+	border-radius: 3px;
+	overflow: hidden;
+}
+
+.colony-capacity-bar-fill {
+	height: 100%;
+	background: #446644;
+	border-radius: 3px;
+	transition: width 0.3s;
+}
+
+.colony-warn {
+	font-size: 10px;
+	color: #cc8844;
+	margin-top: 4px;
+}
+
 .colony-stockpile {
 	margin-bottom: 8px;
 }

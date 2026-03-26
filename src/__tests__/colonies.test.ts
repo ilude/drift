@@ -204,7 +204,8 @@ describe("colonies", () => {
 		seedStartingColonies();
 		const scientist = getScientistsAtColony("Earth")[0];
 		expect(scientist).toBeDefined();
-		const setLabs = setScientistLabs(scientist.id, 2);
+		// adminCap is 1–5 (RNG), so request 1 which is always valid
+		const setLabs = setScientistLabs(scientist.id, 1);
 		expect(setLabs).toBe(true);
 		const queued = queueResearchProjectForScientist(scientist.id, "survey-automation");
 		expect(queued).toBe(true);

@@ -1,4 +1,7 @@
 {
+	"files": {
+		"includes": ["src/**", "*.ts", "*.json", "*.css", "index.html"]
+	},
 	"formatter": {
 		"enabled": true,
 		"indentStyle": "tab",

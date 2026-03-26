@@ -33,9 +33,15 @@ let projectCounter = 0;
 let transferCounter = 0;
 let scientistCounter = 0;
 
-export type ResearchCategory = "industry" | "survey" | "logistics" | "research";
+export type ResearchCategory = "industry" | "survey" | "logistics" | "research" | "biology";
 
-const RESEARCH_CATEGORIES: ResearchCategory[] = ["industry", "survey", "logistics", "research"];
+const RESEARCH_CATEGORIES: ResearchCategory[] = [
+	"industry",
+	"survey",
+	"logistics",
+	"research",
+	"biology",
+];
 
 const SCIENTIST_NAMES = [
 	"John Doe",
@@ -67,6 +73,7 @@ export interface ResearchDefinition {
 	difficulty: number;
 	description: string;
 	effectText: string;
+	prerequisites: string[];
 }
 
 export const CONSTRUCTION_DEFS: ConstructionDefinition[] = [
@@ -122,15 +129,50 @@ export const CONSTRUCTION_DEFS: ConstructionDefinition[] = [
 ];
 
 export const RESEARCH_DEFS: ResearchDefinition[] = [
+	// --- Survey ---
 	{
 		id: "survey-automation",
 		name: "Survey Automation",
 		category: "survey",
 		rpCost: 120,
 		difficulty: 1.1,
-		description: "Refines mission-planning and scan interpretation.",
+		description: "Refines mission-planning and scan interpretation routines.",
 		effectText: "-15% survey duration",
+		prerequisites: [],
 	},
+	{
+		id: "advanced-telemetry",
+		name: "Advanced Telemetry",
+		category: "survey",
+		rpCost: 250,
+		difficulty: 1.2,
+		description:
+			"Higher-fidelity sensor arrays and real-time data compression improve scan resolution.",
+		effectText: "-20% survey duration. Unlocks level-2 deposit detection.",
+		prerequisites: ["survey-automation"],
+	},
+	{
+		id: "predictive-analysis",
+		name: "Predictive Analysis",
+		category: "survey",
+		rpCost: 500,
+		difficulty: 1.35,
+		description:
+			"Statistical modelling of geological strata lets survey crews target deposits proactively.",
+		effectText: "+30% chance of eureka breakthrough on survey completion.",
+		prerequisites: ["advanced-telemetry"],
+	},
+	{
+		id: "deep-scan-array",
+		name: "Deep Scan Array",
+		category: "survey",
+		rpCost: 1000,
+		difficulty: 1.5,
+		description: "Penetrating gravimetric sensors capable of mapping deep subsurface structure.",
+		effectText: "Unlocks level-3 deposit detection. -25% survey duration.",
+		prerequisites: ["predictive-analysis"],
+	},
+	// --- Industry ---
 	{
 		id: "mining-drills",
 		name: "Improved Mining Drills",
@@ -139,24 +181,7 @@ export const RESEARCH_DEFS: ResearchDefinition[] = [
 		difficulty: 1.2,
 		description: "Better extraction tooling and haul discipline for frontier colonies.",
 		effectText: "+25% mine output",
-	},
-	{
-		id: "maintenance-doctrine",
-		name: "Maintenance Doctrine",
-		category: "logistics",
-		rpCost: 140,
-		difficulty: 1.3,
-		description: "Standardized service routines for yard crews and depot handling.",
-		effectText: "+15% repair/refuel quality",
-	},
-	{
-		id: "lab-instrumentation",
-		name: "Lab Instrumentation",
-		category: "research",
-		rpCost: 150,
-		difficulty: 1.35,
-		description: "Denser instrumentation packages for better throughput per active lab.",
-		effectText: "+20% research output",
+		prerequisites: [],
 	},
 	{
 		id: "fabrication-methods",
@@ -166,6 +191,168 @@ export const RESEARCH_DEFS: ResearchDefinition[] = [
 		difficulty: 1.4,
 		description: "Improves construction planning and line efficiency for installation builds.",
 		effectText: "+25% construction BP",
+		prerequisites: ["mining-drills"],
+	},
+	{
+		id: "advanced-metallurgy",
+		name: "Advanced Metallurgy",
+		category: "industry",
+		rpCost: 500,
+		difficulty: 1.45,
+		description:
+			"High-temperature alloy processing and vacuum casting unlock superior structural materials.",
+		effectText: "+20% mine output. Unlocks advanced ship hull components.",
+		prerequisites: ["fabrication-methods"],
+	},
+	{
+		id: "nano-manufacturing",
+		name: "Nano-Manufacturing",
+		category: "industry",
+		rpCost: 1000,
+		difficulty: 1.6,
+		description: "Molecular-scale assembly lines produce components with near-zero tolerance error.",
+		effectText: "+30% construction BP. -20% component mass for manufactured ship parts.",
+		prerequisites: ["advanced-metallurgy"],
+	},
+	// --- Logistics ---
+	{
+		id: "maintenance-doctrine",
+		name: "Maintenance Doctrine",
+		category: "logistics",
+		rpCost: 140,
+		difficulty: 1.3,
+		description: "Standardized service routines for yard crews and depot handling.",
+		effectText: "+15% repair/refuel quality",
+		prerequisites: [],
+	},
+	{
+		id: "supply-optimization",
+		name: "Supply Optimization",
+		category: "logistics",
+		rpCost: 250,
+		difficulty: 1.35,
+		description:
+			"Inventory forecasting and route compression reduce waste across the logistics chain.",
+		effectText: "-20% supply consumption rate. +10% refuel quality.",
+		prerequisites: ["maintenance-doctrine"],
+	},
+	{
+		id: "fleet-logistics",
+		name: "Fleet Logistics",
+		category: "logistics",
+		rpCost: 500,
+		difficulty: 1.4,
+		description: "Multi-ship resupply coordination and underway replenishment protocols.",
+		effectText: "Unlocks improved propulsion engine tier. +15% overhaul quality.",
+		prerequisites: ["supply-optimization"],
+	},
+	{
+		id: "rapid-refit",
+		name: "Rapid Refit",
+		category: "logistics",
+		rpCost: 1000,
+		difficulty: 1.5,
+		description: "Modular ship architecture and pre-staged component bundles cut major refit time.",
+		effectText: "-40% major refit duration. Hull ceiling degradation rate -25%.",
+		prerequisites: ["fleet-logistics"],
+	},
+	// --- Research ---
+	{
+		id: "lab-instrumentation",
+		name: "Lab Instrumentation",
+		category: "research",
+		rpCost: 150,
+		difficulty: 1.35,
+		description: "Denser instrumentation packages for better throughput per active lab.",
+		effectText: "+20% research output per lab",
+		prerequisites: [],
+	},
+	{
+		id: "sensor-theory",
+		name: "Sensor Theory",
+		category: "research",
+		rpCost: 250,
+		difficulty: 1.4,
+		description: "Unified mathematical framework for passive and active sensor interpretation.",
+		effectText: "+15% research output. Prerequisite for advanced survey sensors.",
+		prerequisites: ["lab-instrumentation"],
+	},
+	{
+		id: "applied-physics",
+		name: "Applied Physics",
+		category: "research",
+		rpCost: 500,
+		difficulty: 1.45,
+		description:
+			"Practical derivations from theoretical physics yield breakthroughs in materials and propulsion.",
+		effectText: "+20% research output. Unlocks advanced engine tier.",
+		prerequisites: ["sensor-theory"],
+	},
+	{
+		id: "unified-field-theory",
+		name: "Unified Field Theory",
+		category: "research",
+		rpCost: 1000,
+		difficulty: 1.6,
+		description:
+			"A coherent model of fundamental forces enables a new generation of energy and propulsion systems.",
+		effectText: "+30% research output. Unlocks extreme engine tier.",
+		prerequisites: ["applied-physics"],
+	},
+	// --- Biology ---
+	{
+		id: "basic-hydroponics",
+		name: "Basic Hydroponics",
+		category: "biology",
+		rpCost: 120,
+		difficulty: 1.15,
+		description:
+			"Closed-cycle nutrient delivery and growth lighting for food production in any environment.",
+		effectText: "Unlocks hydroponics installation. Colony food production enables population growth.",
+		prerequisites: [],
+	},
+	{
+		id: "genetic-medicine",
+		name: "Genetic Medicine",
+		category: "biology",
+		rpCost: 250,
+		difficulty: 1.3,
+		description: "Targeted gene therapies and population health monitoring improve colony longevity.",
+		effectText: "+15% population growth rate. Scientist and officer career lengths extended.",
+		prerequisites: ["basic-hydroponics"],
+	},
+	{
+		id: "closed-cycle-life-support",
+		name: "Closed-Cycle Life Support",
+		category: "biology",
+		rpCost: 250,
+		difficulty: 1.3,
+		description:
+			"Atmospheric recycling and water reclamation reduce crew supply requirements on long deployments.",
+		effectText: "-20% ship supply consumption rate. Extended crew endurance.",
+		prerequisites: ["basic-hydroponics"],
+	},
+	{
+		id: "xenobiology",
+		name: "Xenobiology",
+		category: "biology",
+		rpCost: 500,
+		difficulty: 1.45,
+		description:
+			"Study of non-terrestrial biochemistry and atmospheric chemistry enables biosphere classification.",
+		effectText: "Prerequisite for terraforming. Unlocks habitability assessment surveys.",
+		prerequisites: ["genetic-medicine", "closed-cycle-life-support"],
+	},
+	{
+		id: "terraforming",
+		name: "Terraforming",
+		category: "biology",
+		rpCost: 1000,
+		difficulty: 1.6,
+		description:
+			"Long-duration atmospheric seeding, ice delivery, and microorganism introduction can transform a hostile world over decades.",
+		effectText: "Unlocks terraforming colony projects. Habitability modification rate: +0.001/year.",
+		prerequisites: ["xenobiology"],
 	},
 ];
 
@@ -290,7 +477,8 @@ function seedInitialScientistsAtColony(bodyName: string, count: number): void {
 		const primary = pickCategory();
 		let secondary = pickCategory();
 		if (secondary === primary)
-			secondary = RESEARCH_CATEGORIES[(RESEARCH_CATEGORIES.indexOf(primary) + 1) % 4];
+			secondary =
+				RESEARCH_CATEGORIES[(RESEARCH_CATEGORIES.indexOf(primary) + 1) % RESEARCH_CATEGORIES.length];
 		const scientist: ScientistState = {
 			id: `scientist-${scientistCounter++}`,
 			name: makeScientistName(),
@@ -427,12 +615,22 @@ function canStartProject(scientist: ScientistState, techId: string): boolean {
 	if (state.researchedTechs.has(techId)) return false;
 	const [def, found] = getResearchDef(techId);
 	if (!found) return false;
+	for (const prereq of def.prerequisites) {
+		if (!state.researchedTechs.has(prereq)) return false;
+	}
 	const [colony, colonyFound] = getColony(scientist.colonyBodyName);
 	if (!colonyFound || colony.installations.lab <= 0) return false;
 	const [existing, existingFound] = getProject(def.id);
 	if (!existingFound) return true;
 	if (existing.leadScientistId === scientist.id) return false;
 	return existing.leadScientistId === null;
+}
+
+export function canResearchTech(techId: string): boolean {
+	const [def, found] = getResearchDef(techId);
+	if (!found) return false;
+	if (state.researchedTechs.has(techId)) return false;
+	return def.prerequisites.every((p) => state.researchedTechs.has(p));
 }
 
 function maybeActivateNextProject(scientist: ScientistState): void {
@@ -500,6 +698,29 @@ export function reorderScientistQueue(
 	return true;
 }
 
+export function removeFromScientistQueue(scientistId: string, techId: string): boolean {
+	const [scientist, found] = getScientist(scientistId);
+	if (!found) return false;
+	const idx = scientist.projectQueue.indexOf(techId);
+	if (idx === -1) return false;
+	scientist.projectQueue.splice(idx, 1);
+	return true;
+}
+
+export function cancelResearchProject(techId: string): boolean {
+	const project = state.researchProjects.get(techId);
+	if (!project) return false;
+	state.researchProjects.delete(techId);
+	if (!project.leadScientistId) return true;
+	const scientist = state.scientists.get(project.leadScientistId);
+	if (!scientist) return true;
+	if (scientist.activeProjectTechId === techId) {
+		scientist.activeProjectTechId = null;
+		maybeActivateNextProject(scientist);
+	}
+	return true;
+}
+
 export function setResearchPaused(techId: string, paused: boolean): boolean {
 	const [project, found] = getProject(techId);
 	if (!found) return false;
@@ -555,6 +776,9 @@ function completeProject(project: ColonyResearchProject, scientist: ScientistSta
 		colony: project.colonyBodyName,
 	});
 	maybeActivateNextProject(scientist);
+	if (typeof window !== "undefined") {
+		window.dispatchEvent(new CustomEvent("research-state-changed"));
+	}
 }
 
 function tickResearchProject(project: ColonyResearchProject, simDtDays: number): void {
@@ -766,6 +990,26 @@ export function getColonyQualitiesAtBody(bodyName: string): Result<ColonyQualiti
 	return found ? ok(computeColonyQualities(colony)) : err();
 }
 
+export function getColonyBuildPointsPerDay(colony: ColonyState): number {
+	const qualities = computeColonyQualities(colony);
+	return (
+		BASE_CONSTRUCTION_BP_RATE * colony.installations.constructionFactory * qualities.construction
+	);
+}
+
+export function getConstructionProjectEtaDays(
+	project: ColonyConstructionProject,
+	bpPerDay: number,
+	totalAllocationPct: number,
+): number | null {
+	if (project.paused || bpPerDay <= 0 || project.allocationPct <= 0) return null;
+	const def = getConstructionDef(project.installationId);
+	const effectiveRate = bpPerDay * (project.allocationPct / Math.max(totalAllocationPct, 100));
+	if (effectiveRate <= 0) return null;
+	const bpRemaining = project.quantityRemaining * def.bpCost - project.progressBp;
+	return bpRemaining / effectiveRate;
+}
+
 export function getServiceQualityForShip(ship: ShipEntry): number {
 	const [qualities, found] = getColonyQualitiesAtBody(ship.hostPlanetName);
 	return found ? Math.max(0.1, qualities.repair) : state.depotQuality;
@@ -875,14 +1119,6 @@ export function startResearchProject(
 	}
 	queueResearchProjectForScientist(scientist.id, techId);
 	maybeActivateNextProject(scientist);
-}
-
-export function cancelResearchProject(bodyName: string, techId: string): void {
-	for (const scientist of getScientistsAtColony(bodyName)) {
-		scientist.projectQueue = scientist.projectQueue.filter((queued) => queued !== techId);
-		if (scientist.activeProjectTechId === techId) scientist.activeProjectTechId = null;
-	}
-	state.researchProjects.delete(techId);
 }
 
 export function setResearchLabs(

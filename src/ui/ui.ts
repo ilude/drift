@@ -19,6 +19,7 @@ import {
 import { camera, labelContainer, setAntialias, ZOOM_BASE } from "../rendering/scene";
 import type { BodyEntry, CategoryKey, CategoryVisibility, ShipEntry, SystemData } from "../types";
 import { isShipEntry, isSurveyable } from "../types";
+import { closeResearchViewer, isResearchViewerOpen, openResearchViewer } from "./research-viewer";
 import { closeResourceViewer, isResourceViewerOpen, openResourceViewer } from "./resource-viewer";
 import { recenterOnStar, selectBody } from "./selection";
 
@@ -704,6 +705,12 @@ export function setupUI(loadSystem: (systemData: SystemData) => void): void {
 	document.getElementById("btn-resources")?.addEventListener("click", () => {
 		if (isResourceViewerOpen()) closeResourceViewer();
 		else openResourceViewer();
+	});
+
+	// Research viewer popout
+	document.getElementById("btn-research")?.addEventListener("click", () => {
+		if (isResearchViewerOpen()) closeResearchViewer();
+		else openResearchViewer();
 	});
 
 	// Manual save
