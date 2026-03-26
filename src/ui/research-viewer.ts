@@ -51,6 +51,7 @@ interface ProjectSnapshot {
 	annualRp: number;
 	etaDay: number | null;
 	status: "active" | "paused" | "queued";
+	queueIndex: number | null;
 }
 
 interface TechSnapshot {
@@ -167,6 +168,7 @@ function projectSnapshotFromActive(project: ColonyResearchProject): ProjectSnaps
 		annualRp: Math.round(rpPerDay * 365),
 		etaDay: estimateEtaDay(project),
 		status: project.paused ? "paused" : project.leadScientistId ? "active" : "queued",
+		queueIndex: null,
 	};
 }
 
@@ -181,10 +183,10 @@ function buildProjectSnapshots(): ProjectSnapshot[] {
 
 	// Include techs queued on scientists but not yet activated into researchProjects
 	for (const scientist of state.scientists.values()) {
-		for (const techId of scientist.projectQueue) {
-			if (includedTechIds.has(techId)) continue;
+		scientist.projectQueue.forEach((techId, queueIndex) => {
+			if (includedTechIds.has(techId)) return;
 			const def = RESEARCH_DEFS.find((d) => d.id === techId);
-			if (!def) continue;
+			if (!def) return;
 			snaps.push({
 				techId,
 				techName: def.name,
@@ -199,9 +201,10 @@ function buildProjectSnapshots(): ProjectSnapshot[] {
 				annualRp: 0,
 				etaDay: null,
 				status: "queued",
+				queueIndex,
 			});
 			includedTechIds.add(techId);
-		}
+		});
 	}
 
 	return snaps;
@@ -818,11 +821,15 @@ function getSortVal(p, key) {
 function renderProjects() {
   const tbody = document.getElementById('proj-tbody');
   const filtered = snap.projects.filter(p => !selectedColony || p.colonyBodyName === selectedColony);
-  const sorted = [...filtered].sort((a, b) => {
+  // Active/paused always before queued; within each group sort by selected key
+  const nonQueued = filtered.filter(p => p.status !== 'queued').sort((a, b) => {
     const av = getSortVal(a, sortKey), bv = getSortVal(b, sortKey);
     if (typeof av === 'string') return sortDir * av.localeCompare(bv);
     return sortDir * (av - bv);
   });
+  const queued = filtered.filter(p => p.status === 'queued')
+    .sort((a, b) => (a.queueIndex ?? 0) - (b.queueIndex ?? 0));
+  const sorted = [...nonQueued, ...queued];
   // Update sort indicators on headers
   document.querySelectorAll('.proj-table th[data-key]').forEach(th => {
     th.classList.remove('sort-asc', 'sort-desc');
@@ -832,6 +839,9 @@ function renderProjects() {
     tbody.innerHTML = '<tr><td colspan="11" class="empty-cell">No active research projects. Select a technology and scientist below, then click Create Project.</td></tr>';
     return;
   }
+  // Pre-compute queue lengths per scientist for button disabling
+  const queueLengths = {};
+  snap.scientists.forEach(s => { queueLengths[s.id] = s.projectQueue.length; });
   let html = '';
   for (const p of sorted) {
     const sci = snap.scientists.find(s => s.id === p.leadScientistId);
@@ -842,6 +852,14 @@ function renderProjects() {
     const isPaused = p.status === 'paused';
     const pauseCls = isPaused ? ' btn-paused' : '';
     const pauseLabel = isPaused ? 'Resume' : 'Pause';
+    let orderBtns = '';
+    if (p.status === 'queued' && p.leadScientistId != null && p.queueIndex != null) {
+      const qi = p.queueIndex;
+      const qlen = queueLengths[p.leadScientistId] ?? 0;
+      const upDis = qi === 0 ? ' disabled' : '';
+      const dnDis = qi >= qlen - 1 ? ' disabled' : '';
+      orderBtns = \`<button class="btn-sm btn-qi-up"\${upDis} data-sci="\${p.leadScientistId}" data-qi="\${qi}">▲</button><button class="btn-sm btn-qi-dn"\${dnDis} data-sci="\${p.leadScientistId}" data-qi="\${qi}">▼</button>\`;
+    }
     html += \`<tr class="status-\${p.status}">
       <td class="col-field">\${p.category}</td>
       <td class="col-tech">\${p.techName}\${tag}</td>
@@ -854,12 +872,25 @@ function renderProjects() {
       <td class="col-num">\${daysRemaining}</td>
       <td class="col-eta">\${formatDay(p.etaDay)}</td>
       <td class="col-actions">
+        \${orderBtns}
         <button class="btn-sm btn-pause\${pauseCls}" data-tid="\${p.techId}" data-paused="\${isPaused ? '1' : '0'}">\${pauseLabel}</button>
         <button class="btn-sm btn-del btn-cancel" data-tid="\${p.techId}">×</button>
       </td>
     </tr>\`;
   }
   tbody.innerHTML = html;
+  tbody.querySelectorAll('.btn-qi-up').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const qi = Number(btn.dataset.qi);
+      window.opener?.postMessage({ type: 'research-action', action: 'reorder-queue', scientistId: btn.dataset.sci, fromIdx: qi, toIdx: qi - 1 }, '*');
+    });
+  });
+  tbody.querySelectorAll('.btn-qi-dn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const qi = Number(btn.dataset.qi);
+      window.opener?.postMessage({ type: 'research-action', action: 'reorder-queue', scientistId: btn.dataset.sci, fromIdx: qi, toIdx: qi + 1 }, '*');
+    });
+  });
   tbody.querySelectorAll('.btn-pause').forEach(btn => {
     btn.addEventListener('click', () => {
       window.opener?.postMessage({ type: 'research-action', action: 'set-paused', techId: btn.dataset.tid, paused: btn.dataset.paused !== '1' }, '*');
