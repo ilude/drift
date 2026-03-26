@@ -1,6 +1,6 @@
 # Colony System Design Notes
 
-> **Status:** Early discussion. Not yet implemented. Capturing design direction from conversations.
+> **Status:** Phase 0 implemented (2026-03-25). `src/core/colonies.ts` and `src/ui/colony-panel.ts` are live. Save version 7 includes colony state. See `tasks/decisions.md` for accepted design decisions. This doc captures broader design direction for Phase 1+.
 
 ## Core Philosophy
 

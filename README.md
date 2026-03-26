@@ -56,7 +56,8 @@ bunx vitest run src/__tests__/orbit.test.ts
 - **Multi-level surveys** — Three survey levels representing scan depth (surface → mid-depth → deep). 27 resource types across metals, volatiles, industrial, radioactive, and umbral categories. Deposit pools are scientifically grounded — gas giants yield He-3 and deuterium, icy moons yield water, C-type asteroids yield carbon and organics.
 - **Resource viewer** — Popout spreadsheet window for multi-monitor setups. Body×resource matrix with category tabs, sortable columns, and click-to-navigate.
 - **Brachistochrone transfers** — Hermite spline trajectories with station-keeping arrival. Engine tiers from 0.1g conventional to 200g exotic drives.
-- **Ship simulation** — Crew morale decay, hull malfunction cascades, gradual refueling/repair/shore leave, colony supply shuttles. Tanker ship with fleet refueling. Configurable survey difficulty multiplier.
+- **Colony system** — Per-body colonies with population, habitability, installations (repair yard, fuel depot, mine, lab, academy, construction factory, storage, shipyard), and stockpiles. Colony quality drives ship repair and refuel rates. Construction queue with BP-based project progress.
+- **Ship simulation** — Crew morale decay, hull malfunction cascades (bathtub curve), gradual refueling/repair/shore leave, colony supply shuttles. Tanker ship with fleet refueling and tanker coordination (target ships hold orbit when a tanker is inbound). Configurable difficulty multipliers.
 - **Procedural textures** — Canvas-generated rocky, gas giant, ice giant, and moon surfaces. GLSL star shader with animated granulation.
 - **Planetary rings and clouds** — LOD-gated ring systems and semi-transparent cloud layers.
 - **Time control** — 11 speeds from 5 seconds to 30 days per frame, with pause and step-through.
@@ -71,7 +72,10 @@ src/
   core/
     state.ts              Centralized state, date/time utils, save/load
     utils.ts              Seeded RNG helpers
+    result.ts             Go-style Result<T> tuple helpers
     commands.ts           Command tree evaluation, ship simulation tick
+    commander.ts          Commander judgment layer (preemptive service, defer maintenance, hold for tanker)
+    colonies.ts           Colony system: workforce, qualities, ticking (mining, construction, research)
     notifications.ts      Notification system with coalescing and smart pause
   math/
     orbit.ts              Kepler solver, orbital mechanics primitives
@@ -89,18 +93,19 @@ src/
     selection.ts          Click detection, fly-to, info panel, follow camera
     commands.ts           Command tree editor UI
     resource-viewer.ts    Popout resource matrix window
+    colony-panel.ts       Colony management panel (overview, construction queue, research queue)
   data/
     sol-data.ts           Sol System preset data
     system-generator.ts   Procedural star system generation
     resources.ts          Resource catalog, seeded deposit generation
   types.ts                Shared TypeScript interfaces
   main.ts                 Orchestrator: init, teardown, animation loop
-  __tests__/              All test files (20 files, 549+ tests)
+  __tests__/              All test files (21 files, 589+ tests)
 ```
 
 ## Testing
 
-549+ tests across 20 files using [Vitest](https://vitest.dev/) with jsdom.
+589+ tests across 21 files using [Vitest](https://vitest.dev/) with jsdom.
 
 ```bash
 bun run test                # single run

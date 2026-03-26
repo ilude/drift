@@ -2,6 +2,8 @@
 
 Game design reference document for Aurora 4X's research mechanics, technology progression, and scientist system. Based on the C# version of Aurora 4X by Steve Walmsley.
 
+**Primary source:** https://erikevenson.github.io/aurora-manual/
+
 ---
 
 ## 1. Research Categories (9 Fields)

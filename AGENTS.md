@@ -48,10 +48,21 @@ These are repeated here because they directly affect safe autonomous edits:
 ## Edit Map
 
 - Ship logic: `src/core/commands.ts`, `src/core/commander.ts`, `src/main.ts`
+- Commander judgment overrides: `src/core/commander.ts` (preemptive service, defer maintenance, hold for tanker)
+- Colony system: `src/core/colonies.ts` (workforce, qualities, mining/construction/research ticks), `src/ui/colony-panel.ts`
 - Entity lookup and resolution: `src/core/entities.ts`
+- Intent broadcast and coordination: `src/core/intents.ts`
 - Data generation: `src/data/*`
 - Rendering and scene behavior: `src/rendering/*`, `src/math/*`
 - UI chrome and HUD: `src/ui/*`
+
+## Design Research Library
+
+Extensive design research lives in `tasks/`. Key files:
+- `tasks/research-synthesis-report.md` — Full synthesis of all research (start here)
+- `tasks/colony-system-design.md` — Colony system design notes and phased build plan
+- `tasks/aurora-*-implementation.md` — Aurora 4X mechanics mapped to Drift (colonies, economy, research, logistics, exploration, commanders, ship design)
+- `tasks/production-chain-*.md` — Nodal production chain design research (factory patterns, graph theory, 4X patterns, UX)
 
 ## Documentation Notes
 

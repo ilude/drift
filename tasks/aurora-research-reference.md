@@ -1,5 +1,8 @@
 # Aurora 4X: Colony-Based Research Infrastructure — Player Experience Reference
 
+**Primary source:** https://erikevenson.github.io/aurora-manual/
+
+
 ## Overview
 
 Research in Aurora 4X is deeply intertwined with colony economics. It is not a separate system you manage in isolation — it competes directly with industrial output, population allocation, and mineral consumption. Every research lab built is a factory not built. Every million population staffing labs is a million not operating mines. This tension is the core design achievement of Aurora's research system.

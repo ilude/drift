@@ -85,3 +85,30 @@ Record of why things work the way they do. Goals, rationale, and trade-offs — 
 ### Deterministic Formatting
 **Goal:** Consistent number display across all ship stats.
 **Why:** Fractional accumulation (e.g., supplies += rate * simDt) produces long decimals. All displayed values use appropriate rounding: `Math.round()` for percentages and integer quantities, `.toFixed(2)` for fuel tonnes, `formatDays()` for durations (decimal for sub-day, floor for multi-day).
+
+---
+
+## Tanker Coordination
+
+### Hold-for-Tanker via Intent Broadcast (`checkHoldForTanker`)
+**Goal:** Tanker ships can rendezvous with their target without the target departing before the tanker arrives.
+**Why:** Without coordination, a tanker dispatched to refuel Ship A would often arrive to find Ship A had already left for the next survey target. The fix: when a tanker publishes a `{ type: "tanking", target: "Ship A" }` intent, `checkHoldForTanker` in the commander judgment layer intercepts any `survey` or `transfer` dispatch and substitutes `idle` until the tanker departs (clears the intent). This is purely passive — no new state, no timers — and the hold resolves automatically when the tanker finishes and publishes a new intent.
+**Priority:** Second override in `commanderDecide()`, after preemptive servicing, before defer-maintenance.
+
+---
+
+## Type System
+
+### `Result<T>` Go-style Tuple (`core/result.ts`)
+**Goal:** Explicit, non-throwing error handling for operations that may fail without exceptional conditions.
+**Why:** `null` returns lose the reason for failure; thrown exceptions interrupt control flow for expected conditions (e.g., "no valid survey target found"). Go-style `[T, true] | [null, false]` tuples make the success/failure branch explicit at the call site with destructuring. Kept minimal: just `ok(v)` and `err()` helpers — no `Either` monad complexity.
+
+---
+
+## Colony System
+
+### Phase 0: Colony as Flag + Installations + Stockpile
+**Goal:** Ship repair/refuel rates driven by actual colony infrastructure, not a global constant.
+**Why:** The pre-colony codebase used a hardcoded `depotQuality = 1.0` for all repair/refuel math. Phase 0 replaces this with a per-body `ColonyState` containing population, 8 installation types (repair yard, fuel depot, mine, lab, academy, construction factory, storage, shipyard), and stockpiles. `ColonyQualities` derived from installations drives the same rate modifier formulas — no other ship logic changed.
+**Phase 0 scope:** Colony placement (flag on body), workforce allocation, quality calculation, mining/construction/research ticks. No cross-colony trade or inter-system logistics yet.
+**Installation types accepted:** `repair-yard`, `fuel-depot`, `mine`, `lab`, `academy`, `construction-factory`, `storage`, `shipyard`. Construction queue with BP-based progress. Research queue consuming scientist-hours.
