@@ -36,9 +36,11 @@ import { addCoalescedNotification, addNotification } from "./core/notifications"
 import { resolveShipPhysics } from "./core/ship-utils";
 import { gameLog, gameWarn, MASTER_SEED, state } from "./core/state";
 import { seededRandom } from "./core/utils";
+import { findEngineTier } from "./data/components";
 import { generateDeposits, generateEarthDeposits } from "./data/resources";
 import { getSolSystem } from "./data/sol-data";
 import { DIST_SCALE } from "./math/orbit";
+import { computeEngineStats, computeShipStats } from "./math/ship-design-calc";
 import { AU_TO_KM, checkTransferKm } from "./math/ship-physics";
 import { isTransferComplete } from "./math/transfer";
 import { SURVEYED_ASTEROID_COLOR } from "./rendering/bodies";
@@ -62,7 +64,9 @@ import type {
 	BodyEntry,
 	CommandResult,
 	CommandTree,
+	EngineDesign,
 	PlanetEntry,
+	ShipDesign,
 	ShipEntry,
 	SystemData,
 } from "./types";
@@ -114,9 +118,80 @@ createBodies();
 createComets();
 // Initial position tick so all bodies are placed before ship creation
 updatePositions(1e-10, 300);
-createShip({ name: "ISS Explorer", hostPlanetName: "Earth" });
-createShip({ name: "ISS Magellan", hostPlanetName: "Mars" });
-createShip({ name: "ISS Kepler", hostPlanetName: "Jupiter" });
+function seedDefaultDesigns(): void {
+	if (state.engineDesigns.size > 0) return;
+
+	const tier = findEngineTier("conventional");
+	if (!tier) return;
+
+	const engineStats = computeEngineStats(tier, 1.0);
+	const engineId = `eng-${++state.designCounter}`;
+	const defaultEngine: EngineDesign = {
+		id: engineId,
+		name: "Standard TN Drive",
+		tierId: "conventional",
+		powerMod: 1.0,
+		...engineStats,
+	};
+	state.engineDesigns.set(engineId, defaultEngine);
+
+	const explorerComponents: ShipDesign["components"] = [
+		{ componentId: "bridge-standard", count: 1 },
+		{ componentId: "crew-standard", count: 1 },
+		{ componentId: "fuel-standard", count: 1 },
+		{ componentId: "maint-basic", count: 1 },
+		{ componentId: "sensor-basic", count: 1 },
+	];
+	const explorerStats = computeShipStats(defaultEngine, 1, explorerComponents);
+	const explorerId = `ship-${++state.designCounter}`;
+	const explorerDesign: ShipDesign = {
+		id: explorerId,
+		name: "Explorer",
+		engineDesignId: engineId,
+		engineCount: 1,
+		components: explorerComponents,
+		...explorerStats,
+	};
+	state.shipDesigns.set(explorerId, explorerDesign);
+
+	const tankerComponents: ShipDesign["components"] = [
+		{ componentId: "bridge-standard", count: 1 },
+		{ componentId: "crew-small", count: 1 },
+		{ componentId: "fuel-standard", count: 3 },
+		{ componentId: "maint-basic", count: 1 },
+	];
+	const tankerStats = computeShipStats(defaultEngine, 1, tankerComponents);
+	const tankerId = `ship-${++state.designCounter}`;
+	const tankerDesign: ShipDesign = {
+		id: tankerId,
+		name: "Tanker",
+		engineDesignId: engineId,
+		engineCount: 1,
+		components: tankerComponents,
+		...tankerStats,
+	};
+	state.shipDesigns.set(tankerId, tankerDesign);
+}
+
+seedDefaultDesigns();
+
+const explorerDesign = [...state.shipDesigns.values()].find((d) => d.name === "Explorer");
+
+createShip({
+	name: "ISS Explorer",
+	hostPlanetName: "Earth",
+	designId: explorerDesign?.id,
+});
+createShip({
+	name: "ISS Magellan",
+	hostPlanetName: "Mars",
+	designId: explorerDesign?.id,
+});
+createShip({
+	name: "ISS Kepler",
+	hostPlanetName: "Jupiter",
+	designId: explorerDesign?.id,
+});
 
 const tankerCommandTree: CommandTree = {
 	entries: [

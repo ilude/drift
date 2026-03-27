@@ -279,6 +279,28 @@ interface ShipConfig {
 	color?: string;
 	fuelCapacityKg?: number;
 	commandTree?: import("../types").CommandTree;
+	designId?: string;
+}
+
+interface ResolvedShipStats {
+	engineId: string;
+	dryMassKg: number;
+	fuelCapacityKg: number;
+	maxSupplies: number;
+}
+
+function resolveShipConfigStats(
+	config: ShipConfig,
+	defaultEngine: import("../types").EngineType,
+): ResolvedShipStats {
+	const design = config.designId ? state.shipDesigns.get(config.designId) : undefined;
+	const engineDesign = design ? state.engineDesigns.get(design.engineDesignId) : undefined;
+	return {
+		engineId: engineDesign?.tierId ?? defaultEngine.id,
+		dryMassKg: design?.dryMassKg ?? defaultEngine.dryMassKg,
+		fuelCapacityKg: design?.fuelCapacityKg ?? config.fuelCapacityKg ?? 50_000,
+		maxSupplies: design?.maxSupplies ?? 100,
+	};
 }
 
 export function createShip(config: ShipConfig): ShipEntry | undefined {
@@ -329,6 +351,8 @@ export function createShip(config: ShipConfig): ShipEntry | undefined {
 
 	const resolvedEngineId = config.engineId ?? ENGINE_TYPES[0].id;
 	const defaultEngine = ENGINE_TYPES.find((e) => e.id === resolvedEngineId) ?? ENGINE_TYPES[0];
+	const resolved = resolveShipConfigStats(config, defaultEngine);
+
 	const entry = {
 		data: {
 			name: config.name,
@@ -360,10 +384,10 @@ export function createShip(config: ShipConfig): ShipEntry | undefined {
 		geomLevels: null,
 		lodLevel: 0,
 		// Ship physics
-		engineId: defaultEngine.id,
-		dryMassKg: defaultEngine.dryMassKg,
-		fuelKg: config.fuelCapacityKg ?? 50_000,
-		fuelCapacityKg: config.fuelCapacityKg ?? 50_000,
+		engineId: resolved.engineId,
+		dryMassKg: resolved.dryMassKg,
+		fuelKg: resolved.fuelCapacityKg,
+		fuelCapacityKg: resolved.fuelCapacityKg,
 		// Ship state
 		shipState: "orbiting" as const,
 		hostPlanetName: homePlanetData.name,
@@ -447,14 +471,14 @@ export function createShip(config: ShipConfig): ShipEntry | undefined {
 			age: 0,
 			totalAge: 0,
 			lastRefitAge: 0,
-			supplies: 100,
-			maxSupplies: 100,
+			supplies: resolved.maxSupplies,
+			maxSupplies: resolved.maxSupplies,
 			hullIntegrity: 100,
 		},
 		action: { type: null, commandId: null, startTime: 0, duration: 0, progress: 0 },
 		stationTarget: null,
 		keelDate: state.simTime.days,
-		designId: null,
+		designId: config.designId ?? null,
 	} as ShipEntry;
 
 	// Velocity tail -- always visible, short trail showing direction
