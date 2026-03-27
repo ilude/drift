@@ -4,7 +4,7 @@ import { findEngineTier, getUnlockedComponents, getUnlockedEngineTiers } from ".
 import type { EngineDesign, ShipDesign, ShipDesignComponent } from "../data/ship-designs";
 import { computeEngineStats, computeShipStats, validateShipDesign } from "../math/ship-design-calc";
 import { createShip } from "../rendering/ship-transfer";
-import type { ShipEntry } from "../types";
+import type { MissileDesign, SensorDesign, ShipEntry, TurretDesign } from "../types";
 
 // ---------------------------------------------------------------------------
 // Snapshot types
@@ -77,6 +77,35 @@ interface UnlockedComponentSnapshot {
 	armorHp?: number;
 }
 
+interface MissileDesignSnapshot {
+	id: string;
+	name: string;
+	sizeHS: number;
+	warheadStrength: number;
+	speed: number;
+	range: number;
+	damage: number;
+}
+
+interface TurretDesignSnapshot {
+	id: string;
+	name: string;
+	weaponType: string;
+	damage: number;
+	range: number;
+	rateOfFire: number;
+	sizeHS: number;
+}
+
+interface SensorDesignSnapshot {
+	id: string;
+	name: string;
+	sensorType: string;
+	resolution: number;
+	range: number;
+	sizeHS: number;
+}
+
 interface ColonySnapshot {
 	name: string;
 	population: number;
@@ -94,6 +123,9 @@ interface DesignSnapshot {
 	unlockedComponents: UnlockedComponentSnapshot[];
 	colonies: ColonySnapshot[];
 	ships: ShipSnapshot[];
+	missileDesigns: MissileDesignSnapshot[];
+	turretDesigns: TurretDesignSnapshot[];
+	sensorDesigns: SensorDesignSnapshot[];
 }
 
 // ---------------------------------------------------------------------------
@@ -182,7 +214,52 @@ function buildSnapshot(): DesignSnapshot {
 		.filter((e) => e.isShip)
 		.map((e) => ({ name: e.data.name, designId: (e as import("../types").ShipEntry).designId }));
 
-	return { engineDesigns, shipDesigns, unlockedTiers, unlockedComponents, colonies, ships };
+	const missileDesigns: MissileDesignSnapshot[] = Array.from(state.missileDesigns.values()).map(
+		(md) => ({
+			id: md.id,
+			name: md.name,
+			sizeHS: md.sizeHS,
+			warheadStrength: md.warheadStrength,
+			speed: md.speed,
+			range: md.range,
+			damage: md.damage,
+		}),
+	);
+
+	const turretDesigns: TurretDesignSnapshot[] = Array.from(state.turretDesigns.values()).map(
+		(td) => ({
+			id: td.id,
+			name: td.name,
+			weaponType: td.weaponType,
+			damage: td.damage,
+			range: td.range,
+			rateOfFire: td.rateOfFire,
+			sizeHS: td.sizeHS,
+		}),
+	);
+
+	const sensorDesigns: SensorDesignSnapshot[] = Array.from(state.sensorDesigns.values()).map(
+		(sd) => ({
+			id: sd.id,
+			name: sd.name,
+			sensorType: sd.sensorType,
+			resolution: sd.resolution,
+			range: sd.range,
+			sizeHS: sd.sizeHS,
+		}),
+	);
+
+	return {
+		engineDesigns,
+		shipDesigns,
+		unlockedTiers,
+		unlockedComponents,
+		colonies,
+		ships,
+		missileDesigns,
+		turretDesigns,
+		sensorDesigns,
+	};
 }
 
 // ---------------------------------------------------------------------------
@@ -304,6 +381,66 @@ function handleDeleteShipDesign(msg: ActionMsg): void {
 	if (!inUse) state.shipDesigns.delete(shipDesignId);
 }
 
+function handleCreateMissile(msg: ActionMsg): void {
+	const id = `msl-${++state.designCounter}`;
+	const design: MissileDesign = {
+		id,
+		name: msg.name as string,
+		sizeHS: msg.sizeHS as number,
+		warheadStrength: msg.warheadStrength as number,
+		enginePower: msg.enginePower as number,
+		agility: msg.agility as number,
+		fuelCapacity: 0,
+		sensorStrength: 0,
+		speed: msg.speed as number,
+		range: msg.range as number,
+		damage: msg.damage as number,
+	};
+	state.missileDesigns.set(id, design);
+}
+
+function handleDeleteMissile(msg: ActionMsg): void {
+	state.missileDesigns.delete(msg.missileId as string);
+}
+
+function handleCreateTurret(msg: ActionMsg): void {
+	const id = `trt-${++state.designCounter}`;
+	const design: TurretDesign = {
+		id,
+		name: msg.name as string,
+		weaponType: msg.weaponType as TurretDesign["weaponType"],
+		caliber: msg.caliber as number,
+		trackingSpeed: msg.trackingSpeed as number,
+		damage: msg.damage as number,
+		range: msg.range as number,
+		rateOfFire: msg.rateOfFire as number,
+		sizeHS: msg.sizeHS as number,
+	};
+	state.turretDesigns.set(id, design);
+}
+
+function handleDeleteTurret(msg: ActionMsg): void {
+	state.turretDesigns.delete(msg.turretId as string);
+}
+
+function handleCreateSensor(msg: ActionMsg): void {
+	const id = `sns-${++state.designCounter}`;
+	const design: SensorDesign = {
+		id,
+		name: msg.name as string,
+		sensorType: msg.sensorType as SensorDesign["sensorType"],
+		resolution: msg.resolution as number,
+		sizeHS: msg.sizeHS as number,
+		range: msg.range as number,
+		strength: msg.strength as number,
+	};
+	state.sensorDesigns.set(id, design);
+}
+
+function handleDeleteSensor(msg: ActionMsg): void {
+	state.sensorDesigns.delete(msg.sensorId as string);
+}
+
 function handleBuildShip(msg: ActionMsg): void {
 	const designId = msg.designId as string;
 	const design = state.shipDesigns.get(designId);
@@ -344,6 +481,24 @@ function handlePopoutMessage(event: MessageEvent): void {
 			break;
 		case "build-ship":
 			handleBuildShip(msg);
+			break;
+		case "create-missile":
+			handleCreateMissile(msg);
+			break;
+		case "delete-missile":
+			handleDeleteMissile(msg);
+			break;
+		case "create-turret":
+			handleCreateTurret(msg);
+			break;
+		case "delete-turret":
+			handleDeleteTurret(msg);
+			break;
+		case "create-sensor":
+			handleCreateSensor(msg);
+			break;
+		case "delete-sensor":
+			handleDeleteSensor(msg);
 			break;
 	}
 	pushDesignUpdate();
@@ -507,6 +662,20 @@ input[type=range].form-range {
 .btn-commission:hover { background: #1e3a1e; color: #aaffaa; border-color: #55aa55; }
 .btn-commission:disabled { opacity: 0.3; cursor: default; }
 
+.btn-small {
+  background: #1a2a1a;
+  border: 1px solid #2a3a2a;
+  color: #88cc88;
+  font-family: 'Exo 2', sans-serif;
+  font-size: 10px;
+  padding: 3px 8px;
+  cursor: pointer;
+}
+.btn-small:hover {
+  border-color: #4a6a4a;
+  color: #aaffaa;
+}
+
 .empty-note { color: #3a3a3a; font-style: italic; padding: 14px 10px; font-size: 10px; }
 
 ::-webkit-scrollbar { width: 6px; }
@@ -519,6 +688,9 @@ input[type=range].form-range {
 <div id="tab-bar">
   <button class="tab-btn active" data-tab="engines">Engine Designs</button>
   <button class="tab-btn" data-tab="ships">Ship Designs</button>
+  <button class="tab-btn" data-tab="missiles">Missiles</button>
+  <button class="tab-btn" data-tab="turrets">Turrets</button>
+  <button class="tab-btn" data-tab="sensors">Sensors</button>
 </div>
 
 <!-- Engine Designs Tab -->
@@ -537,21 +709,32 @@ input[type=range].form-range {
       </div>
 
       <div class="form-row">
-        <span class="form-label">Power Modifier</span>
-        <input type="range" class="form-range" id="eng-power" min="0.5" max="3.0" step="0.1" value="1.0">
-        <span class="range-val" id="eng-power-val">1.0</span>
+        <span class="form-label">Engine Power</span>
+        <select class="form-select" id="eng-power"></select>
+      </div>
+
+      <div class="form-row">
+        <span class="form-label">Engine Size</span>
+        <select class="form-select" id="eng-size"></select>
       </div>
 
       <div class="stats-panel" id="eng-stats">
-        <div class="stats-panel-title">Estimated Stats</div>
+        <div class="stats-panel-title">Estimated Performance</div>
         <div class="stat-row"><span class="stat-label">Acceleration</span><span class="stat-val" id="est-accel">—</span></div>
         <div class="stat-row"><span class="stat-label">Specific Impulse</span><span class="stat-val" id="est-isp">—</span></div>
         <div class="stat-row"><span class="stat-label">Engine Mass</span><span class="stat-val" id="est-mass">—</span></div>
+        <div class="stat-row"><span class="stat-label">Fuel Modifier</span><span class="stat-val" id="est-fuel">—</span></div>
       </div>
 
-      <div class="create-row">
-        <input type="text" class="form-input" id="eng-name" placeholder="Engine design name…">
-        <button class="btn-create" id="btn-create-engine">Create Engine Design</button>
+      <div class="create-row" style="display:block;border-top:1px solid #1e2e1e;padding-top:12px;margin-top:4px;">
+        <div style="display:flex;gap:4px;align-items:center;margin-bottom:6px;">
+          <input type="text" class="form-input" id="eng-company" placeholder="Company name…" style="flex:1">
+          <button class="btn-small" id="btn-random-company">Random</button>
+        </div>
+        <div style="display:flex;gap:4px;align-items:center;">
+          <input type="text" class="form-input" id="eng-name" placeholder="Engine designation…" style="flex:1">
+          <button class="btn-create" id="btn-create-engine" style="border-radius:3px;">Create</button>
+        </div>
       </div>
     </div>
   </div>
@@ -604,12 +787,178 @@ input[type=range].form-range {
   </div>
 </div>
 
+<!-- Missile Design Tab -->
+<div class="tab-panel" id="tab-missiles">
+  <div class="split-left">
+    <div class="list-header">Missile Designs</div>
+    <div class="design-list" id="missile-list"></div>
+  </div>
+  <div class="split-right">
+    <div class="form-section">
+      <div class="form-section-title">New Missile Design</div>
+      <div class="form-row">
+        <span class="form-label">Missile Size</span>
+        <select class="form-select" id="msl-size">
+          <option value="1">1 HS (50 tons)</option>
+          <option value="2">2 HS (100 tons)</option>
+          <option value="3">3 HS (150 tons)</option>
+          <option value="4" selected>4 HS (200 tons)</option>
+          <option value="5">5 HS (250 tons)</option>
+          <option value="6">6 HS (300 tons)</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <span class="form-label">Warhead</span>
+        <select class="form-select" id="msl-warhead">
+          <option value="1">Strength 1 (Anti-Missile)</option>
+          <option value="4">Strength 4 (Light)</option>
+          <option value="9" selected>Strength 9 (Standard)</option>
+          <option value="16">Strength 16 (Heavy)</option>
+          <option value="25">Strength 25 (Capital)</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <span class="form-label">Engine Power</span>
+        <select class="form-select" id="msl-engine">
+          <option value="5">5 EP (Slow, Long Range)</option>
+          <option value="10" selected>10 EP (Standard)</option>
+          <option value="20">20 EP (Fast)</option>
+          <option value="40">40 EP (Sprint)</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <span class="form-label">Agility</span>
+        <select class="form-select" id="msl-agility">
+          <option value="10">10 (Minimal)</option>
+          <option value="20" selected>20 (Standard)</option>
+          <option value="32">32 (High)</option>
+          <option value="48">48 (Maximum)</option>
+        </select>
+      </div>
+      <div class="stats-panel" id="msl-stats">
+        <div class="stats-panel-title">Estimated Performance</div>
+        <div class="stat-row"><span class="stat-label">Speed</span><span class="stat-val" id="msl-speed-val">—</span></div>
+        <div class="stat-row"><span class="stat-label">Range</span><span class="stat-val" id="msl-range-val">—</span></div>
+        <div class="stat-row"><span class="stat-label">Damage</span><span class="stat-val" id="msl-dmg-val">—</span></div>
+      </div>
+      <div class="create-row">
+        <input type="text" class="form-input" id="msl-name" placeholder="Missile designation…">
+        <button class="btn-create" id="btn-create-missile">Create Missile Design</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Turret Design Tab -->
+<div class="tab-panel" id="tab-turrets">
+  <div class="split-left">
+    <div class="list-header">Turret Designs</div>
+    <div class="design-list" id="turret-list"></div>
+  </div>
+  <div class="split-right">
+    <div class="form-section">
+      <div class="form-section-title">New Turret Design</div>
+      <div class="form-row">
+        <span class="form-label">Weapon Type</span>
+        <select class="form-select" id="trt-weapon">
+          <option value="laser">Laser</option>
+          <option value="railgun" selected>Railgun</option>
+          <option value="particle-beam">Particle Beam</option>
+          <option value="gauss">Gauss Cannon</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <span class="form-label">Caliber</span>
+        <select class="form-select" id="trt-caliber">
+          <option value="10">10cm (Point Defense)</option>
+          <option value="15" selected>15cm (Standard)</option>
+          <option value="20">20cm (Heavy)</option>
+          <option value="25">25cm (Capital)</option>
+          <option value="30">30cm (Spinal)</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <span class="form-label">Tracking Speed</span>
+        <select class="form-select" id="trt-tracking">
+          <option value="2000">2,000 km/s (Slow)</option>
+          <option value="5000" selected>5,000 km/s (Standard)</option>
+          <option value="10000">10,000 km/s (Fast)</option>
+          <option value="20000">20,000 km/s (Rapid)</option>
+        </select>
+      </div>
+      <div class="stats-panel" id="trt-stats">
+        <div class="stats-panel-title">Estimated Performance</div>
+        <div class="stat-row"><span class="stat-label">Damage</span><span class="stat-val" id="trt-dmg-val">—</span></div>
+        <div class="stat-row"><span class="stat-label">Range</span><span class="stat-val" id="trt-range-val">—</span></div>
+        <div class="stat-row"><span class="stat-label">Rate of Fire</span><span class="stat-val" id="trt-rof-val">—</span></div>
+        <div class="stat-row"><span class="stat-label">Size</span><span class="stat-val" id="trt-size-val">—</span></div>
+      </div>
+      <div class="create-row">
+        <input type="text" class="form-input" id="trt-name" placeholder="Turret designation…">
+        <button class="btn-create" id="btn-create-turret">Create Turret Design</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Sensor Design Tab -->
+<div class="tab-panel" id="tab-sensors">
+  <div class="split-left">
+    <div class="list-header">Sensor Designs</div>
+    <div class="design-list" id="sensor-list"></div>
+  </div>
+  <div class="split-right">
+    <div class="form-section">
+      <div class="form-section-title">New Sensor Design</div>
+      <div class="form-row">
+        <span class="form-label">Sensor Type</span>
+        <select class="form-select" id="sns-type">
+          <option value="geological" selected>Geological Survey</option>
+          <option value="gravitational">Gravitational Survey</option>
+          <option value="active">Active Sensor</option>
+          <option value="passive-thermal">Passive Thermal</option>
+          <option value="passive-em">Passive EM</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <span class="form-label">Resolution</span>
+        <select class="form-select" id="sns-resolution">
+          <option value="1">1 (Maximum Range)</option>
+          <option value="5">5 (Long Range)</option>
+          <option value="10" selected>10 (Standard)</option>
+          <option value="20">20 (High Detail)</option>
+          <option value="50">50 (Ultra Detail)</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <span class="form-label">Sensor Size</span>
+        <select class="form-select" id="sns-size">
+          <option value="1">1 HS (50 tons)</option>
+          <option value="3" selected>3 HS (150 tons)</option>
+          <option value="5">5 HS (250 tons)</option>
+          <option value="10">10 HS (500 tons)</option>
+          <option value="20">20 HS (1,000 tons)</option>
+        </select>
+      </div>
+      <div class="stats-panel" id="sns-stats">
+        <div class="stats-panel-title">Estimated Performance</div>
+        <div class="stat-row"><span class="stat-label">Range</span><span class="stat-val" id="sns-range-val">—</span></div>
+        <div class="stat-row"><span class="stat-label">Strength</span><span class="stat-val" id="sns-str-val">—</span></div>
+      </div>
+      <div class="create-row">
+        <input type="text" class="form-input" id="sns-name" placeholder="Sensor designation…">
+        <button class="btn-create" id="btn-create-sensor">Create Sensor Design</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
 
-let snap = { engineDesigns: [], shipDesigns: [], unlockedTiers: [], unlockedComponents: [], colonies: [], ships: [] };
+let snap = { engineDesigns: [], shipDesigns: [], unlockedTiers: [], unlockedComponents: [], colonies: [], ships: [], missileDesigns: [], turretDesigns: [], sensorDesigns: [] };
 let selectedEngineId = null;
 let selectedShipDesignId = null;
 
@@ -684,50 +1033,89 @@ function renderEngineList() {
   });
 }
 
+const COMPANY_NAMES = [
+  'Apex Propulsion', 'Stellaris Drive Systems', 'Nova Dynamics', 'Kepler Engines',
+  'Horizon Thrust Co.', 'Pulsar Engineering', 'Meridian Motors', 'Vanguard Propulsion',
+  'Eclipse Drive Works', 'Zenith Systems', 'Atlas Propulsion', 'Frontier Dynamics',
+  'Orion Drive Labs', 'Quantum Thrust Inc.', 'Helios Engineering',
+];
+
+function populateEngineDropdowns() {
+  const tierSel = document.getElementById('eng-tier');
+  const powerSel = document.getElementById('eng-power');
+  const sizeSel = document.getElementById('eng-size');
+  const tier = snap.unlockedTiers.find(t => t.id === tierSel.value);
+  if (!tier) return;
+
+  powerSel.innerHTML = '';
+  tier.powerOptions.forEach(opt => {
+    const o = document.createElement('option');
+    o.value = String(opt.powerPct);
+    o.textContent = opt.label;
+    if (opt.powerPct === 100) o.selected = true;
+    powerSel.appendChild(o);
+  });
+
+  sizeSel.innerHTML = '';
+  tier.sizeOptions.forEach(opt => {
+    const o = document.createElement('option');
+    o.value = String(opt.sizeHS);
+    o.textContent = opt.label;
+    if (opt.sizeHS === 10) o.selected = true;
+    sizeSel.appendChild(o);
+  });
+
+  updateEnginePreview();
+}
+
 function updateEngineTierDropdown() {
   const sel = document.getElementById('eng-tier');
   sel.innerHTML = snap.unlockedTiers.map(t =>
     \`<option value="\${t.id}">\${t.name}</option>\`
   ).join('');
-  updateEngineStats();
+  populateEngineDropdowns();
 }
 
-function getSelectedTier() {
-  const tierId = document.getElementById('eng-tier').value;
-  return snap.unlockedTiers.find(t => t.id === tierId) || null;
-}
-
-function updateEngineStats() {
-  const tier = getSelectedTier();
-  const powerMod = parseFloat(document.getElementById('eng-power').value);
-  document.getElementById('eng-power-val').textContent = powerMod.toFixed(1);
-  if (!tier) {
-    document.getElementById('est-accel').textContent = '—';
-    document.getElementById('est-isp').textContent = '—';
-    document.getElementById('est-mass').textContent = '—';
+function updateEnginePreview() {
+  const tierSel = document.getElementById('eng-tier');
+  const powerSel = document.getElementById('eng-power');
+  const sizeSel = document.getElementById('eng-size');
+  const tier = snap.unlockedTiers.find(t => t.id === tierSel.value);
+  if (!tier || !powerSel.value || !sizeSel.value) {
+    ['est-accel','est-isp','est-mass','est-fuel'].forEach(id => { document.getElementById(id).textContent = '—'; });
     return;
   }
-  const accelG = tier.baseAccelG * powerMod;
-  const ispS = tier.baseIspS / Math.sqrt(powerMod);
-  const massKg = tier.baseMassKg * powerMod;
-  document.getElementById('est-accel').textContent = fmt(accelG, 2) + ' G';
-  document.getElementById('est-isp').textContent = ispS.toLocaleString(undefined, {maximumFractionDigits: 0}) + ' s';
+  const powerPct = Number(powerSel.value);
+  const sizeHS = Number(sizeSel.value);
+  const accelG = tier.baseAccelG * (powerPct / 100);
+  const ispS = tier.baseIspS;
+  const massKg = sizeHS * tier.baseMassPerHS;
+  const fuelMod = Math.max(0.01, Math.pow(powerPct / 100, 2.5) * (1 - sizeHS / 100));
+  document.getElementById('est-accel').textContent = accelG < 1 ? fmt(accelG, 3) + ' G' : fmt(accelG, 1) + ' G';
+  document.getElementById('est-isp').textContent = ispS.toLocaleString() + ' s';
   document.getElementById('est-mass').textContent = fmtMass(massKg);
-  // Also update range min/max from tier
-  const rangeEl = document.getElementById('eng-power');
-  rangeEl.min = String(tier.minPowerMod);
-  rangeEl.max = String(tier.maxPowerMod);
+  document.getElementById('est-fuel').textContent = fuelMod.toFixed(3);
 }
 
-document.getElementById('eng-tier').addEventListener('change', updateEngineStats);
-document.getElementById('eng-power').addEventListener('input', updateEngineStats);
+document.getElementById('eng-tier').addEventListener('change', populateEngineDropdowns);
+document.getElementById('eng-power').addEventListener('change', updateEnginePreview);
+document.getElementById('eng-size').addEventListener('change', updateEnginePreview);
+
+document.getElementById('btn-random-company').addEventListener('click', () => {
+  const name = COMPANY_NAMES[Math.floor(Math.random() * COMPANY_NAMES.length)];
+  document.getElementById('eng-company').value = name;
+});
 
 document.getElementById('btn-create-engine').addEventListener('click', () => {
-  const name = document.getElementById('eng-name').value.trim();
-  if (!name) { document.getElementById('eng-name').focus(); return; }
   const tierId = document.getElementById('eng-tier').value;
-  const powerMod = parseFloat(document.getElementById('eng-power').value);
-  window.opener?.postMessage({ type: 'design-action', action: 'create-engine', tierId, powerMod, name }, '*');
+  const powerPct = Number(document.getElementById('eng-power').value);
+  const sizeHS = Number(document.getElementById('eng-size').value);
+  const company = document.getElementById('eng-company').value.trim();
+  const designation = document.getElementById('eng-name').value.trim();
+  const name = company && designation ? company + ' ' + designation : company || designation || 'Unnamed Engine';
+  if (!tierId) return;
+  window.opener?.postMessage({ type: 'design-action', action: 'create-engine', tierId, powerPct, sizeHS, name }, '*');
+  document.getElementById('eng-company').value = '';
   document.getElementById('eng-name').value = '';
 });
 
@@ -951,6 +1339,180 @@ document.getElementById('btn-create-ship').addEventListener('click', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Missile Tab
+// ---------------------------------------------------------------------------
+
+function calcMissileStats() {
+  const sizeHS = Number(document.getElementById('msl-size').value);
+  const warhead = Number(document.getElementById('msl-warhead').value);
+  const enginePower = Number(document.getElementById('msl-engine').value);
+  const speed = enginePower * 1000;
+  const range = (sizeHS - warhead / 10) * enginePower * 1000000;
+  const damage = warhead;
+  return { sizeHS, warhead, enginePower, speed, range, damage };
+}
+
+function updateMissileStats() {
+  const { speed, range, damage } = calcMissileStats();
+  document.getElementById('msl-speed-val').textContent = speed.toLocaleString() + ' km/s';
+  document.getElementById('msl-range-val').textContent = (range / 1000000).toLocaleString(undefined, { maximumFractionDigits: 1 }) + ' Mkm';
+  document.getElementById('msl-dmg-val').textContent = String(damage);
+}
+
+function renderMissileList() {
+  const el = document.getElementById('missile-list');
+  if (snap.missileDesigns.length === 0) {
+    el.innerHTML = '<div class="empty-note">No missile designs yet.</div>';
+    return;
+  }
+  let html = '';
+  for (const md of snap.missileDesigns) {
+    html += \`<div class="design-item" data-id="\${md.id}">
+      <button class="design-item-del" data-id="\${md.id}">×</button>
+      <div class="design-item-name">\${md.name}</div>
+      <div class="design-item-meta">\${md.sizeHS} HS · DMG \${md.damage} · \${md.speed.toLocaleString()} km/s</div>
+    </div>\`;
+  }
+  el.innerHTML = html;
+  el.querySelectorAll('.design-item-del').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      window.opener?.postMessage({ type: 'design-action', action: 'delete-missile', missileId: btn.dataset.id }, '*');
+    });
+  });
+}
+
+document.getElementById('msl-size').addEventListener('change', updateMissileStats);
+document.getElementById('msl-warhead').addEventListener('change', updateMissileStats);
+document.getElementById('msl-engine').addEventListener('change', updateMissileStats);
+document.getElementById('msl-agility').addEventListener('change', updateMissileStats);
+
+document.getElementById('btn-create-missile').addEventListener('click', () => {
+  const name = document.getElementById('msl-name').value.trim();
+  if (!name) { document.getElementById('msl-name').focus(); return; }
+  const agility = Number(document.getElementById('msl-agility').value);
+  const { sizeHS, warhead, enginePower, speed, range, damage } = calcMissileStats();
+  window.opener?.postMessage({ type: 'design-action', action: 'create-missile', name, sizeHS, warheadStrength: warhead, enginePower, agility, speed, range, damage }, '*');
+  document.getElementById('msl-name').value = '';
+});
+
+// ---------------------------------------------------------------------------
+// Turret Tab
+// ---------------------------------------------------------------------------
+
+const WEAPON_MULT = { laser: 1.0, railgun: 1.2, 'particle-beam': 0.8, gauss: 0.5 };
+const RANGE_MULT  = { laser: 2.0, railgun: 1.0, 'particle-beam': 0.5, gauss: 0.3 };
+const ROF_MULT    = { laser: 1.0, railgun: 1.0, 'particle-beam': 1.0, gauss: 3.0 };
+
+function calcTurretStats() {
+  const weaponType = document.getElementById('trt-weapon').value;
+  const caliber = Number(document.getElementById('trt-caliber').value);
+  const trackingSpeed = Number(document.getElementById('trt-tracking').value);
+  const damage = Math.round(caliber * (WEAPON_MULT[weaponType] || 1.0));
+  const range = Math.round(caliber * 10000 * (RANGE_MULT[weaponType] || 1.0));
+  const rateOfFire = Math.round((30 / caliber) * (ROF_MULT[weaponType] || 1.0) * 10) / 10;
+  const sizeHS = Math.ceil(caliber / 5);
+  return { weaponType, caliber, trackingSpeed, damage, range, rateOfFire, sizeHS };
+}
+
+function updateTurretStats() {
+  const { damage, range, rateOfFire, sizeHS } = calcTurretStats();
+  document.getElementById('trt-dmg-val').textContent = String(damage);
+  document.getElementById('trt-range-val').textContent = (range / 1000).toLocaleString(undefined, { maximumFractionDigits: 0 }) + ' kkm';
+  document.getElementById('trt-rof-val').textContent = rateOfFire.toLocaleString(undefined, { maximumFractionDigits: 1 }) + ' rds/min';
+  document.getElementById('trt-size-val').textContent = sizeHS + ' HS';
+}
+
+function renderTurretList() {
+  const el = document.getElementById('turret-list');
+  if (snap.turretDesigns.length === 0) {
+    el.innerHTML = '<div class="empty-note">No turret designs yet.</div>';
+    return;
+  }
+  let html = '';
+  for (const td of snap.turretDesigns) {
+    html += \`<div class="design-item" data-id="\${td.id}">
+      <button class="design-item-del" data-id="\${td.id}">×</button>
+      <div class="design-item-name">\${td.name}</div>
+      <div class="design-item-meta">\${td.weaponType} · DMG \${td.damage} · \${(td.range / 1000).toLocaleString()} kkm</div>
+    </div>\`;
+  }
+  el.innerHTML = html;
+  el.querySelectorAll('.design-item-del').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      window.opener?.postMessage({ type: 'design-action', action: 'delete-turret', turretId: btn.dataset.id }, '*');
+    });
+  });
+}
+
+document.getElementById('trt-weapon').addEventListener('change', updateTurretStats);
+document.getElementById('trt-caliber').addEventListener('change', updateTurretStats);
+document.getElementById('trt-tracking').addEventListener('change', updateTurretStats);
+
+document.getElementById('btn-create-turret').addEventListener('click', () => {
+  const name = document.getElementById('trt-name').value.trim();
+  if (!name) { document.getElementById('trt-name').focus(); return; }
+  const { weaponType, caliber, trackingSpeed, damage, range, rateOfFire, sizeHS } = calcTurretStats();
+  window.opener?.postMessage({ type: 'design-action', action: 'create-turret', name, weaponType, caliber, trackingSpeed, damage, range, rateOfFire, sizeHS }, '*');
+  document.getElementById('trt-name').value = '';
+});
+
+// ---------------------------------------------------------------------------
+// Sensor Tab
+// ---------------------------------------------------------------------------
+
+function calcSensorStats() {
+  const sensorType = document.getElementById('sns-type').value;
+  const resolution = Number(document.getElementById('sns-resolution').value);
+  const sizeHS = Number(document.getElementById('sns-size').value);
+  const strength = sizeHS * resolution;
+  const range = Math.round(sizeHS * Math.sqrt(resolution) * 10000);
+  return { sensorType, resolution, sizeHS, strength, range };
+}
+
+function updateSensorStats() {
+  const { range, strength } = calcSensorStats();
+  document.getElementById('sns-range-val').textContent = (range / 1000).toLocaleString(undefined, { maximumFractionDigits: 0 }) + ' kkm';
+  document.getElementById('sns-str-val').textContent = String(strength);
+}
+
+function renderSensorList() {
+  const el = document.getElementById('sensor-list');
+  if (snap.sensorDesigns.length === 0) {
+    el.innerHTML = '<div class="empty-note">No sensor designs yet.</div>';
+    return;
+  }
+  let html = '';
+  for (const sd of snap.sensorDesigns) {
+    html += \`<div class="design-item" data-id="\${sd.id}">
+      <button class="design-item-del" data-id="\${sd.id}">×</button>
+      <div class="design-item-name">\${sd.name}</div>
+      <div class="design-item-meta">\${sd.sensorType} · \${sd.sizeHS} HS · \${(sd.range / 1000).toLocaleString()} kkm</div>
+    </div>\`;
+  }
+  el.innerHTML = html;
+  el.querySelectorAll('.design-item-del').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      window.opener?.postMessage({ type: 'design-action', action: 'delete-sensor', sensorId: btn.dataset.id }, '*');
+    });
+  });
+}
+
+document.getElementById('sns-type').addEventListener('change', updateSensorStats);
+document.getElementById('sns-resolution').addEventListener('change', updateSensorStats);
+document.getElementById('sns-size').addEventListener('change', updateSensorStats);
+
+document.getElementById('btn-create-sensor').addEventListener('click', () => {
+  const name = document.getElementById('sns-name').value.trim();
+  if (!name) { document.getElementById('sns-name').focus(); return; }
+  const { sensorType, resolution, sizeHS, strength, range } = calcSensorStats();
+  window.opener?.postMessage({ type: 'design-action', action: 'create-sensor', name, sensorType, resolution, sizeHS, strength, range }, '*');
+  document.getElementById('sns-name').value = '';
+});
+
+// ---------------------------------------------------------------------------
 // Full render
 // ---------------------------------------------------------------------------
 
@@ -959,6 +1521,12 @@ function render() {
   updateEngineTierDropdown();
   renderShipList();
   updateShipEngineDropdown();
+  renderMissileList();
+  updateMissileStats();
+  renderTurretList();
+  updateTurretStats();
+  renderSensorList();
+  updateSensorStats();
 }
 
 window.addEventListener('message', e => {
