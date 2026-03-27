@@ -137,4 +137,12 @@ describe("deriveStarMass", () => {
 		] as unknown as BodyData[]);
 		expect(mass).toBeCloseTo(1.0, 1);
 	});
+
+	it("returns 1 when body list is empty", () => {
+		expect(deriveStarMass([])).toBe(1);
+	});
+
+	it("returns 1 when all bodies have period=0", () => {
+		expect(deriveStarMass([{ type: "Planet", period: 0, distance: 1 } as BodyData])).toBe(1);
+	});
 });

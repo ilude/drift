@@ -15,6 +15,7 @@ import {
 	evaluateCommandTree,
 	getUnsurvevedMoonsOfHost,
 	hullCeiling,
+	invalidateRefuelTargetCache,
 	invalidateSurveyTargetCache,
 	selectNextSurveyTarget,
 	tickShipSimulation,
@@ -1949,5 +1950,15 @@ describe("deliverColonyShuttle (via tickShipSimulation)", () => {
 		if (!colony) throw new Error("expected colony");
 		// Shuttle would have taken up to 25 supplies. Only tickActionRecovery (~0.375) should fire.
 		expect(colony.stockpile.supplies).toBeGreaterThan(50_000 - 25);
+	});
+});
+
+describe("cache invalidation exports", () => {
+	it("invalidateSurveyTargetCache does not throw", () => {
+		expect(() => invalidateSurveyTargetCache()).not.toThrow();
+	});
+
+	it("invalidateRefuelTargetCache does not throw", () => {
+		expect(() => invalidateRefuelTargetCache()).not.toThrow();
 	});
 });

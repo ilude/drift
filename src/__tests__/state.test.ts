@@ -615,3 +615,67 @@ describe("transfer state persistence", () => {
 		expect(loadSavedState()).toBeNull();
 	});
 });
+
+describe("restoreColonyState — scientists and researchProjects", () => {
+	beforeEach(() => {
+		state.scientists.clear();
+		state.researchProjects.clear();
+	});
+
+	it("restores scientists map from saved data", () => {
+		restoreColonyState({
+			version: 8,
+			simTime: 0,
+			currentSystemKey: "sol",
+			randomClickCount: 0,
+			discoveredSystems: [],
+			ships: [],
+			colonies: [],
+			scientists: [
+				{
+					id: "sci-1",
+					name: "Dr. Test",
+					colonyBodyName: "Earth",
+					primaryCategory: "physics",
+					secondaryCategory: "engineering",
+					activeProjectTechId: null,
+					projectQueue: ["survey-automation"],
+					assignedLabs: 2,
+					adminCap: 3,
+					categoryBonuses: {},
+					completedProjects: [],
+					experienceByCategory: {},
+				},
+			],
+		} as SavedStateData);
+		expect(state.scientists.size).toBe(1);
+		expect(state.scientists.get("sci-1")?.projectQueue).toEqual(["survey-automation"]);
+	});
+
+	it("restores researchProjects map from saved data", () => {
+		restoreColonyState({
+			version: 8,
+			simTime: 0,
+			currentSystemKey: "sol",
+			randomClickCount: 0,
+			discoveredSystems: [],
+			ships: [],
+			colonies: [],
+			researchProjects: [
+				{
+					techId: "survey-automation",
+					colonyBodyName: "Earth",
+					leadScientistId: null,
+					assignedLabs: 2,
+					progressRp: 15,
+					paused: false,
+					queuedAt: 100,
+					startedAt: 100,
+					difficulty: 1,
+				},
+			],
+		} as SavedStateData);
+		expect(state.researchProjects.size).toBe(1);
+		expect(state.researchProjects.get("survey-automation")?.progressRp).toBe(15);
+	});
+});

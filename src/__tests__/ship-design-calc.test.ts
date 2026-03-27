@@ -311,3 +311,12 @@ describe("getUnlockedComponents", () => {
 		expect(ids).toContain("sensor-improved");
 	});
 });
+
+describe("computeShipStats — zero dryMass guard", () => {
+	it("returns accelG 0 when engineCount is 0 and no components", () => {
+		const engine = makeEngineDesign();
+		const stats = computeShipStats(engine, 0, []);
+		expect(stats.accelG).toBe(0);
+		expect(stats.dryMassKg).toBe(0);
+	});
+});

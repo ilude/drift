@@ -294,6 +294,9 @@ function resolveShipConfigStats(
 	defaultEngine: import("../types").EngineType,
 ): ResolvedShipStats {
 	const design = config.designId ? state.shipDesigns.get(config.designId) : undefined;
+	if (config.designId && !design) {
+		gameWarn(`Ship design "${config.designId}" not found, using defaults`);
+	}
 	const engineDesign = design ? state.engineDesigns.get(design.engineDesignId) : undefined;
 	return {
 		engineId: engineDesign?.tierId ?? defaultEngine.id,

@@ -754,6 +754,9 @@ export interface SavedStateData {
 	researchProjects?: ColonyResearchProject[];
 	gameLog?: GameLogEntry[];
 	researchedTechs?: string[];
+	engineDesigns?: EngineDesign[];
+	shipDesigns?: ShipDesign[];
+	designCounter?: number;
 }
 
 // --- Hohmann transfer result ---

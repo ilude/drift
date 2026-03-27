@@ -5,6 +5,8 @@ import {
 	findPlanet,
 	findShip,
 	findStar,
+	listShips,
+	listShipsAtBody,
 	rebuildEntityMaps,
 	resolveEntity,
 } from "../core/entities";
@@ -316,5 +318,48 @@ describe("findStar", () => {
 		rebuildEntityMaps();
 		const [, found] = findStar();
 		expect(found).toBe(false);
+	});
+});
+
+describe("listShips", () => {
+	it("returns only ships from bodyMeshes", () => {
+		state.bodyMeshes = [
+			mockBody("Earth", "Planet"),
+			mockBody("Hermes", "Ship", { isShip: true }),
+			mockBody("Ares", "Ship", { isShip: true }),
+		];
+		rebuildEntityMaps();
+		const ships = listShips();
+		expect(ships).toHaveLength(2);
+		expect(ships.every((s) => s.data.type === "Ship")).toBe(true);
+	});
+
+	it("returns empty array when no ships exist", () => {
+		state.bodyMeshes = [mockBody("Earth", "Planet")];
+		rebuildEntityMaps();
+		expect(listShips()).toHaveLength(0);
+	});
+});
+
+describe("listShipsAtBody", () => {
+	it("returns orbiting ships at the named body", () => {
+		state.bodyMeshes = [
+			mockBody("Mars", "Planet"),
+			mockBody("Ares", "Ship", { isShip: true, hostPlanetName: "Mars", shipState: "orbiting" }),
+			mockBody("Hermes", "Ship", { isShip: true, hostPlanetName: "Earth", shipState: "orbiting" }),
+		];
+		rebuildEntityMaps();
+		const ships = listShipsAtBody("Mars");
+		expect(ships).toHaveLength(1);
+		expect(ships[0].data.name).toBe("Ares");
+	});
+
+	it("excludes transferring ships", () => {
+		state.bodyMeshes = [
+			mockBody("Mars", "Planet"),
+			mockBody("Ares", "Ship", { isShip: true, hostPlanetName: "Mars", shipState: "transferring" }),
+		];
+		rebuildEntityMaps();
+		expect(listShipsAtBody("Mars")).toHaveLength(0);
 	});
 });

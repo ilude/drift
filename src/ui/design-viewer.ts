@@ -1,4 +1,3 @@
-import { rebuildEntityMaps } from "../core/entities";
 import { addNotification } from "../core/notifications";
 import { state } from "../core/state";
 import { findEngineTier, getUnlockedComponents, getUnlockedEngineTiers } from "../data/components";
@@ -292,19 +291,11 @@ function handleBuildShip(msg: ActionMsg): void {
 	const design = state.shipDesigns.get(designId);
 	if (!design) return;
 	if (!state.engineDesigns.has(design.engineDesignId)) return;
-	const newShip = createShip({
+	createShip({
 		name: msg.shipName as string,
 		hostPlanetName: msg.colonyName as string,
+		designId,
 	});
-	if (!newShip) return;
-	newShip.designId = designId;
-	newShip.fuelCapacityKg = design.fuelCapacityKg;
-	newShip.fuelKg = design.fuelCapacityKg;
-	newShip.dryMassKg = design.dryMassKg;
-	newShip.crew.count = design.crewCapacity;
-	newShip.maintenance.maxSupplies = design.maxSupplies;
-	newShip.maintenance.supplies = design.maxSupplies;
-	rebuildEntityMaps();
 }
 
 // ---------------------------------------------------------------------------

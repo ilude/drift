@@ -2,6 +2,7 @@ import type {
 	AppState,
 	CategoryKey,
 	CategoryVisibility,
+	ColonyState,
 	SavedShipData,
 	SavedStateData,
 	ShipEntry,
@@ -205,6 +206,12 @@ export function saveState(): void {
 			meta: entry.meta ? { ...entry.meta } : undefined,
 		})),
 		researchedTechs: Array.from(state.researchedTechs.values()),
+		engineDesigns: Array.from(state.engineDesigns.values()),
+		shipDesigns: Array.from(state.shipDesigns.values()).map((d) => ({
+			...d,
+			components: [...d.components],
+		})),
+		designCounter: state.designCounter,
 	};
 	try {
 		localStorage.setItem(SAVE_KEY, JSON.stringify(data));
@@ -313,24 +320,28 @@ export function restoreShipState(savedData: SavedStateData | null): void {
 	}
 }
 
+function deepCopyColony(colony: ColonyState): ColonyState {
+	return {
+		...colony,
+		installations: { ...colony.installations },
+		stockpile: {
+			fuelKg: colony.stockpile.fuelKg,
+			supplies: colony.stockpile.supplies,
+			resources: { ...colony.stockpile.resources },
+		},
+		constructionProjects: (colony.constructionProjects ?? []).map((p) => ({ ...p })),
+		transferQueue: (colony.transferQueue ?? []).map((r) => ({ ...r })),
+	};
+}
+
 export function restoreColonyState(savedData: SavedStateData | null): void {
 	state.colonies.clear();
 	state.scientists.clear();
 	state.researchProjects.clear();
 	state.gameLog = [];
-	if (!savedData?.colonies) return;
-	for (const colony of savedData.colonies) {
-		state.colonies.set(colony.bodyName, {
-			...colony,
-			installations: { ...colony.installations },
-			stockpile: {
-				fuelKg: colony.stockpile.fuelKg,
-				supplies: colony.stockpile.supplies,
-				resources: { ...colony.stockpile.resources },
-			},
-			constructionProjects: (colony.constructionProjects ?? []).map((project) => ({ ...project })),
-			transferQueue: (colony.transferQueue ?? []).map((request) => ({ ...request })),
-		});
+	if (!savedData) return;
+	for (const colony of savedData.colonies ?? []) {
+		state.colonies.set(colony.bodyName, deepCopyColony(colony));
 	}
 	for (const scientist of savedData.scientists ?? []) {
 		state.scientists.set(scientist.id, {
@@ -349,4 +360,17 @@ export function restoreColonyState(savedData: SavedStateData | null): void {
 		meta: entry.meta ? { ...entry.meta } : undefined,
 	}));
 	state.researchedTechs = new Set(savedData.researchedTechs ?? []);
+	restoreDesignState(savedData);
+}
+
+function restoreDesignState(savedData: SavedStateData): void {
+	state.engineDesigns.clear();
+	for (const ed of savedData.engineDesigns ?? []) {
+		state.engineDesigns.set(ed.id, { ...ed });
+	}
+	state.shipDesigns.clear();
+	for (const sd of savedData.shipDesigns ?? []) {
+		state.shipDesigns.set(sd.id, { ...sd, components: [...sd.components] });
+	}
+	state.designCounter = savedData.designCounter ?? 0;
 }

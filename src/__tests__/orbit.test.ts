@@ -106,6 +106,18 @@ describe("meanToTrue", () => {
 		const theta = meanToTrue(0.1, 0.967);
 		expect(theta).toBeGreaterThan(0.5);
 	});
+
+	it("normalizes negative M by wrapping to positive range", () => {
+		const pos = meanToTrue(Math.PI / 4, 0.1);
+		const neg = meanToTrue(Math.PI / 4 - Math.PI * 2, 0.1);
+		expect(neg).toBeCloseTo(pos, 8);
+	});
+
+	it("converges for high-eccentricity orbit (e=0.967, Halley comet)", () => {
+		// At M=π the true anomaly is also π regardless of eccentricity
+		const ν = meanToTrue(Math.PI, 0.967);
+		expect(ν).toBeCloseTo(Math.PI, 4);
+	});
 });
 
 describe("inclinedPosition", () => {
