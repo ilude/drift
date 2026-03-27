@@ -112,3 +112,19 @@ Record of why things work the way they do. Goals, rationale, and trade-offs — 
 **Why:** The pre-colony codebase used a hardcoded `depotQuality = 1.0` for all repair/refuel math. Phase 0 replaces this with a per-body `ColonyState` containing population, 8 installation types (repair yard, fuel depot, mine, lab, academy, construction factory, storage, shipyard), and stockpiles. `ColonyQualities` derived from installations drives the same rate modifier formulas — no other ship logic changed.
 **Phase 0 scope:** Colony placement (flag on body), workforce allocation, quality calculation, mining/construction/research ticks. No cross-colony trade or inter-system logistics yet.
 **Installation types accepted:** `repair-yard`, `fuel-depot`, `mine`, `lab`, `academy`, `construction-factory`, `storage`, `shipyard`. Construction queue with BP-based progress. Research queue consuming scientist-hours.
+
+## Ship Design System
+
+### Aurora-Faithful Component Catalog (not sliders or templates)
+**Goal:** Player agency over ship/engine design with genuine tradeoffs.
+**Why component catalog over sliders:** Sliders (percentage-based allocation) explore quickly and don't create enough "aha" moments for a game where ship design is a primary player system. Discrete component choices create more surprising emergent builds. Aurora's reference material confirms component-level design is where the deepest early-game decisions live.
+**Why not hybrid:** A hybrid (templates + key components + balance slider) was considered but rejected as a compromise that dilutes both approaches. Full catalog creates more depth even at the cost of higher learning curve, which is acceptable for Drift's target audience.
+
+### Power Modifier Engine Design
+**Goal:** Engine customization within a tier — not just "pick the best engine."
+**Formula:** `accelG = base * p`, `ispS = base / sqrt(p)`, `massKg = base * p` where `p` is power modifier (0.5x–3.0x).
+**Why this formula:** Creates three-way tradeoff — high power gives more thrust but heavier engine AND worse fuel efficiency. `1/sqrt(p)` for Isp is a compromise between Aurora's harsher penalty and keeping the slider feel responsive. At p=2: double thrust, 1.41x mass, 0.71x efficiency.
+
+### ShipPhysicsState: Resolved Values (not engine ID lookup)
+**Goal:** Keep math module pure — no state dependencies.
+**Why:** `checkTransfer()` and `checkTransferKm()` previously looked up `ENGINE_TYPES` by `engineId`. With custom engine designs, this would require importing state into the math module, creating a circular dependency risk. Instead, callers resolve the engine (from design or legacy) via `resolveShipPhysics()` and pass raw `accelG`/`ispS` values. Math functions stay pure and testable.

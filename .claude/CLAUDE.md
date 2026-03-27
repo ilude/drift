@@ -26,18 +26,23 @@ src/
               intents.ts,                (ship intent broadcast for coordination)
               commands.ts,               (command tree evaluation, ship simulation)
               commander.ts,              (commander judgment: decide, defer, preempt)
-              notifications.ts           (notification system with coalescing)
+              notifications.ts,          (notification system with coalescing)
+              ship-utils.ts              (resolveShipPhysics helper)
   math/       orbit.ts, visual.ts,       (pure math, no app imports)
-              transfer.ts, ship-physics.ts
+              transfer.ts, ship-physics.ts,
+              ship-design-calc.ts         (ship/engine stat derivation)
   rendering/  rendering.ts, scene.ts,    (Three.js scene, bodies, textures)
               textures.ts, bodies.ts,    (body init, survey state)
               ship-transfer.ts           (Hermite spline transfers, capture blend)
   ui/         ui.ts, selection.ts,       (HUD, labels, click handlers)
               commands.ts,               (command tree editor UI)
-              resource-viewer.ts         (popout resource matrix window)
+              resource-viewer.ts,        (popout resource matrix window)
+              design-viewer.ts           (popout engine/ship designer)
   data/       sol-data.ts,               (system data & generation)
               system-generator.ts,
-              resources.ts               (resource catalog, deposit generation)
+              resources.ts,              (resource catalog, deposit generation)
+              components.ts,             (component catalog, engine tier defs)
+              ship-designs.ts            (EngineDesign, ShipDesign interfaces)
   types.ts                               (shared TypeScript interfaces)
   main.ts                                (orchestrator, entry point)
   __tests__/  *.test.ts                  (all test files)
@@ -47,24 +52,28 @@ src/
 ```
 core/utils.ts, math/orbit.ts, math/visual.ts  (pure math, no app imports)
         |
+  data/components.ts, data/ship-designs.ts, math/ship-design-calc.ts  (pure data + calc)
+        |
     core/state.ts  (imports nothing)
         |
     core/entities.ts  (imports: state.ts, types.ts, math/orbit.ts)
         |
   core/intents.ts, core/commands.ts, core/commander.ts, core/notifications.ts, data/resources.ts
         |
+  core/ship-utils.ts  (imports: state.ts, ship-physics.ts)
+        |
   rendering/scene.ts, rendering/textures.ts, rendering/bodies.ts
         |
   rendering/rendering.ts, rendering/ship-transfer.ts, math/transfer.ts
         |
-  ui/selection.ts, ui/ui.ts, ui/commands.ts, ui/resource-viewer.ts
+  ui/selection.ts, ui/ui.ts, ui/commands.ts, ui/resource-viewer.ts, ui/design-viewer.ts
         |
      main.ts  (orchestrator)
 ```
 
 **Key modules:**
-- `src/types.ts` — Shared interfaces: BodyEntry, ShipEntry, ShipIntent, CommandEntry, AppState, ResolvedEntity
-- `src/core/state.ts` — Single centralized state object, save/restore to localStorage (SAVE_VERSION 7, plural ships, colonies, researchedTechs)
+- `src/types.ts` — Shared interfaces: BodyEntry, ShipEntry, ShipIntent, CommandEntry, AppState, ResolvedEntity, EngineDesign, ShipDesign
+- `src/core/state.ts` — Single centralized state object, save/restore to localStorage (SAVE_VERSION 8, plural ships, colonies, researchedTechs, engineDesigns, shipDesigns)
 - `src/core/result.ts` — Go-style `Result<T>` helpers: `ok(v)` → `[v, true]`, `err()` → `[null, false]`
 - `src/core/colonies.ts` — Colony system: workforce calculation, quality modifiers, per-tick mining/construction/research, colony services for ships
 - `src/core/entities.ts` — Unified O(1) entity resolution: resolveEntity, findBody, findPlanet, findShip, findStar, findAsteroidEntity. Backed by Maps rebuilt via rebuildEntityMaps(). Lives in core/ so commands.ts can import it.
@@ -73,7 +82,11 @@ core/utils.ts, math/orbit.ts, math/visual.ts  (pure math, no app imports)
 - `src/core/commander.ts` — Commander judgment layer: `commanderDecide()` entry point. Three overrides applied in order: (1) preemptive servicing at colonies, (2) hold for inbound tanker (`checkHoldForTanker` — ship idles when a `tanking` intent targets it, preventing the tanker chase-and-miss pattern), (3) defer maintenance in the field. Learning from failures (malfunction → judgment bump).
 - `src/core/notifications.ts` — Notification system with coalescing, smart pause, FIFO cap (200 entries)
 - `src/math/orbit.ts` — Kepler solver (meanToTrue), orbital mechanics primitives
-- `src/math/ship-physics.ts` — Brachistochrone transfer physics, engine tiers, delta-v budget
+- `src/core/ship-utils.ts` — `resolveShipPhysics(ship)` resolves ShipEntry to ShipPhysicsState (accelG, ispS) from design or legacy ENGINE_TYPES fallback.
+- `src/math/ship-physics.ts` — Brachistochrone transfer physics, engine tiers, delta-v budget. `checkTransfer()`/`checkTransferKm()` accept resolved accelG/ispS directly.
+- `src/math/ship-design-calc.ts` — Pure functions: `computeEngineStats()` (power modifier formula), `computeShipStats()` (derive ship stats from components), `validateShipDesign()`.
+- `src/data/components.ts` — Component catalog: `ENGINE_TIER_DEFS` (4 tiers with prerequisiteTech), `COMPONENT_DEFS` (18 components across 7 categories). Helpers: `getUnlockedEngineTiers()`, `getUnlockedComponents()`.
+- `src/data/ship-designs.ts` — `EngineDesign` and `ShipDesign` interfaces for player-created designs.
 - `src/rendering/rendering.ts` — Position updates, ship transfer dispatch, action completion
 - `src/rendering/bodies.ts` — Body/ship creation, survey state initialization
 - `src/rendering/ship-transfer.ts` — Hermite spline transfers, capture blend, station-keeping approach
@@ -82,10 +95,11 @@ core/utils.ts, math/orbit.ts, math/visual.ts  (pure math, no app imports)
 - `src/data/resources.ts` — Resource catalog (27 entries), scientifically-grounded deposit generation. Pools sub-typed by body type, frost line distance, parent distance (moons), belt position (asteroids). Earth homeworld gets all 27 resources via `generateEarthDeposits()`.
 - `src/ui/commands.ts` — Command tree editor UI (reorder, toggle, add/remove orders), category-first transfer target picker
 - `src/ui/resource-viewer.ts` — Popout resource matrix window. Body rows × resource columns. Category tabs, sortable, body-click navigation. postMessage communication with main window.
+- `src/ui/design-viewer.ts` — Popout engine/ship designer window. Two tabs: Engine Designs (tier selection, power modifier slider, real-time stats) and Ship Designs (component catalog, validation, build ship). postMessage communication with main window.
 
 ## UI Structure
 
-- **Header bar:** `[System Name ▾] | [View ▾] | [Resources] | [Save] | <spacer> | [Pause] [Speed ▾] | [Date] [Perf]`
+- **Header bar:** `[System Name ▾] | [View ▾] | [Resources] | [Research] | [Designs] | [Save] | <spacer> | [Pause] [Speed ▾] | [Date] [Perf]`
 - **View menu:** Dropdown with per-category visibility toggles (labels, orbits, trails) for each body type. Recenter button with Ctrl+R shortcut.
 - **Body categories:** Star, Planet, Dwarf Planet, Centaur, Moon, Comet, Asteroid, Ship — each with independent visibility controls via `state.categoryVisibility`. Centaurs and Asteroids start collapsed in the body list.
 - **Resource viewer:** Popout window (`window.open()`) for multi-monitor. Body×resource matrix table with category tabs (All, Metal, Volatile, Industrial, Radioactive, Umbral). Sortable columns, body name click navigates main window. Communication via `postMessage()`. Code in `src/ui/resource-viewer.ts`.
@@ -101,6 +115,8 @@ core/utils.ts, math/orbit.ts, math/visual.ts  (pure math, no app imports)
 - **World coordinates:** sqrt-compressed mapping: `rWorld = sqrt(rAU) * DIST_SCALE`. Ship transfers use Hermite splines in world space to avoid coordinate distortion.
 - **LOD:** 3-tier sphere geometry (8/24/48 segments), rings/clouds gated at 15px screen radius.
 - **Multi-ship:** Game supports multiple named ships created via `createShip(config: ShipConfig)`. Ships coordinate via intent broadcast — `selectNextSurveyTarget` skips bodies claimed by other ships. HUD shows selected ship status or fleet aggregate. Save/restore matches ships by name.
+- **Ship design system:** Players design engines (power modifier tradeoff: thrust vs efficiency vs mass) and ships (component catalog within mass budget). `createShip()` accepts `designId` to derive stats from a `ShipDesign`. Legacy ships without `designId` fall back to `ENGINE_TYPES` via `resolveShipPhysics()`. Default Explorer-class and Tanker-class designs seeded at game start.
+- **Component catalog:** 18 components across 7 categories (bridge, crew-quarters, fuel-tank, cargo-bay, maintenance-bay, sensor-suite, armor). Each gated by `prerequisiteTech`. Engine tiers (conventional → improved → advanced → extreme) gated by research. Power modifier formula: `accelG = base * p`, `ispS = base / sqrt(p)`, `massKg = base * p`.
 - **Entity resolution:** All entity-by-name lookups go through `core/entities.ts`. Never use `state.bodyMeshes.find()` directly — use `findBody()`, `resolveEntity()`, `findAsteroidEntity()`, etc. Maps rebuilt via `rebuildEntityMaps()` after body/asteroid creation.
 - **Ship state machine:** orbiting → transferring → orbiting. Transfer uses 3D cubic Hermite splines with station-keeping capture blend (smoothstep in final 15%). Ships use brachistochrone physics (default 0.1g engine) for transfer timing. Minimum fuel floor of 1% capacity/day ensures visible transfer cost with high-Isp TN engines.
 - **Ship command tree:** Priority-ordered list of conditional commands (fuel-below, morale-below, hull-below, supplies-below, always). Command types: survey-nearest, transfer-to, refuel, refuel-ship, shore-leave, overhaul, major-refit, return-to-base, idle. Evaluated between actions. `immediateCommand` is one-shot — cleared at the top of `dispatchCommand()` on any dispatch.
@@ -180,7 +196,7 @@ Detailed research references in `tasks/`:
 
 ## Testing
 
-570+ tests across 20 files using Vitest + jsdom. Tests cover:
+627+ tests across 22 files using Vitest + jsdom. Tests cover:
 - Orbital math (orbit.test.ts)
 - Visual scaling (visual.test.ts)
 - Date/time formatting & save/restore (state.test.ts)
@@ -190,6 +206,7 @@ Detailed research references in `tasks/`:
 - Coordinate transforms (rendering.test.ts)
 - Ship physics (ship-physics.test.ts)
 - Ship transfers (ship-transfer.test.ts)
+- Ship design calculations (ship-design-calc.test.ts)
 - RNG (utils.test.ts)
 - Command tree, ship simulation & intent-aware survey (commands.test.ts)
 - Notifications (notifications.test.ts)
