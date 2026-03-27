@@ -120,14 +120,15 @@ export function formatShipDuration(entry: import("../types").ShipEntry): string 
 	return "";
 }
 
-interface PinnedPanel {
-	shipName: string;
-	el: HTMLElement;
-	offsetX: number;
-	offsetY: number;
+const slotAssignments = new Map<string, HTMLElement>();
+
+function getShipPanelSlots(): HTMLElement[] {
+	return [...document.querySelectorAll<HTMLElement>(".ship-panel")];
 }
 
-const pinnedPanels = new Map<string, PinnedPanel>();
+function getFreeSlot(): HTMLElement | null {
+	return getShipPanelSlots().find((s) => !s.dataset.shipName) ?? null;
+}
 
 function buildPinnedBodyHTML(entry: ShipEntry): string {
 	const ceiling = hullCeiling(entry.maintenance.totalAge, entry.maintenance.lastRefitAge);
@@ -154,25 +155,6 @@ function buildPinnedBodyHTML(entry: ShipEntry): string {
 				`<div class="info-row"><span class="info-label">${label}</span><span>${value}</span></div>`,
 		)
 		.join("");
-}
-
-function buildPinnedPanelHTML(entry: ShipEntry): string {
-	return (
-		`<div class="panel-header">` +
-		`<span>${entry.data.name}</span>` +
-		`<button class="info-pin-btn pinned-close-btn" type="button">[X]</button>` +
-		`</div>` +
-		`<div class="pinned-body" style="padding:6px 8px;background:#0d0d14">` +
-		buildPinnedBodyHTML(entry) +
-		`</div>`
-	);
-}
-
-function removePinnedPanel(shipName: string): void {
-	const pinned = pinnedPanels.get(shipName);
-	if (!pinned) return;
-	pinned.el.remove();
-	pinnedPanels.delete(shipName);
 }
 
 function attachPanelDrag(el: HTMLElement, onMove?: (x: number, y: number) => void): void {
@@ -214,58 +196,42 @@ function attachPanelDrag(el: HTMLElement, onMove?: (x: number, y: number) => voi
 	});
 }
 
-function createPinnedPanel(entry: ShipEntry): void {
-	if (pinnedPanels.has(entry.data.name)) return;
+function assignSlot(entry: ShipEntry): void {
+	if (slotAssignments.has(entry.data.name)) return;
+	const slot = getFreeSlot();
+	if (!slot) return;
 
-	// Spawn at info-panel's current screen position so it appears to "stay in place"
-	const infoEl = document.getElementById("info-panel");
-	let left: number;
-	let top: number;
-	if (infoEl) {
-		const rect = infoEl.getBoundingClientRect();
-		left = rect.left;
-		top = rect.top;
-	} else {
-		left = 20 + pinnedPanels.size * 20;
-		top = 60 + pinnedPanels.size * 20;
-	}
+	slot.dataset.shipName = entry.data.name;
+	const nameEl = slot.querySelector(".ship-panel-name");
+	if (nameEl) nameEl.textContent = entry.data.name;
+	const body = slot.querySelector(".ship-panel-body");
+	if (body) body.innerHTML = buildPinnedBodyHTML(entry);
+	slot.classList.remove("hidden");
+	slotAssignments.set(entry.data.name, slot);
 
-	const el = document.createElement("div");
-	el.className = "panel pinned-ship-panel";
-	el.innerHTML = buildPinnedPanelHTML(entry);
-	el.style.left = `${left}px`;
-	el.style.top = `${top}px`;
-	document.body.appendChild(el);
-
-	// Deselect and hide the main info panel so the next ship click opens it fresh
 	if (state.selectedBody) {
 		(state.selectedBody.selRing.material as THREE.MeshBasicMaterial).opacity = 0;
 		state.selectedBody = null;
 	}
-	infoEl?.classList.add("hidden");
-
-	const panel: PinnedPanel = { shipName: entry.data.name, el, offsetX: left, offsetY: top };
-	pinnedPanels.set(entry.data.name, panel);
-	attachPanelDrag(el, (x, y) => {
-		panel.offsetX = x;
-		panel.offsetY = y;
-	});
-	el
-		.querySelector(".pinned-close-btn")
-		?.addEventListener("click", () => removePinnedPanel(entry.data.name));
+	document.getElementById("info-panel")?.classList.add("hidden");
 }
 
-function updatePinnedPanel(entry: ShipEntry): void {
-	const pinned = pinnedPanels.get(entry.data.name);
-	if (!pinned) return;
-	const body = pinned.el.querySelector(".pinned-body");
-	if (body) body.innerHTML = buildPinnedBodyHTML(entry);
+function releaseSlot(shipName: string): void {
+	const slot = slotAssignments.get(shipName);
+	if (!slot) return;
+	delete slot.dataset.shipName;
+	slot.style.left = "";
+	slot.style.top = "";
+	slot.classList.add("hidden");
+	slotAssignments.delete(shipName);
 }
 
 export function updateAllPinnedPanels(): void {
-	for (const [shipName] of pinnedPanels) {
+	for (const [shipName, slot] of slotAssignments) {
 		const [entry, found] = findShip(shipName);
-		if (found && entry) updatePinnedPanel(entry);
+		if (!found || !entry) continue;
+		const body = slot.querySelector(".ship-panel-body");
+		if (body) body.innerHTML = buildPinnedBodyHTML(entry);
 	}
 }
 
@@ -736,9 +702,17 @@ export function setupClickHandlers(): void {
 
 	document.getElementById("info-pin-btn")?.addEventListener("click", () => {
 		if (state.selectedBody && isShipEntry(state.selectedBody)) {
-			createPinnedPanel(state.selectedBody);
+			assignSlot(state.selectedBody);
 		}
 	});
+
+	for (const slot of getShipPanelSlots()) {
+		slot.querySelector(".ship-panel-close")?.addEventListener("click", () => {
+			const name = slot.dataset.shipName;
+			if (name) releaseSlot(name);
+		});
+		attachPanelDrag(slot);
+	}
 
 	const closeBtn = document.getElementById("info-close");
 	if (closeBtn) {
