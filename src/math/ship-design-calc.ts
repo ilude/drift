@@ -21,7 +21,7 @@ export function computeEngineStats(
 	powerPct: number,
 	sizeHS: number,
 ): { accelG: number; ispS: number; massKg: number; fuelMod: number } {
-	const fuelMod = Math.max(0.01, Math.pow(powerPct / 100, 2.5) * (1 - sizeHS / 100));
+	const fuelMod = Math.max(0.01, (powerPct / 100) ** 2.5 * (1 - sizeHS / 100));
 	return {
 		accelG: tier.baseAccelG * (powerPct / 100),
 		ispS: tier.baseIspS,

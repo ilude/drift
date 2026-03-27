@@ -66,13 +66,13 @@ describe("computeEngineStats", () => {
 		const stats = computeEngineStats(requireTier("conventional"), 50, 10);
 		expect(stats.accelG).toBeCloseTo(0.05, 10);
 		expect(stats.ispS).toBe(1_000_000); // Isp constant per tier
-		expect(stats.fuelMod).toBeCloseTo(Math.pow(0.5, 2.5) * 0.9, 4);
+		expect(stats.fuelMod).toBeCloseTo(0.5 ** 2.5 * 0.9, 4);
 	});
 
 	it("150% power has higher accel but exponentially higher fuel", () => {
 		const stats = computeEngineStats(requireTier("conventional"), 150, 10);
 		expect(stats.accelG).toBeCloseTo(0.15, 10);
-		expect(stats.fuelMod).toBeCloseTo(Math.pow(1.5, 2.5) * 0.9, 4);
+		expect(stats.fuelMod).toBeCloseTo(1.5 ** 2.5 * 0.9, 4);
 	});
 
 	it("larger engine size reduces fuel modifier", () => {
