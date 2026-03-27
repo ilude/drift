@@ -226,11 +226,12 @@ const tankerCommandTree: CommandTree = {
 		{ id: "idle", command: "idle", condition: { type: "always" }, enabled: true, origin: "ship" },
 	],
 };
+const tankerDesignRef = [...state.shipDesigns.values()].find((d) => d.name === "Tanker");
 createShip({
 	name: "ISS Sheetz",
 	hostPlanetName: "Earth",
 	color: "#ffaa33",
-	fuelCapacityKg: 150_000,
+	designId: tankerDesignRef?.id,
 	commandTree: tankerCommandTree,
 });
 state.asteroidBelts = createAsteroidBelts();
@@ -351,12 +352,14 @@ function loadSystem(systemData: SystemData): void {
 	updatePositions(1e-10, 300);
 	const firstPlanet =
 		state.bodyMeshes.find((e) => !isShipEntry(e) && e.data.type === "Planet")?.data.name ?? "Earth";
-	createShip({ name: "ISS Explorer", hostPlanetName: firstPlanet });
+	const expDesign = [...state.shipDesigns.values()].find((d) => d.name === "Explorer");
+	const tnkDesign = [...state.shipDesigns.values()].find((d) => d.name === "Tanker");
+	createShip({ name: "ISS Explorer", hostPlanetName: firstPlanet, designId: expDesign?.id });
 	createShip({
 		name: "ISS Sheetz",
 		hostPlanetName: firstPlanet,
 		color: "#ffaa33",
-		fuelCapacityKg: 150_000,
+		designId: tnkDesign?.id,
 		commandTree: tankerCommandTree,
 	});
 	state.asteroidBelts = createAsteroidBelts();

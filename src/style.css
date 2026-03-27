@@ -403,25 +403,37 @@ body {
 	color: #aaffaa;
 }
 
-/* Pinned ship panels — reuse .panel base, just raise z-index and lock width */
-.pinned-ship-panel {
+/* Ship panel slots (pinned) */
+.ship-panel {
 	z-index: 50;
 	width: 240px;
 	user-select: none;
 }
 
-.pinned-ship-panel .panel-header {
-	cursor: grab;
+/* Default cascade positions — overridden by drag (style.left/top) */
+.ship-panel[data-slot="0"] {
+	top: 60px;
+	right: 12px;
+}
+.ship-panel[data-slot="1"] {
+	top: 80px;
+	right: 32px;
+}
+.ship-panel[data-slot="2"] {
+	top: 100px;
+	right: 52px;
+}
+.ship-panel[data-slot="3"] {
+	top: 120px;
+	right: 72px;
 }
 
-.pinned-ship-panel .panel-header:active {
-	cursor: grabbing;
-}
-
+.ship-panel .panel-header,
 #info-panel .panel-header {
 	cursor: grab;
 }
 
+.ship-panel .panel-header:active,
 #info-panel .panel-header:active {
 	cursor: grabbing;
 }
