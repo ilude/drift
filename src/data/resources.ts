@@ -285,12 +285,12 @@ export function generateEarthDeposits(): ResourceDeposit[] {
 
 // --- Deposit generation ---
 
-interface WeightedResource {
+export interface WeightedResource {
 	id: string;
 	weight: number;
 }
 
-function pickWeighted(rng: () => number, pool: WeightedResource[]): string {
+export function pickWeighted(rng: () => number, pool: WeightedResource[]): string {
 	const total = pool.reduce((s, e) => s + e.weight, 0);
 	let r = rng() * total;
 	for (const entry of pool) {

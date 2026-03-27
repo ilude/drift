@@ -9,20 +9,24 @@ import { G_ACCEL } from "./ship-physics";
 export { G_ACCEL };
 
 /**
- * Compute engine stats from a tier definition and a power modifier.
+ * Compute engine stats from a tier definition, power percentage, and size in Hull Spaces.
  *
- * - accelG scales linearly with powerMod (more power → more thrust)
- * - ispS scales inversely with sqrt(powerMod) (higher power → lower efficiency)
- * - massKg scales linearly with powerMod (bigger engine for more power)
+ * - accelG scales linearly with powerPct (more power → more thrust)
+ * - ispS is constant per tier — fuel tradeoff is expressed entirely through fuelMod
+ * - massKg = sizeHS * baseMassPerHS
+ * - fuelMod = (powerPct/100)^2.5 * (1 - sizeHS/100), clamped to min 0.01
  */
 export function computeEngineStats(
 	tier: EngineTierDef,
-	powerMod: number,
-): { accelG: number; ispS: number; massKg: number } {
+	powerPct: number,
+	sizeHS: number,
+): { accelG: number; ispS: number; massKg: number; fuelMod: number } {
+	const fuelMod = Math.max(0.01, Math.pow(powerPct / 100, 2.5) * (1 - sizeHS / 100));
 	return {
-		accelG: tier.baseAccelG * powerMod,
-		ispS: tier.baseIspS / Math.sqrt(powerMod),
-		massKg: tier.baseMassKg * powerMod,
+		accelG: tier.baseAccelG * (powerPct / 100),
+		ispS: tier.baseIspS,
+		massKg: sizeHS * tier.baseMassPerHS,
+		fuelMod,
 	};
 }
 

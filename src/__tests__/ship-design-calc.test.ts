@@ -26,15 +26,17 @@ function requireComponent(id: string): ComponentDef {
 
 function makeEngineDesign(overrides: Partial<EngineDesign> = {}): EngineDesign {
 	const tier = requireTier("conventional");
-	const stats = computeEngineStats(tier, 1.0);
+	const stats = computeEngineStats(tier, 100, 10);
 	return {
 		id: "eng-1",
 		name: "Test Engine",
 		tierId: "conventional",
-		powerMod: 1.0,
+		powerPct: 100,
+		sizeHS: 10,
 		accelG: stats.accelG,
 		ispS: stats.ispS,
 		massKg: stats.massKg,
+		fuelMod: stats.fuelMod,
 		...overrides,
 	};
 }
@@ -51,25 +53,33 @@ const EXPLORER_COMPONENTS: ShipDesignComponent[] = [
 // --- computeEngineStats ---
 
 describe("computeEngineStats", () => {
-	it("powerMod 1.0 returns base tier values", () => {
-		const stats = computeEngineStats(requireTier("conventional"), 1.0);
+	it("100% power, 10 HS returns expected values", () => {
+		const tier = requireTier("conventional");
+		const stats = computeEngineStats(tier, 100, 10);
 		expect(stats.accelG).toBe(0.1);
 		expect(stats.ispS).toBe(1_000_000);
-		expect(stats.massKg).toBe(3_000);
+		expect(stats.massKg).toBe(10 * tier.baseMassPerHS);
+		expect(stats.fuelMod).toBeCloseTo(1.0 * 0.9, 4); // 100%^2.5 * (1 - 10/100)
 	});
 
-	it("powerMod 2.0 doubles accelG and massKg, divides ispS by sqrt(2)", () => {
-		const stats = computeEngineStats(requireTier("conventional"), 2.0);
-		expect(stats.accelG).toBeCloseTo(0.2, 10);
-		expect(stats.massKg).toBeCloseTo(6_000, 10);
-		expect(stats.ispS).toBeCloseTo(1_000_000 / Math.sqrt(2), 4);
-	});
-
-	it("powerMod 0.5 halves accelG and massKg, increases ispS by sqrt(2)", () => {
-		const stats = computeEngineStats(requireTier("conventional"), 0.5);
+	it("50% power has lower accel and much lower fuel modifier", () => {
+		const stats = computeEngineStats(requireTier("conventional"), 50, 10);
 		expect(stats.accelG).toBeCloseTo(0.05, 10);
-		expect(stats.massKg).toBeCloseTo(1_500, 10);
-		expect(stats.ispS).toBeCloseTo(1_000_000 * Math.sqrt(2), 4);
+		expect(stats.ispS).toBe(1_000_000); // Isp constant per tier
+		expect(stats.fuelMod).toBeCloseTo(Math.pow(0.5, 2.5) * 0.9, 4);
+	});
+
+	it("150% power has higher accel but exponentially higher fuel", () => {
+		const stats = computeEngineStats(requireTier("conventional"), 150, 10);
+		expect(stats.accelG).toBeCloseTo(0.15, 10);
+		expect(stats.fuelMod).toBeCloseTo(Math.pow(1.5, 2.5) * 0.9, 4);
+	});
+
+	it("larger engine size reduces fuel modifier", () => {
+		const stats10 = computeEngineStats(requireTier("conventional"), 100, 10);
+		const stats30 = computeEngineStats(requireTier("conventional"), 100, 30);
+		expect(stats30.fuelMod).toBeLessThan(stats10.fuelMod);
+		expect(stats30.massKg).toBeGreaterThan(stats10.massKg);
 	});
 });
 

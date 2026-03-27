@@ -124,13 +124,14 @@ function seedDefaultDesigns(): void {
 	const tier = findEngineTier("conventional");
 	if (!tier) return;
 
-	const engineStats = computeEngineStats(tier, 1.0);
+	const engineStats = computeEngineStats(tier, 100, 10);
 	const engineId = `eng-${++state.designCounter}`;
 	const defaultEngine: EngineDesign = {
 		id: engineId,
 		name: "Standard TN Drive",
 		tierId: "conventional",
-		powerMod: 1.0,
+		powerPct: 100,
+		sizeHS: 10,
 		...engineStats,
 	};
 	state.engineDesigns.set(engineId, defaultEngine);

@@ -133,6 +133,9 @@ export const state: AppState = {
 	firstSurveyCompleted: false,
 	engineDesigns: new Map(),
 	shipDesigns: new Map(),
+	missileDesigns: new Map(),
+	turretDesigns: new Map(),
+	sensorDesigns: new Map(),
 	designCounter: 0,
 };
 
@@ -212,6 +215,9 @@ export function saveState(): void {
 			components: [...d.components],
 		})),
 		designCounter: state.designCounter,
+		missileDesigns: Array.from(state.missileDesigns.values()),
+		turretDesigns: Array.from(state.turretDesigns.values()),
+		sensorDesigns: Array.from(state.sensorDesigns.values()),
 	};
 	try {
 		localStorage.setItem(SAVE_KEY, JSON.stringify(data));
@@ -371,6 +377,18 @@ function restoreDesignState(savedData: SavedStateData): void {
 	state.shipDesigns.clear();
 	for (const sd of savedData.shipDesigns ?? []) {
 		state.shipDesigns.set(sd.id, { ...sd, components: [...sd.components] });
+	}
+	state.missileDesigns.clear();
+	for (const md of savedData.missileDesigns ?? []) {
+		state.missileDesigns.set(md.id, { ...md });
+	}
+	state.turretDesigns.clear();
+	for (const td of savedData.turretDesigns ?? []) {
+		state.turretDesigns.set(td.id, { ...td });
+	}
+	state.sensorDesigns.clear();
+	for (const sd2 of savedData.sensorDesigns ?? []) {
+		state.sensorDesigns.set(sd2.id, { ...sd2 });
 	}
 	state.designCounter = savedData.designCounter ?? 0;
 }

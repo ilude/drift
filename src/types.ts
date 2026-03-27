@@ -529,10 +529,51 @@ export interface EngineDesign {
 	id: string;
 	name: string;
 	tierId: string;
-	powerMod: number;
+	powerPct: number;
+	sizeHS: number;
+	fuelMod: number;
 	accelG: number;
 	ispS: number;
 	massKg: number;
+}
+
+export interface MissileDesign {
+	id: string;
+	name: string;
+	sizeHS: number;
+	warheadStrength: number;
+	enginePower: number;
+	agility: number;
+	fuelCapacity: number;
+	sensorStrength: number;
+	// Derived
+	speed: number;
+	range: number;
+	damage: number;
+}
+
+export interface TurretDesign {
+	id: string;
+	name: string;
+	weaponType: "laser" | "railgun" | "particle-beam" | "gauss";
+	caliber: number;
+	trackingSpeed: number;
+	// Derived
+	damage: number;
+	range: number;
+	rateOfFire: number;
+	sizeHS: number;
+}
+
+export interface SensorDesign {
+	id: string;
+	name: string;
+	sensorType: "geological" | "gravitational" | "active" | "passive-thermal" | "passive-em";
+	resolution: number;
+	sizeHS: number;
+	// Derived
+	range: number;
+	strength: number;
 }
 
 export interface ShipDesignComponent {
@@ -690,6 +731,9 @@ export interface AppState {
 	researchedTechs: Set<string>;
 	engineDesigns: Map<string, EngineDesign>;
 	shipDesigns: Map<string, ShipDesign>;
+	missileDesigns: Map<string, MissileDesign>;
+	turretDesigns: Map<string, TurretDesign>;
+	sensorDesigns: Map<string, SensorDesign>;
 	designCounter: number;
 }
 
@@ -756,6 +800,9 @@ export interface SavedStateData {
 	researchedTechs?: string[];
 	engineDesigns?: EngineDesign[];
 	shipDesigns?: ShipDesign[];
+	missileDesigns?: MissileDesign[];
+	turretDesigns?: TurretDesign[];
+	sensorDesigns?: SensorDesign[];
 	designCounter?: number;
 }
 

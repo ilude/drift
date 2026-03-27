@@ -4,7 +4,9 @@ export interface EngineDesign {
 	id: string;
 	name: string;
 	tierId: string;
-	powerMod: number;
+	powerPct: number;
+	sizeHS: number;
+	fuelMod: number;
 	accelG: number;
 	ispS: number;
 	massKg: number;

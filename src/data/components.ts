@@ -1,16 +1,55 @@
 // Static component catalog and engine tier definitions.
 // Pure data — no app imports, no state dependencies.
 
+export interface EnginePowerOption {
+	readonly label: string;
+	readonly powerPct: number;
+	readonly fuelMod: number;
+}
+
+export interface EngineSizeOption {
+	readonly sizeHS: number;
+	readonly label: string;
+	readonly fuelReductionPct: number;
+}
+
 export interface EngineTierDef {
 	readonly id: string;
 	readonly name: string;
 	readonly baseAccelG: number;
 	readonly baseIspS: number;
-	readonly baseMassKg: number;
+	readonly baseMassPerHS: number;
 	readonly prerequisiteTech: string | null;
-	readonly minPowerMod: number;
-	readonly maxPowerMod: number;
+	readonly powerOptions: readonly EnginePowerOption[];
+	readonly sizeOptions: readonly EngineSizeOption[];
 }
+
+const STANDARD_POWER_OPTIONS: readonly EnginePowerOption[] = [
+	{ label: "10% Power, 0.003 Fuel", powerPct: 10, fuelMod: 0.003 },
+	{ label: "20% Power, 0.018 Fuel", powerPct: 20, fuelMod: 0.018 },
+	{ label: "30% Power, 0.049 Fuel", powerPct: 30, fuelMod: 0.049 },
+	{ label: "40% Power, 0.101 Fuel", powerPct: 40, fuelMod: 0.101 },
+	{ label: "50% Power, 0.177 Fuel", powerPct: 50, fuelMod: 0.177 },
+	{ label: "60% Power, 0.279 Fuel", powerPct: 60, fuelMod: 0.279 },
+	{ label: "70% Power, 0.410 Fuel", powerPct: 70, fuelMod: 0.41 },
+	{ label: "80% Power, 0.572 Fuel", powerPct: 80, fuelMod: 0.572 },
+	{ label: "90% Power, 0.769 Fuel", powerPct: 90, fuelMod: 0.769 },
+	{ label: "100% Power, 1.000 Fuel", powerPct: 100, fuelMod: 1.0 },
+	{ label: "125% Power, 1.747 Fuel", powerPct: 125, fuelMod: 1.747 },
+	{ label: "150% Power, 2.756 Fuel", powerPct: 150, fuelMod: 2.756 },
+];
+
+const STANDARD_SIZE_OPTIONS: readonly EngineSizeOption[] = [
+	{ sizeHS: 1, label: "1 HS (50 tons)", fuelReductionPct: 1 },
+	{ sizeHS: 5, label: "5 HS (250 tons)", fuelReductionPct: 5 },
+	{ sizeHS: 10, label: "10 HS (500 tons)", fuelReductionPct: 10 },
+	{ sizeHS: 15, label: "15 HS (750 tons)", fuelReductionPct: 15 },
+	{ sizeHS: 20, label: "20 HS (1,000 tons)", fuelReductionPct: 20 },
+	{ sizeHS: 25, label: "25 HS (1,250 tons)", fuelReductionPct: 25 },
+	{ sizeHS: 30, label: "30 HS (1,500 tons)", fuelReductionPct: 30 },
+	{ sizeHS: 40, label: "40 HS (2,000 tons)", fuelReductionPct: 40 },
+	{ sizeHS: 50, label: "50 HS (2,500 tons)", fuelReductionPct: 50 },
+];
 
 export const ENGINE_TIER_DEFS: readonly EngineTierDef[] = [
 	{
@@ -18,40 +57,40 @@ export const ENGINE_TIER_DEFS: readonly EngineTierDef[] = [
 		name: "Conventional TN",
 		baseAccelG: 0.1,
 		baseIspS: 1_000_000,
-		baseMassKg: 3_000,
+		baseMassPerHS: 60,
 		prerequisiteTech: null,
-		minPowerMod: 0.5,
-		maxPowerMod: 3.0,
+		powerOptions: STANDARD_POWER_OPTIONS,
+		sizeOptions: STANDARD_SIZE_OPTIONS,
 	},
 	{
 		id: "improved",
 		name: "Improved TN",
 		baseAccelG: 10,
 		baseIspS: 2_000_000,
-		baseMassKg: 4_000,
+		baseMassPerHS: 80,
 		prerequisiteTech: "fleet-logistics",
-		minPowerMod: 0.5,
-		maxPowerMod: 3.0,
+		powerOptions: STANDARD_POWER_OPTIONS,
+		sizeOptions: STANDARD_SIZE_OPTIONS,
 	},
 	{
 		id: "advanced",
 		name: "Advanced TN",
 		baseAccelG: 50,
 		baseIspS: 5_000_000,
-		baseMassKg: 5_000,
+		baseMassPerHS: 100,
 		prerequisiteTech: "applied-physics",
-		minPowerMod: 0.5,
-		maxPowerMod: 3.0,
+		powerOptions: STANDARD_POWER_OPTIONS,
+		sizeOptions: STANDARD_SIZE_OPTIONS,
 	},
 	{
 		id: "extreme",
 		name: "Extreme TN",
 		baseAccelG: 200,
 		baseIspS: 10_000_000,
-		baseMassKg: 6_000,
+		baseMassPerHS: 120,
 		prerequisiteTech: "unified-field-theory",
-		minPowerMod: 0.5,
-		maxPowerMod: 3.0,
+		powerOptions: STANDARD_POWER_OPTIONS,
+		sizeOptions: STANDARD_SIZE_OPTIONS,
 	},
 ];
 

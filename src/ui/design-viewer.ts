@@ -15,7 +15,9 @@ interface EngineDesignSnapshot {
 	name: string;
 	tierId: string;
 	tierName: string;
-	powerMod: number;
+	powerPct: number;
+	sizeHS: number;
+	fuelMod: number;
 	accelG: number;
 	ispS: number;
 	massKg: number;
@@ -39,14 +41,26 @@ interface ShipDesignSnapshot {
 	armorHp: number;
 }
 
+interface EnginePowerOptionSnapshot {
+	label: string;
+	powerPct: number;
+	fuelMod: number;
+}
+
+interface EngineSizeOptionSnapshot {
+	sizeHS: number;
+	label: string;
+	fuelReductionPct: number;
+}
+
 interface UnlockedTierSnapshot {
 	id: string;
 	name: string;
 	baseAccelG: number;
 	baseIspS: number;
-	baseMassKg: number;
-	minPowerMod: number;
-	maxPowerMod: number;
+	baseMassPerHS: number;
+	powerOptions: EnginePowerOptionSnapshot[];
+	sizeOptions: EngineSizeOptionSnapshot[];
 }
 
 interface UnlockedComponentSnapshot {
@@ -105,7 +119,9 @@ function buildSnapshot(): DesignSnapshot {
 				name: ed.name,
 				tierId: ed.tierId,
 				tierName: tier?.name ?? ed.tierId,
-				powerMod: ed.powerMod,
+				powerPct: ed.powerPct,
+				sizeHS: ed.sizeHS,
+				fuelMod: ed.fuelMod,
 				accelG: ed.accelG,
 				ispS: ed.ispS,
 				massKg: ed.massKg,
@@ -139,9 +155,9 @@ function buildSnapshot(): DesignSnapshot {
 		name: t.name,
 		baseAccelG: t.baseAccelG,
 		baseIspS: t.baseIspS,
-		baseMassKg: t.baseMassKg,
-		minPowerMod: t.minPowerMod,
-		maxPowerMod: t.maxPowerMod,
+		baseMassPerHS: t.baseMassPerHS,
+		powerOptions: [...t.powerOptions],
+		sizeOptions: [...t.sizeOptions],
 	}));
 
 	const unlockedComponents: UnlockedComponentSnapshot[] = components.map((c) => ({
@@ -239,14 +255,16 @@ type ActionMsg = { action: string; [key: string]: unknown };
 function handleCreateEngine(msg: ActionMsg): void {
 	const tier = findEngineTier(msg.tierId as string);
 	if (!tier) return;
-	const powerMod = msg.powerMod as number;
-	const stats = computeEngineStats(tier, powerMod);
+	const powerPct = msg.powerPct as number;
+	const sizeHS = msg.sizeHS as number;
+	const stats = computeEngineStats(tier, powerPct, sizeHS);
 	const id = `eng-${++state.designCounter}`;
 	const design: EngineDesign = {
 		id,
 		name: msg.name as string,
 		tierId: msg.tierId as string,
-		powerMod,
+		powerPct,
+		sizeHS,
 		...stats,
 	};
 	state.engineDesigns.set(id, design);
