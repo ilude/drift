@@ -212,13 +212,16 @@ describe("ENGINE_TYPES", () => {
 
 // --- Transfer feasibility with brachistochrone ---
 
+// Helper to build a ShipPhysicsState from a named ENGINE_TYPES entry
+function shipFromEngine(engineId: string, fuelKg: number, dryMassKg: number) {
+	const engine = ENGINE_TYPES.find((e) => e.id === engineId);
+	if (!engine) throw new Error(`Unknown engine id: ${engineId}`);
+	return { fuelKg, dryMassKg, accelG: engine.accelG, ispS: engine.ispS };
+}
+
 describe("checkTransfer", () => {
 	it("Earth to Mars with conventional TN (0.1g): feasible, under 10 days", () => {
-		const ship = {
-			fuelKg: 500_000,
-			dryMassKg: 5_000,
-			engineId: "conventional",
-		};
+		const ship = shipFromEngine("conventional", 500_000, 5_000);
 		const result = checkTransfer(1.0, 1.524, 1.0, ship);
 		expect(result.feasible).toBe(true);
 		expect(result.transferDays).toBeLessThan(10);
@@ -226,24 +229,20 @@ describe("checkTransfer", () => {
 	});
 
 	it("Earth to Neptune with extreme TN: feasible, under 5 days", () => {
-		const ship = { fuelKg: 500_000, dryMassKg: 5_000, engineId: "extreme" };
+		const ship = shipFromEngine("extreme", 500_000, 5_000);
 		const result = checkTransfer(1.0, 30.07, 1.0, ship);
 		expect(result.feasible).toBe(true);
 		expect(result.transferDays).toBeLessThan(5);
 	});
 
 	it("infeasible with near-zero fuel", () => {
-		const ship = { fuelKg: 1, dryMassKg: 5_000, engineId: "conventional" };
+		const ship = shipFromEngine("conventional", 1, 5_000);
 		const result = checkTransfer(1.0, 1.524, 1.0, ship);
 		expect(result.feasible).toBe(false);
 	});
 
 	it("fuel consumed matches fuelRequired for same delta-v", () => {
-		const ship = {
-			fuelKg: 500_000,
-			dryMassKg: 5_000,
-			engineId: "conventional",
-		};
+		const ship = shipFromEngine("conventional", 500_000, 5_000);
 		const result = checkTransfer(1.0, 1.524, 1.0, ship);
 		const engine = ENGINE_TYPES.find((e) => e.id === "conventional");
 		expect(engine).toBeDefined();
@@ -252,14 +251,8 @@ describe("checkTransfer", () => {
 		expect(result.fuelUsedKg).toBeCloseTo(expectedFuel, 6);
 	});
 
-	it("infeasible with unknown engine", () => {
-		const ship = { fuelKg: 500_000, dryMassKg: 5_000, engineId: "warp" };
-		const result = checkTransfer(1.0, 1.524, 1.0, ship);
-		expect(result.feasible).toBe(false);
-	});
-
 	it("TN engines have low fuel fraction (high Isp)", () => {
-		const ship = { fuelKg: 500_000, dryMassKg: 5_000, engineId: "extreme" };
+		const ship = shipFromEngine("extreme", 500_000, 5_000);
 		const result = checkTransfer(1.0, 30.07, 1.0, ship);
 		expect(result.feasible).toBe(true);
 		// High Isp means fuel usage is a small fraction of total

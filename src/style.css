@@ -337,6 +337,10 @@ body {
 	color: #6a9a6a;
 }
 
+.hidden {
+	display: none;
+}
+
 /* Panel base */
 .panel {
 	position: fixed;
@@ -383,6 +387,43 @@ body {
 
 #info-close:hover {
 	color: #aaffaa;
+}
+
+.info-pin-btn {
+	background: none;
+	border: none;
+	color: #88cc88;
+	cursor: pointer;
+	font-family: inherit;
+	font-size: 11px;
+	margin-right: 2px;
+}
+
+.info-pin-btn:hover {
+	color: #aaffaa;
+}
+
+/* Pinned ship panels — reuse .panel base, just raise z-index and lock width */
+.pinned-ship-panel {
+	z-index: 50;
+	width: 240px;
+	user-select: none;
+}
+
+.pinned-ship-panel .panel-header {
+	cursor: grab;
+}
+
+.pinned-ship-panel .panel-header:active {
+	cursor: grabbing;
+}
+
+#info-panel .panel-header {
+	cursor: grab;
+}
+
+#info-panel .panel-header:active {
+	cursor: grabbing;
 }
 
 #info-content {

@@ -199,12 +199,9 @@ export function checkTransfer(
 	_starMassSolar: number,
 	shipState: ShipPhysicsState,
 ): TransferResult {
-	const engine = ENGINE_TYPES.find((e) => e.id === shipState.engineId);
-	if (!engine) return { feasible: false };
-
-	const accelMS2 = engine.accelG * G_ACCEL;
+	const accelMS2 = shipState.accelG * G_ACCEL;
 	const dvTotal = brachistochroneDeltaV(r1AU, r2AU, accelMS2);
-	const veKmS = exhaustVelocity(engine.ispS) / 1000; // m/s to km/s
+	const veKmS = exhaustVelocity(shipState.ispS) / 1000; // m/s to km/s
 	const wetMass = shipState.dryMassKg + shipState.fuelKg;
 	const deltaVAvailable = rocketDeltaV(veKmS, wetMass, shipState.dryMassKg);
 	const fuelUsedKg = fuelRequired(veKmS, shipState.dryMassKg, dvTotal);
@@ -234,12 +231,9 @@ export function checkTransfer(
  * For bodies that don't have clean AU orbital radii (comets, moons).
  */
 export function checkTransferKm(distKm: number, shipState: ShipPhysicsState): TransferResult {
-	const engine = ENGINE_TYPES.find((e) => e.id === shipState.engineId);
-	if (!engine) return { feasible: false };
-
-	const accelMS2 = engine.accelG * G_ACCEL;
+	const accelMS2 = shipState.accelG * G_ACCEL;
 	const dvTotal = brachistochroneDeltaVKm(distKm, accelMS2);
-	const veKmS = exhaustVelocity(engine.ispS) / 1000;
+	const veKmS = exhaustVelocity(shipState.ispS) / 1000;
 	const wetMass = shipState.dryMassKg + shipState.fuelKg;
 	const deltaVAvailable = rocketDeltaV(veKmS, wetMass, shipState.dryMassKg);
 	const fuelUsedKg = fuelRequired(veKmS, shipState.dryMassKg, dvTotal);

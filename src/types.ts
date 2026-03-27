@@ -479,6 +479,8 @@ export interface ShipEntry extends BaseEntry {
 	stationTarget: string | null;
 	// Commissioning date in sim-days (set at creation, never changes)
 	keelDate: number;
+	// Ship design reference (null for legacy ships)
+	designId: string | null;
 }
 
 export type BodyEntry = PlanetEntry | CometEntry | ShipEntry;
@@ -521,12 +523,47 @@ export interface TransferResult {
 	transferDays?: number;
 }
 
+// --- Ship design types ---
+
+export interface EngineDesign {
+	id: string;
+	name: string;
+	tierId: string;
+	powerMod: number;
+	accelG: number;
+	ispS: number;
+	massKg: number;
+}
+
+export interface ShipDesignComponent {
+	componentId: string;
+	count: number;
+}
+
+export interface ShipDesign {
+	id: string;
+	name: string;
+	engineDesignId: string;
+	engineCount: number;
+	components: ShipDesignComponent[];
+	dryMassKg: number;
+	fuelCapacityKg: number;
+	cargoCapacityKg: number;
+	crewCapacity: number;
+	maxSupplies: number;
+	sensorMultiplier: number;
+	accelG: number;
+	ispS: number;
+	armorHp: number;
+}
+
 // --- Ship state for transfer check ---
 
 export interface ShipPhysicsState {
 	fuelKg: number;
 	dryMassKg: number;
-	engineId: string;
+	accelG: number;
+	ispS: number;
 }
 
 // --- Asteroid belt ---
@@ -651,6 +688,9 @@ export interface AppState {
 	researchProjects: Map<string, ColonyResearchProject>;
 	gameLog: GameLogEntry[];
 	researchedTechs: Set<string>;
+	engineDesigns: Map<string, EngineDesign>;
+	shipDesigns: Map<string, ShipDesign>;
+	designCounter: number;
 }
 
 // --- System data ---

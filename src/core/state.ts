@@ -130,6 +130,9 @@ export const state: AppState = {
 		"action-complete": false,
 	},
 	firstSurveyCompleted: false,
+	engineDesigns: new Map(),
+	shipDesigns: new Map(),
+	designCounter: 0,
 };
 
 export function saveState(): void {

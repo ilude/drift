@@ -33,6 +33,7 @@ import {
 import { GameClock } from "./core/game-clock";
 import { publishIntent } from "./core/intents";
 import { addCoalescedNotification, addNotification } from "./core/notifications";
+import { resolveShipPhysics } from "./core/ship-utils";
 import { gameLog, gameWarn, MASTER_SEED, state } from "./core/state";
 import { seededRandom } from "./core/utils";
 import { generateDeposits, generateEarthDeposits } from "./data/resources";
@@ -70,6 +71,7 @@ import { pushResourceUpdate } from "./ui/resource-viewer";
 import {
 	selectBody,
 	setupClickHandlers,
+	updateAllPinnedPanels,
 	updateFlyTo,
 	updateFollow,
 	updateSelectedBody,
@@ -434,20 +436,15 @@ function canAffordRoundTrip(ship: ShipEntry, target: BodyEntry): boolean {
 
 	// Fuel cost: host → target
 	const distToTarget = Math.abs(bodyAU(target) - hostResolved.distance) * AU_TO_KM;
-	const leg1 = checkTransferKm(distToTarget, {
-		fuelKg: ship.fuelKg,
-		dryMassKg: ship.dryMassKg,
-		engineId: ship.engineId,
-	});
+	const leg1 = checkTransferKm(distToTarget, resolveShipPhysics(ship));
 	if (!leg1.feasible) return false;
 
 	// Fuel cost: target → colony (with remaining fuel after leg 1)
 	const fuelAfterLeg1 = ship.fuelKg - (leg1.fuelUsedKg ?? 0);
 	const distToColony = bodyDistanceKm(target, colony);
 	const leg2 = checkTransferKm(distToColony, {
+		...resolveShipPhysics(ship),
 		fuelKg: fuelAfterLeg1,
-		dryMassKg: ship.dryMassKg,
-		engineId: ship.engineId,
 	});
 	return leg2.feasible;
 }
@@ -1136,6 +1133,7 @@ function tickCameraAndLabels(dt: number): [number, number] {
 	updateLabels(cachedCamDist);
 	const t3 = performance.now();
 	if (state.selectedBody) updateSelectedBody();
+	updateAllPinnedPanels();
 	updateHUD(cachedCamDist);
 	const t4 = performance.now();
 	return [t3, t4];

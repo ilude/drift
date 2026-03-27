@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { findAsteroidEntity, findBody, rebuildEntityMaps } from "../core/entities";
+import { resolveShipPhysics } from "../core/ship-utils";
 import { gameWarn, state } from "../core/state";
 import {
 	DIST_SCALE,
@@ -453,6 +454,7 @@ export function createShip(config: ShipConfig): ShipEntry | undefined {
 		action: { type: null, commandId: null, startTime: 0, duration: 0, progress: 0 },
 		stationTarget: null,
 		keelDate: state.simTime.days,
+		designId: null,
 	} as ShipEntry;
 
 	// Velocity tail -- always visible, short trail showing direction
@@ -677,11 +679,7 @@ export function initiateTransfer(
 	const distKm = distanceKmBetween(host, targetEntry);
 	if (distKm < 1) return false;
 
-	const result = checkTransferKm(distKm, {
-		fuelKg: entry.fuelKg,
-		dryMassKg: entry.dryMassKg,
-		engineId: entry.engineId,
-	});
+	const result = checkTransferKm(distKm, resolveShipPhysics(entry));
 
 	if (!result.feasible) {
 		if (showUI) {

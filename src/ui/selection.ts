@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { computeColonyWorkforce, getColony } from "../core/colonies";
 import { hullCeiling } from "../core/commands";
-import { findStar } from "../core/entities";
+import { findShip, findStar } from "../core/entities";
 import { MAX_CLICK_DIST, simTimeToDate, state } from "../core/state";
 import { getResourceDef } from "../data/resources";
 import { ENGINE_TYPES } from "../math/ship-physics";
@@ -120,6 +120,152 @@ export function formatShipDuration(entry: import("../types").ShipEntry): string 
 	return "";
 }
 
+interface PinnedPanel {
+	shipName: string;
+	el: HTMLElement;
+	offsetX: number;
+	offsetY: number;
+}
+
+const pinnedPanels = new Map<string, PinnedPanel>();
+
+function buildPinnedBodyHTML(entry: ShipEntry): string {
+	const ceiling = hullCeiling(entry.maintenance.totalAge, entry.maintenance.lastRefitAge);
+	const hullCurrent = Math.round(entry.maintenance.hullIntegrity);
+	const hullCap = Math.round(ceiling);
+	const hullText = hullCap < 100 ? `${hullCurrent}% / ${hullCap}%` : `${hullCurrent}%`;
+	const fuelPct =
+		entry.fuelCapacityKg > 0 ? Math.round((entry.fuelKg / entry.fuelCapacityKg) * 100) : 0;
+	const morale = Math.round(entry.crew.morale);
+	const moraleColor = morale > 70 ? "#4a6a4a" : morale > 40 ? "#aaaa44" : "#aa4444";
+	const hullColor = hullCurrent > 70 ? "#4a6a4a" : hullCurrent > 40 ? "#aaaa44" : "#aa4444";
+	const duration = formatShipDuration(entry);
+	const rows: [string, string][] = [
+		["Action", formatShipAction(entry)],
+		...(duration ? ([["Duration", duration]] as [string, string][]) : []),
+		["Fuel", `${fuelPct}%`],
+		["Hull", `<span style="color:${hullColor}">${hullText}</span>`],
+		["Morale", `<span style="color:${moraleColor}">${morale}%</span>`],
+		["Supplies", `${Math.round(entry.maintenance.supplies)}/${entry.maintenance.maxSupplies}`],
+	];
+	return rows
+		.map(
+			([label, value]) =>
+				`<div class="info-row"><span class="info-label">${label}</span><span>${value}</span></div>`,
+		)
+		.join("");
+}
+
+function buildPinnedPanelHTML(entry: ShipEntry): string {
+	return (
+		`<div class="panel-header">` +
+		`<span>${entry.data.name}</span>` +
+		`<button class="info-pin-btn pinned-close-btn" type="button">[X]</button>` +
+		`</div>` +
+		`<div class="pinned-body" style="padding:6px 8px;background:#0d0d14">` +
+		buildPinnedBodyHTML(entry) +
+		`</div>`
+	);
+}
+
+function removePinnedPanel(shipName: string): void {
+	const pinned = pinnedPanels.get(shipName);
+	if (!pinned) return;
+	pinned.el.remove();
+	pinnedPanels.delete(shipName);
+}
+
+function attachPanelDrag(el: HTMLElement, onMove?: (x: number, y: number) => void): void {
+	const header = el.querySelector(".panel-header") as HTMLElement | null;
+	if (!header) return;
+	let startX = 0;
+	let startY = 0;
+	let startLeft = 0;
+	let startTop = 0;
+
+	function onMouseMove(e: MouseEvent): void {
+		const left = startLeft + (e.clientX - startX);
+		const top = startTop + (e.clientY - startY);
+		el.style.left = `${left}px`;
+		el.style.top = `${top}px`;
+		onMove?.(left, top);
+	}
+
+	function onMouseUp(): void {
+		document.removeEventListener("mousemove", onMouseMove);
+		document.removeEventListener("mouseup", onMouseUp);
+	}
+
+	header.addEventListener("mousedown", (e: MouseEvent) => {
+		if ((e.target as HTMLElement).tagName === "BUTTON") return;
+		if (!el.style.left) {
+			const rect = el.getBoundingClientRect();
+			el.style.left = `${rect.left}px`;
+			el.style.top = `${rect.top}px`;
+			el.style.right = "auto";
+		}
+		startX = e.clientX;
+		startY = e.clientY;
+		startLeft = Number.parseFloat(el.style.left) || 0;
+		startTop = Number.parseFloat(el.style.top) || 0;
+		document.addEventListener("mousemove", onMouseMove);
+		document.addEventListener("mouseup", onMouseUp);
+		e.preventDefault();
+	});
+}
+
+function createPinnedPanel(entry: ShipEntry): void {
+	if (pinnedPanels.has(entry.data.name)) return;
+
+	// Spawn at info-panel's current screen position so it appears to "stay in place"
+	const infoEl = document.getElementById("info-panel");
+	let left: number;
+	let top: number;
+	if (infoEl) {
+		const rect = infoEl.getBoundingClientRect();
+		left = rect.left;
+		top = rect.top;
+	} else {
+		left = 20 + pinnedPanels.size * 20;
+		top = 60 + pinnedPanels.size * 20;
+	}
+
+	const el = document.createElement("div");
+	el.className = "panel pinned-ship-panel";
+	el.innerHTML = buildPinnedPanelHTML(entry);
+	el.style.left = `${left}px`;
+	el.style.top = `${top}px`;
+	document.body.appendChild(el);
+
+	// Hide the main info panel so the next ship click opens it fresh
+	infoEl?.classList.add("hidden");
+	state.selectedBody = null;
+
+	const panel: PinnedPanel = { shipName: entry.data.name, el, offsetX: left, offsetY: top };
+	pinnedPanels.set(entry.data.name, panel);
+	attachPanelDrag(el, (x, y) => {
+		panel.offsetX = x;
+		panel.offsetY = y;
+	});
+	el
+		.querySelector(".pinned-close-btn")
+		?.addEventListener("click", () => removePinnedPanel(entry.data.name));
+}
+
+function updatePinnedPanel(entry: ShipEntry): void {
+	const pinned = pinnedPanels.get(entry.data.name);
+	if (!pinned) return;
+	const body = pinned.el.querySelector(".pinned-body");
+	if (body) body.innerHTML = buildPinnedBodyHTML(entry);
+}
+
+export function updateAllPinnedPanels(): void {
+	for (const [shipName] of pinnedPanels) {
+		const [entry, found] = findShip(shipName);
+		if (found && entry) updatePinnedPanel(entry);
+	}
+}
+
 const ZOOM_DIST_RECENTER: number = ZOOM_BASE / 0.25;
 const ZOOM_DIST_STAR: number = 75;
 const ZOOM_DIST_PLANET: number = 38;
@@ -230,10 +376,7 @@ function updateBodyInfoTitle(entry: BodyEntry): void {
 
 	const typeEl = document.getElementById("info-type");
 	if (typeEl) {
-		let text =
-			!isShipEntry(entry) && entry.data.distance > 0
-				? `${entry.data.type} — ${entry.data.distance.toFixed(2)} AU`
-				: entry.data.type;
+		let text = entry.data.type;
 		if (!isShipEntry(entry)) {
 			const [colony, found] = getColony(entry.data.name);
 			if (found && colony) {
@@ -282,6 +425,7 @@ function showShipPanel(entry: ShipEntry): void {
 	for (const id of SHIP_ROW_IDS) {
 		document.getElementById(id)?.classList.remove("hidden");
 	}
+	document.getElementById("info-pin-btn")?.classList.remove("hidden");
 	document.getElementById("info-resources-section")?.classList.add("hidden");
 
 	const cmdContainer = document.getElementById("command-tree-container");
@@ -323,6 +467,7 @@ function hideShipPanel(): void {
 	for (const id of SHIP_ROW_IDS) {
 		document.getElementById(id)?.classList.add("hidden");
 	}
+	document.getElementById("info-pin-btn")?.classList.add("hidden");
 	document.getElementById("command-tree-container")?.classList.add("hidden");
 }
 
@@ -367,8 +512,16 @@ function buildDepositRow(deposit: ResourceDeposit): HTMLElement | null {
 
 function updateResourcePanel(entry: BodyEntry): void {
 	const resourcesSection = document.getElementById("info-resources-section");
-	if (!isSurveyable(entry) || entry.survey.surveyLevel === 0) {
+	if (!isSurveyable(entry)) {
 		resourcesSection?.classList.add("hidden");
+		return;
+	}
+	if (entry.survey.surveyLevel === 0) {
+		resourcesSection?.classList.remove("hidden");
+		const surveyStatusEl = document.getElementById("info-survey-status");
+		if (surveyStatusEl) surveyStatusEl.textContent = "Unsurveyed";
+		const resourcesList = document.getElementById("info-resources-list");
+		if (resourcesList) resourcesList.innerHTML = "";
 		return;
 	}
 
@@ -382,17 +535,14 @@ function updateResourcePanel(entry: BodyEntry): void {
 
 	resourcesList.innerHTML = "";
 
-	const visibleDeposits = entry.survey.deposits
-		.filter((d) => d.minSurveyLevel <= entry.survey.surveyLevel)
-		.slice()
-		.sort((a, b) => b.quantity - a.quantity);
+	const visibleDeposits = entry.survey.deposits.slice().sort((a, b) => b.quantity - a.quantity);
 
 	for (const deposit of visibleDeposits) {
 		const row = buildDepositRow(deposit);
 		if (row) resourcesList.appendChild(row);
 	}
 
-	const miningValue = classifyMiningValue(entry.survey.deposits, entry.survey.surveyLevel);
+	const miningValue = classifyMiningValue(entry.survey.deposits, 3);
 	const scoreRow = document.createElement("div");
 	scoreRow.style.cssText =
 		"padding:4px 0 2px;font-size:11px;border-top:1px solid #333;margin-top:2px;";
@@ -576,6 +726,15 @@ export function setupClickHandlers(): void {
 	// Re-attach click handler when renderer is recreated (antialias toggle)
 	window.addEventListener("renderer-replaced", () => {
 		renderer.domElement.addEventListener("click", onCanvasClick);
+	});
+
+	const infoPanel = document.getElementById("info-panel");
+	if (infoPanel) attachPanelDrag(infoPanel);
+
+	document.getElementById("info-pin-btn")?.addEventListener("click", () => {
+		if (state.selectedBody && isShipEntry(state.selectedBody)) {
+			createPinnedPanel(state.selectedBody);
+		}
 	});
 
 	const closeBtn = document.getElementById("info-close");
