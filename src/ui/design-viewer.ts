@@ -608,8 +608,32 @@ input[type=range].form-range {
 .stat-label { color: #6a9a6a; font-size: 10px; }
 .stat-val { color: #aaffaa; font-size: 10px; font-weight: 500; }
 
-/* ---- Validation messages ---- */
-.validation-msg { color: #cc7777; font-size: 10px; margin-bottom: 6px; }
+/* ---- Errors pane ---- */
+.errors-pane {
+  margin-top: 8px;
+  padding: 6px;
+  border: 1px solid #3a2020;
+  background: #1a0d0d;
+  font-size: 10px;
+  display: none;
+}
+.errors-pane.has-errors {
+  display: block;
+}
+.error-item {
+  color: #cc4444;
+  padding: 1px 0;
+}
+.error-item::before {
+  content: '✗ ';
+}
+.valid-item {
+  color: #4a8a4a;
+  padding: 1px 0;
+}
+.valid-item::before {
+  content: '✓ ';
+}
 
 /* ---- Component rows ---- */
 .component-rows { margin-bottom: 8px; }
@@ -777,7 +801,7 @@ input[type=range].form-range {
         <div class="stat-row"><span class="stat-label">Armor</span><span class="stat-val" id="ss-armor">—</span></div>
       </div>
 
-      <div id="ship-validation"></div>
+      <div class="errors-pane" id="ship-validation"></div>
 
       <div class="create-row">
         <input type="text" class="form-input" id="ship-name" placeholder="Ship design name…">
@@ -1206,6 +1230,16 @@ function getComponentRows() {
   return rows;
 }
 
+const CATEGORY_LABELS = {
+  'bridge': 'Bridge',
+  'crew-quarters': 'Crew Quarters',
+  'fuel-tank': 'Fuel Tanks',
+  'cargo-bay': 'Cargo Bays',
+  'maintenance-bay': 'Maintenance',
+  'sensor-suite': 'Sensors',
+  'armor': 'Armor',
+};
+
 function buildComponentOptionsHTML() {
   const byCategory = {};
   for (const c of snap.unlockedComponents) {
@@ -1213,8 +1247,10 @@ function buildComponentOptionsHTML() {
     byCategory[c.category].push(c);
   }
   let html = '<option value="">— select —</option>';
-  for (const [cat, comps] of Object.entries(byCategory)) {
-    html += \`<optgroup label="\${cat}">\`;
+  for (const [cat, label] of Object.entries(CATEGORY_LABELS)) {
+    const comps = byCategory[cat];
+    if (!comps || comps.length === 0) continue;
+    html += \`<optgroup label="\${label}">\`;
     for (const c of comps) {
       html += \`<option value="\${c.id}">\${c.name} (\${c.massKg.toLocaleString()} kg)</option>\`;
     }
@@ -1255,6 +1291,7 @@ function updateShipStats() {
   if (!engineDesign) {
     setShipStatsBlank();
     validation.innerHTML = '';
+    validation.className = 'errors-pane';
     createBtn.disabled = true;
     return;
   }
@@ -1291,10 +1328,12 @@ function updateShipStats() {
   // Validate
   const errors = validateDesign(engineCount, components);
   if (errors.length > 0) {
-    validation.innerHTML = errors.map(e => \`<div class="validation-msg">⚠ \${e}</div>\`).join('');
+    validation.innerHTML = errors.map(e => \`<div class="error-item">\${e}</div>\`).join('');
+    validation.className = 'errors-pane has-errors';
     createBtn.disabled = true;
   } else {
-    validation.innerHTML = '';
+    validation.innerHTML = '<div class="valid-item">Design is valid</div>';
+    validation.className = 'errors-pane has-errors';
     createBtn.disabled = false;
   }
 }
