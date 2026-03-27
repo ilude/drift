@@ -237,9 +237,12 @@ function createPinnedPanel(entry: ShipEntry): void {
 	el.style.top = `${top}px`;
 	document.body.appendChild(el);
 
-	// Hide the main info panel so the next ship click opens it fresh
+	// Deselect and hide the main info panel so the next ship click opens it fresh
+	if (state.selectedBody) {
+		(state.selectedBody.selRing.material as THREE.MeshBasicMaterial).opacity = 0;
+		state.selectedBody = null;
+	}
 	infoEl?.classList.add("hidden");
-	state.selectedBody = null;
 
 	const panel: PinnedPanel = { shipName: entry.data.name, el, offsetX: left, offsetY: top };
 	pinnedPanels.set(entry.data.name, panel);
