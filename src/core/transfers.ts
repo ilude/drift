@@ -130,6 +130,18 @@ export function completeTransferSim(entry: ShipEntry): void {
 }
 
 /**
+ * Adjust transfer fuel budget and timing after a mid-transfer re-spline.
+ * Proportionally reduces fuel budget for the remaining portion of the transfer.
+ */
+export function adjustTransferBudget(entry: ShipEntry, remainingDays: number): void {
+	if (entry.transferTimeDays > 0) {
+		entry.transferFuelTotal *= remainingDays / entry.transferTimeDays;
+	}
+	entry.transferStartTime = state.simTime.days;
+	entry.transferTimeDays = remainingDays;
+}
+
+/**
  * Initiate a transfer from a ship to a target body.
  * Computes fuel cost using the additive model (rocket equation + operational burn).
  * If full acceleration is unaffordable, the commander throttles down automatically.

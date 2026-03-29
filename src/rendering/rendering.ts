@@ -1,6 +1,7 @@
 import type * as THREE from "three";
 import { findAsteroidEntity, findBody } from "../core/entities";
 import { gameLog, state } from "../core/state";
+import { adjustTransferBudget } from "../core/transfers";
 import {
 	inclinedPosition,
 	keplerRadius,
@@ -195,11 +196,7 @@ function maybeResplineTransfer(
 		entry.t1x = dx * invDist * tangentMag;
 		entry.t1y = dy * invDist * tangentMag;
 		entry.t1z = dz * invDist * tangentMag;
-		entry.transferStartTime = state.simTime.days;
-		if (entry.transferTimeDays > 0) {
-			entry.transferFuelTotal *= remainingDays / entry.transferTimeDays;
-		}
-		entry.transferTimeDays = remainingDays;
+		adjustTransferBudget(entry, remainingDays);
 	} else {
 		// Light endpoint update: just track the target position
 		entry.p1x = newP1x;
