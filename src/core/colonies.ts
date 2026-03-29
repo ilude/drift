@@ -16,6 +16,7 @@ import type {
 } from "../types";
 import { isPlanetEntry, isSurveyable } from "../types";
 import { findAsteroidEntity, findBody, listShipsAtBody } from "./entities";
+import { addCoalescedNotification } from "./notifications";
 import { err, ok } from "./result";
 import { simTimeToDate, state } from "./state";
 
@@ -936,8 +937,7 @@ export function canAffordConstruction(
 function deductConstructionResources(colony: ColonyState, def: ConstructionDefinition): void {
 	if (!def.resourceCost) return;
 	for (const [resourceId, amount] of Object.entries(def.resourceCost)) {
-		colony.stockpile.resources[resourceId] =
-			(colony.stockpile.resources[resourceId] ?? 0) - amount;
+		colony.stockpile.resources[resourceId] = (colony.stockpile.resources[resourceId] ?? 0) - amount;
 	}
 }
 
@@ -1128,7 +1128,9 @@ function tickConstruction(
 		project.progressBp += totalBp * (project.allocationPct / totalAllocation);
 
 		while (project.quantityRemaining > 0 && project.progressBp >= def.bpCost) {
+			if (!canAffordConstruction(colony, project.installationId)) break;
 			project.progressBp -= def.bpCost;
+			deductConstructionResources(colony, def);
 			project.quantityRemaining--;
 			switch (project.installationId) {
 				case "construction-factory":
@@ -1164,6 +1166,80 @@ function tickConstruction(
 	);
 }
 
+const WARNING_INTERVAL_DAYS = 30;
+const lastWarningDay = new Map<string, number>();
+
+function shouldWarn(key: string): boolean {
+	const last = lastWarningDay.get(key) ?? -Infinity;
+	if (state.simTime.days - last < WARNING_INTERVAL_DAYS) return false;
+	lastWarningDay.set(key, state.simTime.days);
+	return true;
+}
+
+export function resetColonyWarningState(): void {
+	lastWarningDay.clear();
+}
+
+function checkColonyWarnings(colony: ColonyState, qualities: ColonyQualities): void {
+	if (qualities.staffingRatio < 0.5 && shouldWarn(`${colony.bodyName}:understaffed`)) {
+		addCoalescedNotification(
+			"colony-understaffed",
+			`${colony.name}: severe understaffing (${Math.round(qualities.staffingRatio * 100)}%)`,
+			colony.bodyName,
+			5000,
+		);
+	}
+
+	const activeConstruction = colony.constructionProjects.some((p) => !p.paused);
+	if (
+		colony.installations.constructionFactory > 0 &&
+		!activeConstruction &&
+		shouldWarn(`${colony.bodyName}:idle-factory`)
+	) {
+		addCoalescedNotification(
+			"colony-idle",
+			`${colony.name}: construction factories idle`,
+			colony.bodyName,
+			5000,
+		);
+	}
+
+	const hasActiveResearch = [...state.researchProjects.values()].some(
+		(p) => p.colonyBodyName === colony.bodyName && !p.paused,
+	);
+	if (
+		colony.installations.lab > 0 &&
+		!hasActiveResearch &&
+		shouldWarn(`${colony.bodyName}:idle-lab`)
+	) {
+		addCoalescedNotification(
+			"colony-idle",
+			`${colony.name}: research labs idle`,
+			colony.bodyName,
+			5000,
+		);
+	}
+
+	const blockedProject = colony.constructionProjects.find((p) => {
+		if (p.paused) return false;
+		const def = getConstructionDef(p.installationId);
+		return (
+			p.progressBp >= def.bpCost &&
+			def.resourceCost &&
+			!canAffordConstruction(colony, p.installationId)
+		);
+	});
+	if (blockedProject && shouldWarn(`${colony.bodyName}:blocked`)) {
+		const def = getConstructionDef(blockedProject.installationId);
+		addCoalescedNotification(
+			"colony-blocked",
+			`${colony.name}: ${def.name} blocked — insufficient resources`,
+			colony.bodyName,
+			5000,
+		);
+	}
+}
+
 export function tickColony(colony: ColonyState, simDtDays: number): void {
 	const qualities = computeColonyQualities(colony);
 	tickConstruction(colony, simDtDays, qualities);
@@ -1171,6 +1247,7 @@ export function tickColony(colony: ColonyState, simDtDays: number): void {
 	tickResearch(colony, simDtDays);
 	routeTransferQueue(colony);
 	settleTransfers(colony);
+	checkColonyWarnings(colony, qualities);
 }
 
 export function tickColonies(simDtDays: number): void {

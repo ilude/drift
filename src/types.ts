@@ -340,7 +340,10 @@ export type NotificationType =
 	| "malfunction"
 	| "ship-destroyed"
 	| "transfer-complete"
-	| "action-complete";
+	| "action-complete"
+	| "colony-understaffed"
+	| "colony-idle"
+	| "colony-blocked";
 
 export interface GameNotification {
 	id: number;
@@ -680,6 +683,9 @@ export interface NotificationPauseConfig {
 	"ship-destroyed": boolean;
 	"transfer-complete": boolean;
 	"action-complete": boolean;
+	"colony-understaffed": boolean;
+	"colony-idle": boolean;
+	"colony-blocked": boolean;
 }
 
 export interface AppState {

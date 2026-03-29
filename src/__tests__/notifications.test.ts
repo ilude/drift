@@ -27,6 +27,9 @@ function resetState() {
 		"ship-destroyed": true,
 		"transfer-complete": false,
 		"action-complete": false,
+		"colony-understaffed": false,
+		"colony-idle": false,
+		"colony-blocked": false,
 	};
 	clearNotifications();
 }

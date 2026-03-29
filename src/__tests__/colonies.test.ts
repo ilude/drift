@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
 	addColonyStock,
 	addConstructionProject,
+	canAffordConstruction,
 	computeColonyQualities,
 	computeColonyWorkforce,
 	consumeColonyFuel,
@@ -11,6 +12,7 @@ import {
 	getNearestColonyForShip,
 	getScientistsAtColony,
 	queueResearchProjectForScientist,
+	resetColonyWarningState,
 	seedStartingColonies,
 	setScientistLabs,
 	tickColony,
@@ -103,6 +105,8 @@ describe("colonies", () => {
 		state.scientists.clear();
 		state.researchProjects.clear();
 		state.researchedTechs.clear();
+		state.notifications = [];
+		resetColonyWarningState();
 		state.bodyMeshes = [];
 		rebuildEntityMaps();
 	});
@@ -247,6 +251,7 @@ describe("colonies", () => {
 				storage: 1,
 				shipyard: 0,
 			},
+			stockpile: { fuelKg: 1000, supplies: 100, resources: { iron: 5000, copper: 2000 } },
 		});
 		state.colonies.set("Earth", colony);
 		addConstructionProject("Earth", "mine", 1, 100);
@@ -255,5 +260,151 @@ describe("colonies", () => {
 
 		expect(colony.installations.mine).toBeGreaterThan(0);
 		expect(colony.constructionProjects).toHaveLength(0);
+	});
+
+	it("construction deducts resources from colony stockpile on completion", () => {
+		state.bodyMeshes = [mockPlanet("Earth")];
+		const colony = makeColony("Earth", {
+			installations: {
+				constructionFactory: 4,
+				repairYard: 0,
+				fuelDepot: 0,
+				mine: 0,
+				lab: 0,
+				academy: 0,
+				storage: 0,
+				shipyard: 0,
+			},
+			stockpile: { fuelKg: 0, supplies: 0, resources: { iron: 500, copper: 100 } },
+		});
+		state.colonies.set("Earth", colony);
+		addConstructionProject("Earth", "mine", 1, 100);
+
+		tickColony(colony, 20);
+
+		expect(colony.installations.mine).toBe(1);
+		expect(colony.stockpile.resources.iron).toBe(300);
+		expect(colony.stockpile.resources.copper).toBe(50);
+	});
+
+	it("construction stalls when colony lacks resources", () => {
+		state.bodyMeshes = [mockPlanet("Earth")];
+		const colony = makeColony("Earth", {
+			installations: {
+				constructionFactory: 4,
+				repairYard: 0,
+				fuelDepot: 0,
+				mine: 0,
+				lab: 0,
+				academy: 0,
+				storage: 0,
+				shipyard: 0,
+			},
+			stockpile: { fuelKg: 0, supplies: 0, resources: { iron: 10 } },
+		});
+		state.colonies.set("Earth", colony);
+		addConstructionProject("Earth", "mine", 1, 100);
+
+		tickColony(colony, 20);
+
+		expect(colony.installations.mine).toBe(0);
+		expect(colony.constructionProjects).toHaveLength(1);
+		const project = colony.constructionProjects[0];
+		expect(project.progressBp).toBeGreaterThanOrEqual(80);
+	});
+
+	it("canAffordConstruction returns false when resources insufficient", () => {
+		const colony = makeColony("Earth", {
+			stockpile: { fuelKg: 0, supplies: 0, resources: { iron: 100 } },
+		});
+		expect(canAffordConstruction(colony, "mine")).toBe(false);
+		expect(canAffordConstruction(colony, "storage")).toBe(false);
+	});
+
+	it("canAffordConstruction returns true when resources sufficient", () => {
+		const colony = makeColony("Earth", {
+			stockpile: { fuelKg: 0, supplies: 0, resources: { iron: 5000, copper: 2000, aluminum: 1000 } },
+		});
+		expect(canAffordConstruction(colony, "mine")).toBe(true);
+		expect(canAffordConstruction(colony, "construction-factory")).toBe(true);
+	});
+
+	it("warns when colony is severely understaffed", () => {
+		state.bodyMeshes = [mockPlanet("Earth")];
+		const colony = makeColony("Earth", {
+			population: 100,
+			installations: {
+				constructionFactory: 10,
+				repairYard: 10,
+				fuelDepot: 10,
+				mine: 10,
+				lab: 10,
+				academy: 10,
+				storage: 10,
+				shipyard: 10,
+			},
+		});
+		state.colonies.set("Earth", colony);
+
+		tickColony(colony, 1);
+
+		const warning = state.notifications.find((n) => n.type === "colony-understaffed");
+		expect(warning).toBeDefined();
+		expect(warning?.message).toContain("understaffing");
+	});
+
+	it("does not warn when colony is well-staffed", () => {
+		state.bodyMeshes = [mockPlanet("Earth")];
+		const colony = makeColony("Earth");
+		state.colonies.set("Earth", colony);
+
+		tickColony(colony, 1);
+
+		const warning = state.notifications.find((n) => n.type === "colony-understaffed");
+		expect(warning).toBeUndefined();
+	});
+
+	it("warns when construction factories are idle", () => {
+		state.bodyMeshes = [mockPlanet("Earth")];
+		const colony = makeColony("Earth");
+		state.colonies.set("Earth", colony);
+
+		tickColony(colony, 1);
+
+		const warning = state.notifications.find(
+			(n) => n.type === "colony-idle" && n.message.includes("construction"),
+		);
+		expect(warning).toBeDefined();
+	});
+
+	it("does not repeat warning within 30 game-days", () => {
+		state.bodyMeshes = [mockPlanet("Earth")];
+		const colony = makeColony("Earth");
+		state.colonies.set("Earth", colony);
+
+		tickColony(colony, 1);
+		const count1 = state.notifications.filter((n) => n.type === "colony-idle").length;
+
+		tickColony(colony, 1);
+		const count2 = state.notifications.filter((n) => n.type === "colony-idle").length;
+
+		expect(count2).toBe(count1);
+	});
+
+	it("repeats warning after warning state is reset and 30 days elapse", () => {
+		state.bodyMeshes = [mockPlanet("Earth")];
+		const colony = makeColony("Earth");
+		state.colonies.set("Earth", colony);
+
+		tickColony(colony, 1);
+		const idleWarnings1 = state.notifications.filter((n) => n.type === "colony-idle");
+		expect(idleWarnings1.length).toBeGreaterThan(0);
+
+		state.notifications = [];
+		state.simTime = { days: state.simTime.days + 31 } as typeof state.simTime;
+		resetColonyWarningState();
+		tickColony(colony, 1);
+		const idleWarnings2 = state.notifications.filter((n) => n.type === "colony-idle");
+		expect(idleWarnings2.length).toBeGreaterThan(0);
 	});
 });
