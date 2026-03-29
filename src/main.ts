@@ -59,7 +59,6 @@ import {
 	asteroidProxy,
 	completeTransferState,
 	initiateTransfer,
-	rollOverhaulsUntilRefit,
 	setOnTransferComplete,
 	showTransferStatus,
 	visualCommitTransfer,

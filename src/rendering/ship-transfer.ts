@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { findAsteroidEntity, findBody, rebuildEntityMaps } from "../core/entities";
 import { gameWarn, state } from "../core/state";
+import { commitTransferSim, completeTransferSim } from "../core/transfers";
 import { rngInt, seededRandom } from "../core/utils";
 import { keplerRadius, MOON_DIST_SCALE, meanToTrue, orbitSpeed, scaleDist } from "../math/orbit";
 import { ENGINE_TYPES } from "../math/ship-physics";
@@ -515,37 +516,12 @@ export function setOnTransferComplete(hook: (ship: ShipEntry) => void): void {
 
 /** State-only transfer completion for background simulation. Does not update mesh position. */
 export function completeTransferState(entry: ShipEntry): void {
+	completeTransferSim(entry);
+
 	entry.trail.count = 0;
 	entry.trail.head = 0;
 	entry.trail.sampleAccum = 0;
 	entry.trail.line.geometry.setDrawRange(0, 0);
-
-	const transferTarget = entry.transferTarget ?? "";
-	const [target, targetFound] = findBody(transferTarget);
-
-	entry.shipState = "orbiting";
-	if (targetFound && target.isMoon && target.parentMesh) {
-		const parent = state.bodyMeshes.find((e) => e.mesh === target.parentMesh);
-		entry.hostPlanetName = parent ? parent.data.name : transferTarget;
-	} else {
-		entry.hostPlanetName = transferTarget;
-	}
-	entry.transferTarget = null;
-	entry.transferFuelTotal = 0;
-	entry.pendingTransfer = null;
-	entry.speed = SHIP_LOCAL_SPEED;
-	entry.angle = 0;
-
-	if (targetFound) {
-		entry.data.distance = target.data.distance || entry.data.distance;
-		entry.orbitA = entry.data.distance;
-	} else {
-		const [hit, hitFound] = findAsteroidEntity(transferTarget);
-		if (hitFound) {
-			entry.data.distance = hit.asteroid.au;
-			entry.orbitA = hit.asteroid.au;
-		}
-	}
 
 	if (onTransferCompleteHook) onTransferCompleteHook(entry);
 }
@@ -598,17 +574,7 @@ function commitTransfer(
 	entry.t1y = knots.t1y;
 	entry.t1z = knots.t1z;
 
-	entry.transferStartTime = state.simTime.days;
-	entry.transferTimeDays = gameDays;
-	// Preserve original timing for UI display (not reset by re-spline)
-	if (entry.shipState !== "transferring") {
-		entry.transferDisplayStart = state.simTime.days;
-		entry.transferDisplayDays = gameDays;
-	}
-	entry.transferTarget = targetName;
-	entry.shipState = "transferring";
-	entry.pendingTransfer = null;
-	entry.stationTarget = null;
+	commitTransferSim(entry, gameDays, targetName);
 
 	// Clear the trail for a fresh start
 	entry.trail.count = 0;

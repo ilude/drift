@@ -5,6 +5,9 @@ import { findAsteroidEntity, findBody } from "./entities";
 import { resolveShipPhysics } from "./ship-utils";
 import { gameLog, state } from "./state";
 
+// Station-keeping drift speed (~1 rotation/year, visual only)
+const SHIP_LOCAL_SPEED = (Math.PI * 2) / 365;
+
 // --- Visual commit hook (set by rendering layer at startup) ---
 
 type VisualCommitFn = (
@@ -73,6 +76,57 @@ function tryThrottle(
 		`[transfer] ${entry.data.name}: throttled ${maxAccelG.toFixed(3)}G → ${throttled.accelG.toFixed(3)}G (fuel: ${throttled.totalFuelKg.toFixed(0)}kg, ${throttled.transferDays.toFixed(1)}d)`,
 	);
 	return throttled;
+}
+
+/**
+ * Set sim-layer transfer fields on a ship entry.
+ * Called by the rendering layer's commitTransfer before writing spline knots.
+ */
+export function commitTransferSim(entry: ShipEntry, gameDays: number, targetName: string): void {
+	entry.transferStartTime = state.simTime.days;
+	entry.transferTimeDays = gameDays;
+	// Preserve original timing for UI display (not reset by re-spline)
+	if (entry.shipState !== "transferring") {
+		entry.transferDisplayStart = state.simTime.days;
+		entry.transferDisplayDays = gameDays;
+	}
+	entry.transferTarget = targetName;
+	entry.shipState = "transferring";
+	entry.pendingTransfer = null;
+	entry.stationTarget = null;
+}
+
+/**
+ * Complete a transfer at the sim level: update ship state fields to orbiting.
+ * Does not touch mesh position or trail geometry — call this before visual cleanup.
+ */
+export function completeTransferSim(entry: ShipEntry): void {
+	const transferTarget = entry.transferTarget ?? "";
+	const [target, targetFound] = findBody(transferTarget);
+
+	entry.shipState = "orbiting";
+	if (targetFound && target.isMoon && target.parentMesh) {
+		const parent = state.bodyMeshes.find((e) => e.mesh === target.parentMesh);
+		entry.hostPlanetName = parent ? parent.data.name : transferTarget;
+	} else {
+		entry.hostPlanetName = transferTarget;
+	}
+	entry.transferTarget = null;
+	entry.transferFuelTotal = 0;
+	entry.pendingTransfer = null;
+	entry.speed = SHIP_LOCAL_SPEED;
+	entry.angle = 0;
+
+	if (targetFound) {
+		entry.data.distance = target.data.distance || entry.data.distance;
+		entry.orbitA = entry.data.distance;
+	} else {
+		const [hit, hitFound] = findAsteroidEntity(transferTarget);
+		if (hitFound) {
+			entry.data.distance = hit.asteroid.au;
+			entry.orbitA = hit.asteroid.au;
+		}
+	}
 }
 
 /**

@@ -4,7 +4,15 @@
 
 import { computeTotalFuelCost } from "../math/ship-physics";
 import { distanceKmBetween } from "../math/transfer";
-import type { BodyEntry, CommandCondition, CommandResult, Result, ShipEntry } from "../types";
+import type {
+	BodyEntry,
+	CommandCondition,
+	CommandEntry,
+	CommandResult,
+	CommandType,
+	Result,
+	ShipEntry,
+} from "../types";
 import { isCometEntry, isShipEntry, isSurveyable } from "../types";
 import {
 	consumeColonyFuel,
@@ -553,4 +561,50 @@ export function getUnsurvevedMoonsOfHost(ship: ShipEntry): BodyEntry[] {
 	const [host, found] = findBody(ship.hostPlanetName);
 	if (!found) return [];
 	return host.moons.filter((moon) => isSurveyable(moon) && moon.survey.surveyLevel === 0);
+}
+
+// --- Command tree mutation helpers (called by UI layer) ---
+
+export function reorderCommand(ship: ShipEntry, index: number, direction: "up" | "down"): void {
+	const entries = ship.commandTree.entries;
+	if (direction === "up" && index > 0) {
+		const temp = entries[index - 1];
+		entries[index - 1] = entries[index];
+		entries[index] = temp;
+	} else if (direction === "down" && index < entries.length - 1) {
+		const temp = entries[index + 1];
+		entries[index + 1] = entries[index];
+		entries[index] = temp;
+	}
+}
+
+export function toggleCommand(ship: ShipEntry, index: number): void {
+	const entry = ship.commandTree.entries[index];
+	if (entry) entry.enabled = !entry.enabled;
+}
+
+export function removeCommand(ship: ShipEntry, index: number): void {
+	ship.commandTree.entries.splice(index, 1);
+}
+
+export function setCommandThreshold(ship: ShipEntry, index: number, value: number): void {
+	const entry = ship.commandTree.entries[index];
+	if (entry && "threshold" in entry.condition) {
+		(entry.condition as { threshold: number }).threshold = value;
+	}
+}
+
+export function addCommand(ship: ShipEntry, entry: CommandEntry): void {
+	ship.commandTree.entries.push(entry);
+}
+
+export function setImmediateCommand(ship: ShipEntry, command: CommandType, target?: string): void {
+	ship.immediateCommand = {
+		id: `imm-${Date.now()}`,
+		command,
+		condition: { type: "always" },
+		target: target ?? undefined,
+		enabled: true,
+		origin: "ship",
+	};
 }

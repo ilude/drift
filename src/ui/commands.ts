@@ -1,4 +1,12 @@
-import { checkCondition } from "../core/commands";
+import {
+	addCommand,
+	checkCondition,
+	removeCommand,
+	reorderCommand,
+	setCommandThreshold,
+	setImmediateCommand,
+	toggleCommand,
+} from "../core/commands";
 import { findBody } from "../core/entities";
 import { state } from "../core/state";
 import {
@@ -172,13 +180,7 @@ function buildGiveOrderButton(ship: ShipEntry, container: HTMLElement): HTMLDivE
 			item.className = "cmd-preset-item";
 			item.textContent = opt.label;
 			item.addEventListener("click", () => {
-				ship.immediateCommand = {
-					id: `imm-${Date.now()}`,
-					command: opt.command,
-					condition: { type: "always" },
-					enabled: true,
-					origin: "ship",
-				};
+				setImmediateCommand(ship, opt.command);
 				state.renderNeeded = true;
 				if (dropdown) {
 					dropdown.remove();
@@ -260,7 +262,7 @@ function buildRow(
 	upBtn.textContent = "▲";
 	upBtn.disabled = i === 0;
 	upBtn.addEventListener("click", () => {
-		entries.splice(i - 1, 2, entries[i], entries[i - 1]);
+		reorderCommand(ship, i, "up");
 		state.renderNeeded = true;
 		renderCommandTree(ship, container);
 	});
@@ -272,7 +274,7 @@ function buildRow(
 	downBtn.textContent = "▼";
 	downBtn.disabled = i === entries.length - 1;
 	downBtn.addEventListener("click", () => {
-		entries.splice(i, 2, entries[i + 1], entries[i]);
+		reorderCommand(ship, i, "down");
 		state.renderNeeded = true;
 		renderCommandTree(ship, container);
 	});
@@ -316,7 +318,7 @@ function buildRow(
 			const commit = () => {
 				const val = Number.parseInt(input.value, 10);
 				if (!Number.isNaN(val) && val >= 1 && val <= 99) {
-					(entry.condition as ThresholdCondition).threshold = val;
+					setCommandThreshold(ship, i, val);
 				}
 				state.renderNeeded = true;
 				renderCommandTree(ship, container);
@@ -356,7 +358,7 @@ function buildRow(
 	toggleSpan.textContent = entry.enabled ? "●" : "○";
 	toggleSpan.title = entry.enabled ? "Disable" : "Enable";
 	toggleSpan.addEventListener("click", () => {
-		entry.enabled = !entry.enabled;
+		toggleCommand(ship, i);
 		state.renderNeeded = true;
 		renderCommandTree(ship, container);
 	});
@@ -368,7 +370,7 @@ function buildRow(
 	removeBtn.textContent = "✕";
 	removeBtn.title = "Remove";
 	removeBtn.addEventListener("click", () => {
-		entries.splice(i, 1);
+		removeCommand(ship, i);
 		state.renderNeeded = true;
 		renderCommandTree(ship, container);
 	});
@@ -456,7 +458,7 @@ function buildPresetList(ship: ShipEntry, container: HTMLElement): HTMLDivElemen
 				enabled: true,
 				origin: "ship",
 			};
-			ship.commandTree.entries.push(newEntry);
+			addCommand(ship, newEntry);
 			state.renderNeeded = true;
 			renderCommandTree(ship, container);
 		});
