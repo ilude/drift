@@ -27,13 +27,14 @@ src/
               commands.ts,               (command tree evaluation, ship simulation)
               commander.ts,              (commander judgment: decide, defer, preempt)
               notifications.ts,          (notification system with coalescing)
-              ship-utils.ts              (resolveShipPhysics helper)
+              ship-utils.ts,             (resolveShipPhysics helper)
+              transfers.ts              (transfer initiation, fuel budget, throttle)
   math/       orbit.ts, visual.ts,       (pure math, no app imports)
-              transfer.ts, ship-physics.ts,
+              transfer.ts, ship-physics.ts,  (distance, fuel cost, throttle search)
               ship-design-calc.ts         (ship/engine stat derivation)
   rendering/  rendering.ts, scene.ts,    (Three.js scene, bodies, textures)
               textures.ts, bodies.ts,    (body init, survey state)
-              ship-transfer.ts           (Hermite spline transfers, capture blend)
+              ship-transfer.ts           (Hermite spline visuals, ship creation)
   ui/         ui.ts, selection.ts,       (HUD, labels, click handlers)
               commands.ts,               (command tree editor UI)
               resource-viewer.ts,        (popout resource matrix window)
@@ -62,6 +63,8 @@ core/utils.ts, math/orbit.ts, math/visual.ts  (pure math, no app imports)
         |
   core/ship-utils.ts  (imports: state.ts, ship-physics.ts)
         |
+  core/transfers.ts  (imports: entities, ship-utils, state, math/ship-physics, math/transfer)
+        |
   rendering/scene.ts, rendering/textures.ts, rendering/bodies.ts
         |
   rendering/rendering.ts, rendering/ship-transfer.ts, math/transfer.ts
@@ -75,15 +78,16 @@ core/utils.ts, math/orbit.ts, math/visual.ts  (pure math, no app imports)
 - `src/types.ts` — Shared interfaces: BodyEntry, ShipEntry, ShipIntent, CommandEntry, AppState, ResolvedEntity, EngineDesign, ShipDesign
 - `src/core/state.ts` — Single centralized state object, save/restore to localStorage (SAVE_VERSION 8, plural ships, colonies, researchedTechs, engineDesigns, shipDesigns)
 - `src/core/result.ts` — Go-style `Result<T>` helpers: `ok(v)` → `[v, true]`, `err()` → `[null, false]`
-- `src/core/colonies.ts` — Colony system: workforce calculation, quality modifiers, per-tick mining/construction/research, colony services for ships
+- `src/core/colonies.ts` — Colony system: workforce calculation, quality modifiers, per-tick mining/construction/research, colony services for ships. Construction consumes stockpiled resources (`resourceCost` on each installation type, `canAffordConstruction()` helper). Colony warning notifications (understaffing, idle infrastructure, blocked construction) with 30-day rate limiting.
 - `src/core/entities.ts` — Unified O(1) entity resolution: resolveEntity, findBody, findPlanet, findShip, findStar, findAsteroidEntity. Backed by Maps rebuilt via rebuildEntityMaps(). Lives in core/ so commands.ts can import it.
 - `src/core/intents.ts` — Ship intent broadcast for multi-ship coordination: publishIntent, clearIntent, getClaimedTargets. Ships broadcast current activity, others skip claimed targets.
 - `src/core/commands.ts` — Command tree evaluation (pure logic, no rendering imports), ship simulation tick
 - `src/core/commander.ts` — Commander judgment layer: `commanderDecide()` entry point. Three overrides applied in order: (1) preemptive servicing at colonies, (2) hold for inbound tanker (`checkHoldForTanker` — ship idles when a `tanking` intent targets it, preventing the tanker chase-and-miss pattern), (3) defer maintenance in the field. Learning from failures (malfunction → judgment bump).
-- `src/core/notifications.ts` — Notification system with coalescing, smart pause, FIFO cap (200 entries)
+- `src/core/notifications.ts` — Notification system with coalescing, smart pause, FIFO cap (200 entries). Notification types include ship events (low-fuel, malfunction, etc.) and colony warnings (colony-understaffed, colony-idle, colony-blocked).
 - `src/math/orbit.ts` — Kepler solver (meanToTrue), orbital mechanics primitives
 - `src/core/ship-utils.ts` — `resolveShipPhysics(ship)` resolves ShipEntry to ShipPhysicsState (accelG, ispS) from design or legacy ENGINE_TYPES fallback.
-- `src/math/ship-physics.ts` — Brachistochrone transfer physics, engine tiers, delta-v budget. `checkTransfer()`/`checkTransferKm()` accept resolved accelG/ispS directly.
+- `src/core/transfers.ts` — `initiateTransfer()` entry point for starting ship transfers. Computes fuel cost (additive model: rocket equation + operational burn), auto-throttles acceleration when fuel is tight, delegates visual commit to rendering layer via hooks.
+- `src/math/ship-physics.ts` — Brachistochrone transfer physics, engine tiers, delta-v budget. `checkTransfer()`/`checkTransferKm()` accept resolved accelG/ispS directly. `computeTotalFuelCost()` and `findAffordableAccelG()` implement the additive fuel cost model and commander throttle search.
 - `src/math/ship-design-calc.ts` — Pure functions: `computeEngineStats()` (power modifier formula), `computeShipStats()` (derive ship stats from components), `validateShipDesign()`.
 - `src/data/components.ts` — Component catalog: `ENGINE_TIER_DEFS` (4 tiers with prerequisiteTech), `COMPONENT_DEFS` (18 components across 7 categories). Helpers: `getUnlockedEngineTiers()`, `getUnlockedComponents()`.
 - `src/data/ship-designs.ts` — `EngineDesign` and `ShipDesign` interfaces for player-created designs.
@@ -110,6 +114,7 @@ core/utils.ts, math/orbit.ts, math/visual.ts  (pure math, no app imports)
 
 ## Conventions
 
+- **Sim is source of truth; UI is read-only projection.** All game logic, physics, entity state, and decisions live in `core/` and `math/`. The `rendering/` and `ui/` layers read sim state and draw it — they never own game logic. Functions that compute game state (distance, fuel cost, transfer decisions) must live in core/math, not rendering/ui.
 - **Deterministic:** MASTER_SEED (42) drives all RNG. Same seed = same universe.
 - **Scratch objects:** Hot-loop functions (inclinedPosition, orbitToWorld) reuse output objects to avoid GC pressure.
 - **World coordinates:** sqrt-compressed mapping: `rWorld = sqrt(rAU) * DIST_SCALE`. Ship transfers use Hermite splines in world space to avoid coordinate distortion.
@@ -119,7 +124,7 @@ core/utils.ts, math/orbit.ts, math/visual.ts  (pure math, no app imports)
 - **Component catalog:** 18 components across 7 categories (bridge, crew-quarters, fuel-tank, cargo-bay, maintenance-bay, sensor-suite, armor). Each gated by `prerequisiteTech`. Engine tiers (conventional → improved → advanced → extreme) gated by research. Discrete power options (10%-150%) with Aurora's exponential fuel formula: `fuelMod = (powerPct/100)^2.5 * (1 - sizeHS/100)`. Engine size in Hull Spaces (1 HS = 50 tons).
 - **Design tabs:** Engine (discrete dropdowns, company name randomizer), Ship (component catalog with category grouping, design errors pane), Missile (size/warhead/engine/agility), Turret (weapon type/caliber/tracking), Sensor (type/resolution/size). All designs persist via save/load.
 - **Entity resolution:** All entity-by-name lookups go through `core/entities.ts`. Never use `state.bodyMeshes.find()` directly — use `findBody()`, `resolveEntity()`, `findAsteroidEntity()`, etc. Maps rebuilt via `rebuildEntityMaps()` after body/asteroid creation.
-- **Ship state machine:** orbiting → transferring → orbiting. Transfer uses 3D cubic Hermite splines with station-keeping capture blend (smoothstep in final 15%). Ships use brachistochrone physics (default 0.1g engine) for transfer timing. Minimum fuel floor of 1% capacity/day ensures visible transfer cost with high-Isp TN engines.
+- **Ship state machine:** orbiting → transferring → orbiting. Transfer uses 3D cubic Hermite splines with station-keeping capture blend (smoothstep in final 15%). Ships use brachistochrone physics (default 0.1g engine) for transfer timing. Additive fuel model: rocket-equation fuel + operational burn (0.1%/day capacity via `OP_BURN_RATE`). Transfers are rejected if total fuel cost exceeds available fuel. Commanders auto-throttle acceleration when full speed is unaffordable.
 - **Ship command tree:** Priority-ordered list of conditional commands (fuel-below, morale-below, hull-below, supplies-below, always). Command types: survey-nearest, transfer-to, refuel, refuel-ship, shore-leave, overhaul, major-refit, return-to-base, idle. Evaluated between actions. `immediateCommand` is one-shot — cleared at the top of `dispatchCommand()` on any dispatch.
 - **Ship simulation:** `tickShipSimulation()` runs per-frame: morale decay (1.5 exponent past 180-day deployment limit), maintenance age (both `age` and `totalAge`), malfunction checks (bathtub curve, every 30 days during transfers), fuel drain (station-keeping rates), routine maintenance (idle orbiting only), gradual recovery during actions (refuel: 5d fixed, overhaul: dynamic duration capped at hull ceiling, major-refit: 180d+ base restoring ceiling, shore leave: 30d at +2.5 morale/day +0.25% hull/day from repair crew). All recovery rates scaled by `depotQuality` and per-system hardness multipliers.
 - **Tiered maintenance system:** Scientifically grounded, inspired by naval/aircraft bathtub curve maintenance patterns:
@@ -137,10 +142,12 @@ core/utils.ts, math/orbit.ts, math/visual.ts  (pure math, no app imports)
   - **Comets/Centaurs:** Fixed pools (water/nitrogen/hydrocarbon dominated)
 - **Rate modifier pattern:** Every rate-based game system uses two orthogonal scaling axes:
   1. **Quality modifier** (`depotQuality`): represents location facilities — crew competence, equipment modernity, depot capacity. Currently a single global value (1.0 = 100%), eventually calculated per-location from base/colony subsystems.
-  2. **Game hardness multiplier** (per-system on AppState): player-chosen difficulty. 1.0 = default, higher = slower/harder. Current multipliers: `surveyMultiplier`, `repairMultiplier`, `refuelMultiplier`, `moraleMultiplier`, `supplyMultiplier`.
+  2. **Game hardness multiplier** (per-system on AppState): player-chosen difficulty. 1.0 = default, higher = slower/harder. Current multipliers: `surveyMultiplier`, `repairMultiplier`, `refuelMultiplier`, `moraleMultiplier`, `supplyMultiplier`, `fuelBurnMultiplier`.
   - **Formula:** `effectiveRate = baseRate * quality / hardnessMultiplier`
   - **Convention:** All new rate-based systems MUST include both modifiers. Values are stored as decimals (1.0 = 100%). When brainstorming new systems, proactively identify where quality and hardness modifiers should apply.
 - **Commander judgment:** Ships have a `Commander` with `judgment` (0.0–1.0) and `experience` counter. Lives in `core/commander.ts` — the judgment layer on top of the mechanical command tree (`core/commands.ts`). Three judgment overrides applied in order: (1) **preemptive servicing** at colonies — raises maintenance thresholds before departure by `(100 - base) * judgment * 0.3`; (2) **hold for inbound tanker** (`checkHoldForTanker`) — if a `tanking` intent targets this ship, override survey/transfer with idle, preventing the tanker chase-and-miss pattern; (3) **defer maintenance** in the field — at unsurveyed bodies, defers maintenance commands when judgment says it's safe to survey first (personal floor interpolates from command threshold toward critical by judgment). Learning from failure: malfunctions and emergency-returns bump judgment with diminishing returns, capped at 0.9. New ships start at 0.3. All callers use `commanderDecide(ship)` — never call `evaluateCommandTree` directly for dispatch.
+- **Construction resource costs:** Each installation type has a `resourceCost?: Record<string, number>` on its `ConstructionDefinition`. BP accumulates normally, but completion blocks if the colony's stockpile lacks required resources. Use `canAffordConstruction(colony, installationId)` to check. Costs range from 250 (mine) to 1600 (shipyard) total resources.
+- **Colony warning notifications:** `checkColonyWarnings()` runs after each colony tick. Warns on severe understaffing (<50%), idle factories/labs (capacity with no projects), and resource-blocked construction. Uses a 30-day rate limiter (`lastWarningDay` Map) to prevent spam. Warning types: `colony-understaffed`, `colony-idle`, `colony-blocked`.
 - **Pre-filled trails:** Comets, Dwarf Planets, Centaurs, and Asteroids get trails pre-filled on creation by computing past orbital positions backwards (orbits hidden by default). Comet trail buffer is 1200 points (vs 400 for others). Sample rate scales with zoom level.
 - **Save system:** Manual save only via header "Save" button. No auto-save on unload. Game always starts fresh with Sol system and default ships.
 - **Render-on-demand:** 30fps cap; render loop stops when paused and resumes on input (wake-render event).
@@ -194,10 +201,14 @@ Detailed research references in `tasks/`:
 - `research-academic-depth-bibliography.md` — Academic papers, GDC talks, books annotated bibliography
 - `colony-system-design.md` — Colony system design notes (living document)
 - `resource-system-design.md` — Resource catalog, production chains, mining design
+- `tech-tree-overview.md` — 10-domain tech tree structure with MTG set philosophy
+- `tech-tree-propulsion.md`, `tech-tree-sensors.md`, `tech-tree-weapons.md`, `tech-tree-communications.md`, `tech-tree-computing.md`, `tech-tree-electronic-warfare.md`, `tech-tree-materials.md`, `tech-tree-life-support.md`, `tech-tree-theoretical-physics.md` — Per-domain tech tree designs
+- `lore-trans-newtonian-discovery.md` — TN physics discovery lore
+- `lore-tech-attribution.md` — Idea attribution tracking for tech/lore
 
 ## Testing
 
-627+ tests across 22 files using Vitest + jsdom. Tests cover:
+672+ tests across 24 files using Vitest + jsdom. Tests cover:
 - Orbital math (orbit.test.ts)
 - Visual scaling (visual.test.ts)
 - Date/time formatting & save/restore (state.test.ts)
@@ -216,5 +227,8 @@ Detailed research references in `tasks/`:
 - Entity resolution & maps (entities.test.ts)
 - Ship intent broadcast (intents.test.ts)
 - Resource viewer data collection (resource-viewer.test.ts)
+- Colony system: workforce, construction costs, mining, research, warnings (colonies.test.ts)
+- Property-based invariants (property.test.ts)
+- Transfer initiation & fuel budget (transfers.test.ts)
 
 All tests must pass before committing. Run `bun run test` to verify.

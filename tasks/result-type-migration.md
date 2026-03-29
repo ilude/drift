@@ -1,5 +1,7 @@
 # Result<T> Migration Plan
 
+> **Status:** COMPLETE. All Groups 1–3 migrated. All entity resolution, colony lookups, and command tree functions return `Result<T>`. All callsites use destructured `[value, found]` pattern.
+
 Convert nullable return values in simulation logic to Go-style `[value, ok]` tuples,
 forcing callers to explicitly handle the "not found" case at the type level.
 

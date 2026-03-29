@@ -1,5 +1,7 @@
 # Design Viewer Rework — Aurora-Faithful Update
 
+> **Status:** Phases A–E COMPLETE. All goals implemented. Phases B–D UI shells are functional but missile/turret/sensor mechanics are stubs (design intent — full mechanics deferred).
+
 ## Context
 
 The current design viewer uses a continuous slider for engine power modifier. Aurora 4X uses discrete dropdown menus for all engine parameters. The user explicitly chose Approach A (Aurora-faithful) and the slider was an error. Additionally, Aurora's Create Research Project window has bottom-row buttons for switching between Engine, Missile, Turret, and GU designers — we need equivalent tabs.

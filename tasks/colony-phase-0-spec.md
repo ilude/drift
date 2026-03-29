@@ -249,10 +249,10 @@ The intended near-term gameplay loop is:
 
 To move from "playable prototype" to stronger strategy gameplay, the next additions should be:
 
-1. Construction consumes stockpiled resources
+1. ~~Construction consumes stockpiled resources~~ ✓ (each installation has `resourceCost`, BP blocks when insufficient)
 2. New colonies can be established on surveyed bodies
 3. Empire-wide colony overview screen exists
-4. Colony warnings/bottlenecks are surfaced in notifications or overview
+4. ~~Colony warnings/bottlenecks are surfaced in notifications or overview~~ ✓ (understaffing, idle factories/labs, blocked construction)
 5. Labs, mines, and service facilities compete more visibly for colony output
 
 ## Non-Goals For This Phase

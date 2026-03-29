@@ -56,7 +56,7 @@ bunx vitest run src/__tests__/orbit.test.ts
 - **Multi-level surveys** — Three survey levels representing scan depth (surface → mid-depth → deep). 27 resource types across metals, volatiles, industrial, radioactive, and umbral categories. Deposit pools are scientifically grounded — gas giants yield He-3 and deuterium, icy moons yield water, C-type asteroids yield carbon and organics.
 - **Resource viewer** — Popout spreadsheet window for multi-monitor setups. Body×resource matrix with category tabs, sortable columns, and click-to-navigate.
 - **Brachistochrone transfers** — Hermite spline trajectories with station-keeping arrival. Engine tiers from 0.1g conventional to 200g exotic drives.
-- **Colony system** — Per-body colonies with population, habitability, installations (repair yard, fuel depot, mine, lab, academy, construction factory, storage, shipyard), and stockpiles. Colony quality drives ship repair and refuel rates. Construction queue with BP-based project progress.
+- **Colony system** — Per-body colonies with population, habitability, installations (repair yard, fuel depot, mine, lab, academy, construction factory, storage, shipyard), and stockpiles. Colony quality drives ship repair and refuel rates. Construction queue with BP-based project progress and resource costs. Colony warning notifications for understaffing, idle infrastructure, and resource-blocked construction.
 - **Ship simulation** — Crew morale decay, hull malfunction cascades (bathtub curve), gradual refueling/repair/shore leave, colony supply shuttles. Tanker ship with fleet refueling and tanker coordination (target ships hold orbit when a tanker is inbound). Configurable difficulty multipliers.
 - **Procedural textures** — Canvas-generated rocky, gas giant, ice giant, and moon surfaces. GLSL star shader with animated granulation.
 - **Planetary rings and clouds** — LOD-gated ring systems and semi-transparent cloud layers.
@@ -100,12 +100,12 @@ src/
     resources.ts          Resource catalog, seeded deposit generation
   types.ts                Shared TypeScript interfaces
   main.ts                 Orchestrator: init, teardown, animation loop
-  __tests__/              All test files (21 files, 589+ tests)
+  __tests__/              All test files (24 files, 672+ tests)
 ```
 
 ## Testing
 
-589+ tests across 21 files using [Vitest](https://vitest.dev/) with jsdom.
+672+ tests across 24 files using [Vitest](https://vitest.dev/) with jsdom.
 
 ```bash
 bun run test                # single run
