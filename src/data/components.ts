@@ -51,7 +51,7 @@ const STANDARD_SIZE_OPTIONS: readonly EngineSizeOption[] = [
 	{ sizeHS: 50, label: "50 HS (2,500 tons)", fuelReductionPct: 50 },
 ];
 
-export const ENGINE_TIER_DEFS: readonly EngineTierDef[] = [
+const ENGINE_TIER_DEFS: readonly EngineTierDef[] = [
 	{
 		id: "conventional",
 		name: "Conventional TN",

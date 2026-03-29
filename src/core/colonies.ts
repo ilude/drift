@@ -11,7 +11,6 @@ import type {
 	GameLogCategory,
 	PlanetEntry,
 	Result,
-	ScientistDashboardRow,
 	ScientistState,
 	ShipEntry,
 } from "../types";
@@ -30,10 +29,9 @@ const BASE_CONSTRUCTION_BP_RATE = 2;
 const CATEGORY_GROWTH_RATE = 0.0015;
 
 let projectCounter = 0;
-let transferCounter = 0;
 let scientistCounter = 0;
 
-export type ResearchCategory = "industry" | "survey" | "logistics" | "research" | "biology";
+type ResearchCategory = "industry" | "survey" | "logistics" | "research" | "biology";
 
 const RESEARCH_CATEGORIES: ResearchCategory[] = [
 	"industry",
@@ -58,14 +56,15 @@ const SCIENTIST_NAMES = [
 	"Milo Graves",
 ];
 
-export interface ConstructionDefinition {
+interface ConstructionDefinition {
 	id: ColonyInstallationId;
 	name: string;
 	bpCost: number;
 	description: string;
+	resourceCost?: Record<string, number>;
 }
 
-export interface ResearchDefinition {
+interface ResearchDefinition {
 	id: string;
 	name: string;
 	category: ResearchCategory;
@@ -82,42 +81,49 @@ export const CONSTRUCTION_DEFS: ConstructionDefinition[] = [
 		name: "Construction Factory",
 		bpCost: 120,
 		description: "Adds colony build capacity for new installations.",
+		resourceCost: { iron: 500, copper: 150, aluminum: 100 },
 	},
 	{
 		id: "mine",
 		name: "Mine",
 		bpCost: 80,
 		description: "Extracts surveyed deposits into colony stockpiles.",
+		resourceCost: { iron: 200, copper: 50 },
 	},
 	{
 		id: "lab",
 		name: "Research Lab",
 		bpCost: 120,
 		description: "Generates RP for colony-local research projects.",
+		resourceCost: { iron: 400, copper: 200, silicon: 100 },
 	},
 	{
 		id: "repair-yard",
 		name: "Repair Yard",
 		bpCost: 90,
 		description: "Improves overhaul and refit throughput for ships in port.",
+		resourceCost: { iron: 350, copper: 100, aluminum: 100 },
 	},
 	{
 		id: "fuel-depot",
 		name: "Fuel Depot",
 		bpCost: 70,
 		description: "Improves refueling throughput and expands local fuel handling.",
+		resourceCost: { iron: 300, copper: 100, aluminum: 50 },
 	},
 	{
 		id: "academy",
 		name: "Academy",
 		bpCost: 100,
 		description: "Foundational training infrastructure for future officers and specialists.",
+		resourceCost: { iron: 300, copper: 100 },
 	},
 	{
 		id: "storage",
 		name: "Storage",
 		bpCost: 60,
 		description: "Increases stockpile capacity and logistics slack.",
+		resourceCost: { iron: 150, aluminum: 50 },
 	},
 	{
 		id: "shipyard",
@@ -125,6 +131,7 @@ export const CONSTRUCTION_DEFS: ConstructionDefinition[] = [
 		bpCost: 180,
 		description:
 			"Limited hull construction and refit capacity. Placeholder for future ship production.",
+		resourceCost: { iron: 1000, copper: 300, aluminum: 200, silicon: 100 },
 	},
 ];
 
@@ -416,7 +423,7 @@ function pushGameLog(
 	});
 }
 
-export function formatSimDate(simDay: number): string {
+function formatSimDate(simDay: number): string {
 	return simTimeToDate(simDay).toISOString().slice(0, 10);
 }
 
@@ -579,7 +586,7 @@ export function getScientistsAtColony(bodyName: string): ScientistState[] {
 	return scientists;
 }
 
-export function getScientist(scientistId: string): Result<ScientistState> {
+function getScientist(scientistId: string): Result<ScientistState> {
 	const scientist = state.scientists.get(scientistId);
 	return scientist ? ok(scientist) : err();
 }
@@ -744,31 +751,6 @@ export function setResearchPaused(techId: string, paused: boolean): boolean {
 	return true;
 }
 
-export function getProjectCompletionDate(techId: string): string {
-	const [project, projectFound] = getProject(techId);
-	if (!projectFound) return "--";
-	const eta = estimateProjectEta(project);
-	return eta === null ? "--" : formatSimDate(eta);
-}
-
-function estimateProjectEta(project: ColonyResearchProject): number | null {
-	if (project.paused) return null;
-	const [def, defFound] = getResearchDef(project.techId);
-	if (!defFound || def.rpCost <= project.progressRp) return state.simTime.days;
-	if (!project.leadScientistId) return null;
-	const [scientist, scientistFound] = getScientist(project.leadScientistId);
-	if (!scientistFound) return null;
-	const [colony, colonyFound] = getColony(project.colonyBodyName);
-	if (!colonyFound) return null;
-	const qualities = computeColonyQualities(colony);
-	const effLabs = Math.min(scientist.assignedLabs, scientist.adminCap, colony.installations.lab);
-	if (effLabs <= 0) return null;
-	const multiplier = getScientistMultiplier(scientist, def.category);
-	const rpPerDay = BASE_RESEARCH_RATE * effLabs * qualities.research * multiplier;
-	if (rpPerDay <= 0) return null;
-	return state.simTime.days + (def.rpCost - project.progressRp) / rpPerDay;
-}
-
 function completeProject(project: ColonyResearchProject, scientist: ScientistState): void {
 	state.researchedTechs.add(project.techId);
 	state.researchProjects.delete(project.techId);
@@ -820,61 +802,9 @@ function tickResearchProject(project: ColonyResearchProject, simDtDays: number):
 	}
 }
 
-export function getResearchDashboardRows(bodyName: string): ScientistDashboardRow[] {
-	const rows: ScientistDashboardRow[] = [];
-	for (const project of state.researchProjects.values()) {
-		if (project.colonyBodyName !== bodyName) continue;
-		const [lead] = project.leadScientistId ? getScientist(project.leadScientistId) : [null, false];
-		rows.push({
-			techId: project.techId,
-			status: project.paused ? "paused" : "active",
-			leadScientistId: project.leadScientistId,
-			leadScientistName: lead?.name ?? "Unassigned",
-			assignedLabs: project.assignedLabs,
-			progressRp: project.progressRp,
-			etaSimDay: estimateProjectEta(project),
-		});
-	}
-	for (const scientist of getScientistsAtColony(bodyName)) {
-		for (const techId of scientist.projectQueue) {
-			rows.push({
-				techId,
-				status: "queued",
-				leadScientistId: scientist.id,
-				leadScientistName: scientist.name,
-				assignedLabs: Math.min(scientist.assignedLabs, scientist.adminCap),
-				progressRp: 0,
-				etaSimDay: null,
-			});
-		}
-	}
-	return rows;
-}
-
-export function getDeadheadCapacityForShip(ship: ShipEntry): number {
+function getDeadheadCapacityForShip(ship: ShipEntry): number {
 	if (ship.crew.count < 10) return 0;
 	return Math.min(Math.floor(ship.crew.count * 0.1), 20);
-}
-
-export function requestScientistTransfer(
-	scientistId: string,
-	destinationBodyName: string,
-): boolean {
-	const [scientist, found] = getScientist(scientistId);
-	if (!found || scientist.colonyBodyName === destinationBodyName) return false;
-	const [origin, originFound] = getColony(scientist.colonyBodyName);
-	if (!originFound) return false;
-	origin.transferQueue.push({
-		id: `xfer-${transferCounter++}`,
-		scientistId,
-		originBodyName: scientist.colonyBodyName,
-		destinationBodyName,
-		requestedAt: state.simTime.days,
-		status: "queued",
-		estimatedArrivalDay: null,
-		assignedShipName: null,
-	});
-	return true;
 }
 
 function routeTransferQueue(colony: ColonyState): void {
@@ -963,7 +893,7 @@ export function computeColonyQualities(colony: ColonyState): ColonyQualities {
 	};
 }
 
-export function getEmpireTechBonuses(): {
+function getEmpireTechBonuses(): {
 	survey: number;
 	mining: number;
 	repair: number;
@@ -991,7 +921,27 @@ function getConstructionDef(installationId: ColonyInstallationId): ConstructionD
 	return def;
 }
 
-export function getColonyQualitiesAtBody(bodyName: string): Result<ColonyQualities> {
+export function canAffordConstruction(
+	colony: ColonyState,
+	installationId: ColonyInstallationId,
+): boolean {
+	const def = getConstructionDef(installationId);
+	if (!def.resourceCost) return true;
+	for (const [resourceId, amount] of Object.entries(def.resourceCost)) {
+		if ((colony.stockpile.resources[resourceId] ?? 0) < amount) return false;
+	}
+	return true;
+}
+
+function deductConstructionResources(colony: ColonyState, def: ConstructionDefinition): void {
+	if (!def.resourceCost) return;
+	for (const [resourceId, amount] of Object.entries(def.resourceCost)) {
+		colony.stockpile.resources[resourceId] =
+			(colony.stockpile.resources[resourceId] ?? 0) - amount;
+	}
+}
+
+function getColonyQualitiesAtBody(bodyName: string): Result<ColonyQualities> {
 	const [colony, found] = getColony(bodyName);
 	return found ? ok(computeColonyQualities(colony)) : err();
 }
@@ -1104,40 +1054,6 @@ export function toggleConstructionProjectPaused(bodyName: string, projectId: str
 	const project = colony?.constructionProjects.find((entry) => entry.id === projectId);
 	if (!project) return;
 	project.paused = !project.paused;
-}
-
-export function startResearchProject(
-	bodyName: string,
-	techId: string,
-	assignedLabs: number,
-	queue = false,
-	scientistId?: string,
-): void {
-	const scientist =
-		scientistId !== undefined
-			? state.scientists.get(scientistId)
-			: getScientistsAtColony(bodyName).find((entry) => entry.activeProjectTechId === null);
-	if (!scientist) return;
-	setScientistLabs(scientist.id, Math.max(0, assignedLabs));
-	if (queue || scientist.activeProjectTechId !== null) {
-		queueResearchProjectForScientist(scientist.id, techId);
-		return;
-	}
-	queueResearchProjectForScientist(scientist.id, techId);
-	maybeActivateNextProject(scientist);
-}
-
-export function setResearchLabs(
-	bodyName: string,
-	assignedLabs: number,
-	scientistId?: string,
-): void {
-	const scientist =
-		scientistId !== undefined
-			? state.scientists.get(scientistId)
-			: getScientistsAtColony(bodyName).find((entry) => entry.activeProjectTechId !== null);
-	if (!scientist) return;
-	setScientistLabs(scientist.id, assignedLabs);
 }
 
 export function consumeColonyFuel(bodyName: string, amountKg: number): number {

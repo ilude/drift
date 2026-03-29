@@ -4,10 +4,6 @@
 import type { ComponentDef, EngineTierDef } from "../data/components";
 import { COMPONENT_DEFS } from "../data/components";
 import type { EngineDesign, ShipDesignComponent } from "../data/ship-designs";
-import { G_ACCEL } from "./ship-physics";
-
-export { G_ACCEL };
-
 /**
  * Compute engine stats from a tier definition, power percentage, and size in Hull Spaces.
  *
@@ -30,7 +26,7 @@ export function computeEngineStats(
 	};
 }
 
-export interface ShipStats {
+interface ShipStats {
 	dryMassKg: number;
 	fuelCapacityKg: number;
 	cargoCapacityKg: number;
@@ -120,7 +116,7 @@ export function computeShipStats(
 	};
 }
 
-export interface ValidationResult {
+interface ValidationResult {
 	valid: boolean;
 	errors: string[];
 }

@@ -310,16 +310,6 @@ export interface GameLogEntry {
 	meta?: Record<string, string | number | boolean | null>;
 }
 
-export interface ScientistDashboardRow {
-	techId: string;
-	status: "active" | "paused" | "queued";
-	leadScientistId: string | null;
-	leadScientistName: string;
-	assignedLabs: number;
-	progressRp: number;
-	etaSimDay: number | null;
-}
-
 export interface ShipMaintenance {
 	age: number;
 	totalAge: number;

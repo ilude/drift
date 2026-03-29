@@ -325,7 +325,7 @@ function cleanupPopout(): void {
 	window.removeEventListener("research-state-changed", onResearchStateChanged);
 }
 
-export function pushResearchUpdate(): void {
+function pushResearchUpdate(): void {
 	if (!isResearchViewerOpen()) return;
 	popoutWindow?.postMessage({ type: "research-update", data: buildSnapshot() }, "*");
 }

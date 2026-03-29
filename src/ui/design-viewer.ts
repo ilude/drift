@@ -318,7 +318,7 @@ function cleanupPopout(): void {
 	window.removeEventListener("beforeunload", cleanupPopout);
 }
 
-export function pushDesignUpdate(): void {
+function pushDesignUpdate(): void {
 	if (!isDesignViewerOpen()) return;
 	popoutWindow?.postMessage({ type: "design-update", data: buildSnapshot() }, "*");
 }

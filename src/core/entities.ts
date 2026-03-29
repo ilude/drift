@@ -20,7 +20,7 @@ let cachedStar: PlanetEntry | undefined;
 
 // --- Exported interface ---
 
-export interface ResolvedEntity {
+interface ResolvedEntity {
 	name: string;
 	type: string;
 	position: { x: number; y: number; z: number };
