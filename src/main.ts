@@ -81,14 +81,7 @@ import {
 	updateSelectedBody,
 } from "./ui/selection";
 import type { PerfTimings } from "./ui/ui";
-import {
-	buildBodyList,
-	markSurveyTargetsDirty,
-	setupUI,
-	updateHUD,
-	updateLabels,
-	updatePerfDisplay,
-} from "./ui/ui";
+import { buildBodyList, setupUI, updateHUD, updateLabels, updatePerfDisplay } from "./ui/ui";
 
 // ---------------------------------------------------------------------------
 // Initialize
@@ -193,6 +186,21 @@ createShip({
 	hostPlanetName: "Jupiter",
 	designId: explorerDesign?.id,
 });
+createShip({
+	name: "ISS Vespucci",
+	hostPlanetName: "Saturn",
+	designId: explorerDesign?.id,
+});
+createShip({
+	name: "ISS Zheng He",
+	hostPlanetName: "Venus",
+	designId: explorerDesign?.id,
+});
+createShip({
+	name: "ISS Shackleton",
+	hostPlanetName: "Earth",
+	designId: explorerDesign?.id,
+});
 
 const tankerCommandTree: CommandTree = {
 	entries: [
@@ -231,6 +239,13 @@ const tankerDesignRef = [...state.shipDesigns.values()].find((d) => d.name === "
 createShip({
 	name: "ISS Sheetz",
 	hostPlanetName: "Earth",
+	color: "#ffaa33",
+	designId: tankerDesignRef?.id,
+	commandTree: tankerCommandTree,
+});
+createShip({
+	name: "ISS Wawa",
+	hostPlanetName: "Jupiter",
 	color: "#ffaa33",
 	designId: tankerDesignRef?.id,
 	commandTree: tankerCommandTree,
@@ -850,7 +865,7 @@ function dispatchCommand(ship: ShipEntry, result: CommandResult): void {
 			});
 			break;
 	}
-	markSurveyTargetsDirty();
+
 	_dispatchDepth = 0;
 }
 
@@ -858,7 +873,7 @@ function completeAction(ship: ShipEntry): void {
 	gameLog(`[completeAction] ${ship.data.name}: ${ship.action.type} completed`);
 	incrementExperience(ship);
 	_lastCommandEval.delete(ship.data.name);
-	markSurveyTargetsDirty();
+
 	const actionType = ship.action.type;
 	if (actionType === "survey-nearest") {
 		completeSurvey(ship);
