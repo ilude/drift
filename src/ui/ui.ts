@@ -40,8 +40,16 @@ function handleBodyItemClick(e: MouseEvent, item: HTMLElement, entry: BodyEntry)
 }
 
 const bodyListEl = document.getElementById("body-list") as HTMLElement;
+const shipFuelSpans = new Map<string, HTMLSpanElement>();
+
+function shipFuelHtml(entry: BodyEntry): string {
+	if (!isShipEntry(entry)) return "";
+	const pct = Math.round((entry.fuelKg / entry.fuelCapacityKg) * 100);
+	return `<span class="ship-fuel-pct" style="font-size:10px; color:#888; margin-left:auto">${pct}%</span>`;
+}
 
 export function buildBodyList(): void {
+	shipFuelSpans.clear();
 	bodyListEl.innerHTML = "";
 
 	const groups: Record<string, BodyEntry[]> = {};
@@ -95,8 +103,12 @@ export function buildBodyList(): void {
 
 			const toggleSpan = !isShipEntry(entry) && hasMoons ? `<span class="moon-toggle">[+]</span>` : "";
 			item.innerHTML = `<span class="body-color-dot" style="background:${entry.data.color}"></span>
-                <span class="body-list-name">${entry.data.name}</span>${toggleSpan}`;
+                <span class="body-list-name">${entry.data.name}</span>${shipFuelHtml(entry)}${toggleSpan}`;
 
+			if (isShipEntry(entry)) {
+				const spanEl = item.querySelector(".ship-fuel-pct") as HTMLSpanElement;
+				if (spanEl) shipFuelSpans.set(entry.data.name, spanEl);
+			}
 			item.addEventListener("click", (e) => handleBodyItemClick(e, item, entry));
 			list.appendChild(item);
 
@@ -528,6 +540,14 @@ export function updateLabels(camDist: number): void {
 
 	if (needsScaleUpdate) lastScaleFactor = scaleFactor;
 	if (needsLodUpdate) lastLodCamDist = camDist;
+
+	for (const entry of state.bodyMeshes) {
+		if (!isShipEntry(entry)) continue;
+		const span = shipFuelSpans.get(entry.data.name);
+		if (!span) continue;
+		const pct = `${Math.round((entry.fuelKg / entry.fuelCapacityKg) * 100)}%`;
+		if (span.textContent !== pct) span.textContent = pct;
+	}
 
 	updateAsteroidLabels(orbitingShipsAtBody, screenW, screenH);
 }
