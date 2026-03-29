@@ -301,7 +301,7 @@ function tickMaintenanceAge(ship: ShipEntry, simDt: number, atColony: boolean): 
 }
 
 function tickFuelConsumption(ship: ShipEntry, simDt: number, atColony: boolean): void {
-	if (atColony || ship.action.type === "refuel") return;
+	if (atColony || (ship.action.type === "refuel" && ship.shipState !== "transferring")) return;
 
 	if (ship.shipState === "transferring" && ship.transferTimeDays > 0) {
 		// Engine burn: consume transferFuelTotal proportionally over transfer duration
