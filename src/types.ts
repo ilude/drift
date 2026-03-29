@@ -317,6 +317,8 @@ export interface ShipMaintenance {
 	supplies: number;
 	maxSupplies: number;
 	hullIntegrity: number;
+	overhaulsSinceRefit: number;
+	overhaulsUntilRefit: number;
 }
 
 export interface ShipAction {
@@ -514,6 +516,19 @@ export interface TransferResult {
 	deltaVRequired?: number;
 	deltaVAvailable?: number;
 	transferDays?: number;
+}
+
+export interface FuelCostResult {
+	rocketFuelKg: number;
+	opBurnKg: number;
+	totalFuelKg: number;
+	transferDays: number;
+}
+
+export interface ThrottleResult {
+	accelG: number;
+	totalFuelKg: number;
+	transferDays: number;
 }
 
 // --- Ship design types ---
@@ -717,6 +732,7 @@ export interface AppState {
 	refuelMultiplier: number;
 	moraleMultiplier: number;
 	supplyMultiplier: number;
+	fuelBurnMultiplier: number;
 	// Depot quality (1.0 = 100% = standard facilities, eventually per-location)
 	depotQuality: number;
 	shipIntents: Map<string, ShipIntent>;

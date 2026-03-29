@@ -2,6 +2,8 @@
 // This is the "dumb computer" — it evaluates rules top-to-bottom without judgment.
 // The commander (commander.ts) interprets these results and applies judgment overrides.
 
+import { computeTotalFuelCost } from "../math/ship-physics";
+import { distanceKmBetween } from "../math/transfer";
 import type { BodyEntry, CommandCondition, CommandResult, Result, ShipEntry } from "../types";
 import { isCometEntry, isShipEntry, isSurveyable } from "../types";
 import {
@@ -14,6 +16,7 @@ import { isAtColony, learnFromMalfunction } from "./commander";
 import { findBody, findShip } from "./entities";
 import { getClaimedTargets, onIntentChange } from "./intents";
 import { err, ok } from "./result";
+import { resolveShipPhysics } from "./ship-utils";
 import { state } from "./state";
 import { seededRandom } from "./utils";
 
@@ -374,20 +377,67 @@ const TANKER_RESERVE_FLOOR = 0.15; // keep 15% for return trip
 
 const _refuelTargetCache = new Map<string, Result<string>>();
 
+/** Estimate round-trip fuel cost for tanker to reach a target ship and return. */
+function tankerRoundTripFuel(
+	tanker: ShipEntry,
+	tankerHost: BodyEntry,
+	targetHost: BodyEntry,
+): number {
+	const distKm = distanceKmBetween(tankerHost, targetHost);
+	if (distKm < 1) return 0;
+	const physics = resolveShipPhysics(tanker);
+	const oneWay = computeTotalFuelCost(
+		distKm,
+		physics.accelG,
+		physics.ispS,
+		physics.dryMassKg,
+		tanker.fuelCapacityKg,
+		state.fuelBurnMultiplier,
+	);
+	return oneWay.totalFuelKg * 2.5; // 2x travel + safety margin
+}
+
+/** Check if a tanker can afford the round trip to a candidate's host body. */
+function canAffordRoundTrip(
+	tanker: ShipEntry,
+	tankerHost: BodyEntry | undefined | null,
+	candidateHostName: string,
+	reserveFloor: number,
+): boolean {
+	if (!tankerHost) return true; // can't compute distance, allow optimistically
+	const [targetHost, targetHostFound] = findBody(candidateHostName);
+	if (!targetHostFound) return true;
+	const tripFuel = tankerRoundTripFuel(tanker, tankerHost, targetHost);
+	return tripFuel + reserveFloor <= tanker.fuelKg;
+}
+
+/** Check if a ship is a valid refuel candidate for the given tanker. */
+function isRefuelCandidate(
+	entry: BodyEntry,
+	tankerName: string,
+	claimed: Set<string>,
+): entry is ShipEntry & BodyEntry {
+	if (!isShipEntry(entry)) return false;
+	if (entry.data.name === tankerName) return false;
+	if (entry.shipState === "transferring") return false;
+	if (claimed.has(entry.data.name)) return false;
+	const fuelPct = (entry.fuelKg / entry.fuelCapacityKg) * 100;
+	return fuelPct < FLEET_FUEL_THRESHOLD;
+}
+
 export function selectNextRefuelTarget(tanker: ShipEntry): Result<string> {
 	const shipName = tanker.data.name;
 	if (_refuelTargetCache.has(shipName)) return _refuelTargetCache.get(shipName) as Result<string>;
 
 	const claimed = getClaimedTargets(shipName);
+	const [tankerHost] = findBody(tanker.hostPlanetName);
+	const reserveFloor = tanker.fuelCapacityKg * TANKER_RESERVE_FLOOR;
 	const candidates: { name: string; fuelPct: number }[] = [];
 
 	for (const entry of state.bodyMeshes) {
-		if (!isShipEntry(entry)) continue;
-		if (entry.data.name === shipName) continue;
-		if (entry.shipState === "transferring") continue;
-		if (claimed.has(entry.data.name)) continue;
+		if (!isRefuelCandidate(entry, shipName, claimed)) continue;
+		if (!canAffordRoundTrip(tanker, tankerHost, entry.hostPlanetName, reserveFloor)) continue;
 		const fuelPct = (entry.fuelKg / entry.fuelCapacityKg) * 100;
-		if (fuelPct >= FLEET_FUEL_THRESHOLD) continue;
 		candidates.push({ name: entry.data.name, fuelPct });
 	}
 

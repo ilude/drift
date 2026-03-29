@@ -35,6 +35,7 @@ import { publishIntent } from "./core/intents";
 import { addCoalescedNotification, addNotification } from "./core/notifications";
 import { resolveShipPhysics } from "./core/ship-utils";
 import { gameLog, gameWarn, MASTER_SEED, state } from "./core/state";
+import { setTransferHooks } from "./core/transfers";
 import { seededRandom } from "./core/utils";
 import { findEngineTier } from "./data/components";
 import { generateDeposits, generateEarthDeposits } from "./data/resources";
@@ -58,7 +59,10 @@ import {
 	asteroidProxy,
 	completeTransferState,
 	initiateTransfer,
+	rollOverhaulsUntilRefit,
 	setOnTransferComplete,
+	showTransferStatus,
+	visualCommitTransfer,
 } from "./rendering/ship-transfer";
 import type {
 	BodyEntry,
@@ -270,8 +274,9 @@ cacheStarEntry();
 const [shipEntry, shipFound] = findShip();
 if (shipFound) selectBody(shipEntry);
 
-// Register transfer completion hook for command dispatch
+// Register transfer hooks
 setOnTransferComplete(onTransferComplete);
+setTransferHooks(visualCommitTransfer, showTransferStatus, asteroidProxy);
 
 // Dismiss splash screen and reveal game UI
 const splash = document.getElementById("splash-screen");

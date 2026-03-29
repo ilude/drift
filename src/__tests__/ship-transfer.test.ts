@@ -13,10 +13,10 @@ vi.mock("../rendering/scene", () => ({
 import { rebuildEntityMaps } from "../core/entities";
 import { state } from "../core/state";
 import { keplerRadius, meanToTrue, orbitSpeed, scaleDist } from "../math/orbit";
+import { distanceKmBetween } from "../math/transfer";
 import {
 	completeTransferState,
 	computeHermiteKnots,
-	distanceKmBetween,
 	hermiteDerivative,
 	hermiteEval,
 	predictTargetWorld,

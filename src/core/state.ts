@@ -110,6 +110,7 @@ export const state: AppState = {
 	refuelMultiplier: 1,
 	moraleMultiplier: 1,
 	supplyMultiplier: 1,
+	fuelBurnMultiplier: 1,
 	depotQuality: 1,
 	shipIntents: new Map(),
 	colonies: new Map(),

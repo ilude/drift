@@ -1,0 +1,133 @@
+import { computeTotalFuelCost, findAffordableAccelG } from "../math/ship-physics";
+import { bodyAUFromPosition, distanceKmBetween } from "../math/transfer";
+import type { BodyEntry, ShipEntry } from "../types";
+import { findAsteroidEntity, findBody } from "./entities";
+import { resolveShipPhysics } from "./ship-utils";
+import { gameLog, state } from "./state";
+
+// --- Visual commit hook (set by rendering layer at startup) ---
+
+type VisualCommitFn = (
+	entry: ShipEntry,
+	targetEntry: BodyEntry,
+	gameDays: number,
+	targetName: string,
+) => void;
+
+type StatusFn = (msg: string) => void;
+
+type AsteroidProxyFn = (
+	asteroid: import("../types").AsteroidInfo,
+	beltEntry: import("../types").AsteroidBeltEntry,
+) => BodyEntry;
+
+let _visualCommit: VisualCommitFn | null = null;
+let _showStatus: StatusFn | null = null;
+let _asteroidProxy: AsteroidProxyFn | null = null;
+
+export function setTransferHooks(
+	commit: VisualCommitFn,
+	showStatus: StatusFn,
+	proxy: AsteroidProxyFn,
+): void {
+	_visualCommit = commit;
+	_showStatus = showStatus;
+	_asteroidProxy = proxy;
+}
+
+/** Resolve the host body a ship is orbiting (planet or asteroid). */
+function resolveHost(hostName: string): BodyEntry | undefined {
+	const [hostBody, hostBodyFound] = findBody(hostName);
+	if (hostBodyFound) return hostBody;
+	const [hit, hitFound] = findAsteroidEntity(hostName);
+	if (hitFound && _asteroidProxy) return _asteroidProxy(hit.asteroid, hit.beltEntry);
+	return undefined;
+}
+
+/** Try to throttle acceleration to fit fuel budget. Returns null if impossible. */
+function tryThrottle(
+	entry: ShipEntry,
+	distKm: number,
+	maxAccelG: number,
+	ispS: number,
+	dryMassKg: number,
+	opMult: number,
+	showUI: boolean,
+): { totalFuelKg: number; transferDays: number; accelG: number } | null {
+	const throttled = findAffordableAccelG(
+		distKm,
+		ispS,
+		dryMassKg,
+		entry.fuelCapacityKg,
+		maxAccelG,
+		entry.fuelKg,
+		opMult,
+	);
+	if (!throttled) {
+		if (showUI && _showStatus) {
+			_showStatus("Insufficient fuel for transfer at any acceleration");
+		}
+		return null;
+	}
+	gameLog(
+		`[transfer] ${entry.data.name}: throttled ${maxAccelG.toFixed(3)}G → ${throttled.accelG.toFixed(3)}G (fuel: ${throttled.totalFuelKg.toFixed(0)}kg, ${throttled.transferDays.toFixed(1)}d)`,
+	);
+	return throttled;
+}
+
+/**
+ * Initiate a transfer from a ship to a target body.
+ * Computes fuel cost using the additive model (rocket equation + operational burn).
+ * If full acceleration is unaffordable, the commander throttles down automatically.
+ * Returns false if the transfer is impossible at any acceleration.
+ */
+export function initiateTransfer(
+	entry: ShipEntry,
+	targetEntry: BodyEntry,
+	showUI = false,
+): boolean {
+	if (!entry.isShip || entry.shipState === "transferring") return false;
+
+	const host = resolveHost(entry.hostPlanetName);
+	if (!host) return false;
+
+	const distKm = distanceKmBetween(host, targetEntry);
+	if (distKm < 1) return false;
+
+	const physics = resolveShipPhysics(entry);
+	const opMult = state.fuelBurnMultiplier;
+
+	let cost = computeTotalFuelCost(
+		distKm,
+		physics.accelG,
+		physics.ispS,
+		physics.dryMassKg,
+		entry.fuelCapacityKg,
+		opMult,
+	);
+
+	if (cost.totalFuelKg > entry.fuelKg) {
+		const throttled = tryThrottle(
+			entry,
+			distKm,
+			physics.accelG,
+			physics.ispS,
+			physics.dryMassKg,
+			opMult,
+			showUI,
+		);
+		if (!throttled) return false;
+		cost = { rocketFuelKg: 0, opBurnKg: 0, ...throttled };
+	}
+
+	entry.transferFuelTotal = cost.totalFuelKg;
+
+	const r1 = host.data.distance || bodyAUFromPosition(host);
+	const r2 = targetEntry.data.distance || bodyAUFromPosition(targetEntry);
+	entry.orbitA = (r1 + r2) / 2;
+
+	if (_visualCommit) {
+		_visualCommit(entry, targetEntry, cost.transferDays, targetEntry.data.name);
+	}
+	return true;
+}

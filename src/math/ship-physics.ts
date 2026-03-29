@@ -1,7 +1,14 @@
 // Ship physics: fuel, thrust, and delta-v calculations
 // Uses km/kg/s internally; accepts AU at boundaries
 
-import type { EngineType, HohmannDeltaVResult, ShipPhysicsState, TransferResult } from "../types";
+import type {
+	EngineType,
+	FuelCostResult,
+	HohmannDeltaVResult,
+	ShipPhysicsState,
+	ThrottleResult,
+	TransferResult,
+} from "../types";
 
 // --- Constants ---
 
@@ -148,6 +155,102 @@ export function brachistochroneTime(r1AU: number, r2AU: number, accelMS2: number
  */
 export function brachistochroneDeltaV(r1AU: number, r2AU: number, accelMS2: number): number {
 	return brachistochroneDeltaVKm(Math.abs(r2AU - r1AU) * AU_TO_KM, accelMS2);
+}
+
+// --- Operational burn (fuel consumed by maneuvering, course corrections, thruster wear) ---
+
+/** Operational burn rate: fraction of fuel capacity consumed per transfer day. */
+export const OP_BURN_RATE = 0.001; // 0.1%/day
+
+/**
+ * Compute total fuel cost for a brachistochrone transfer (additive model).
+ * Returns rocket-equation fuel + operational burn as separate and combined values.
+ */
+export function computeTotalFuelCost(
+	distKm: number,
+	accelG: number,
+	ispS: number,
+	dryMassKg: number,
+	fuelCapacityKg: number,
+	opBurnMultiplier = 1.0,
+): FuelCostResult {
+	const accelMS2 = accelG * G_ACCEL;
+	const dvKmS = brachistochroneDeltaVKm(distKm, accelMS2);
+	const veKmS = exhaustVelocity(ispS) / 1000;
+	const rocketFuelKg = fuelRequired(veKmS, dryMassKg, dvKmS);
+	const transferDays = brachistochroneTimeKm(distKm, accelMS2);
+	const opBurnKg = (OP_BURN_RATE * fuelCapacityKg * transferDays) / Math.max(0.01, opBurnMultiplier);
+	return {
+		rocketFuelKg,
+		opBurnKg,
+		totalFuelKg: rocketFuelKg + opBurnKg,
+		transferDays,
+	};
+}
+
+/**
+ * Binary-search for the highest acceleration a ship can afford for a transfer.
+ * Returns null if even minimum acceleration exceeds the fuel budget.
+ */
+export function findAffordableAccelG(
+	distKm: number,
+	ispS: number,
+	dryMassKg: number,
+	fuelCapacityKg: number,
+	maxAccelG: number,
+	fuelBudgetKg: number,
+	opBurnMultiplier = 1.0,
+	minAccelG = 0.001,
+): ThrottleResult | null {
+	// Check if max accel is already affordable
+	const maxCost = computeTotalFuelCost(
+		distKm,
+		maxAccelG,
+		ispS,
+		dryMassKg,
+		fuelCapacityKg,
+		opBurnMultiplier,
+	);
+	if (maxCost.totalFuelKg <= fuelBudgetKg) {
+		return {
+			accelG: maxAccelG,
+			totalFuelKg: maxCost.totalFuelKg,
+			transferDays: maxCost.transferDays,
+		};
+	}
+
+	// Check if even minimum accel is unaffordable
+	const minCost = computeTotalFuelCost(
+		distKm,
+		minAccelG,
+		ispS,
+		dryMassKg,
+		fuelCapacityKg,
+		opBurnMultiplier,
+	);
+	if (minCost.totalFuelKg > fuelBudgetKg) return null;
+
+	// Binary search for the highest affordable acceleration
+	let lo = minAccelG;
+	let hi = maxAccelG;
+	for (let i = 0; i < 20; i++) {
+		const mid = (lo + hi) / 2;
+		const cost = computeTotalFuelCost(distKm, mid, ispS, dryMassKg, fuelCapacityKg, opBurnMultiplier);
+		if (cost.totalFuelKg <= fuelBudgetKg) {
+			lo = mid;
+		} else {
+			hi = mid;
+		}
+	}
+	const finalCost = computeTotalFuelCost(
+		distKm,
+		lo,
+		ispS,
+		dryMassKg,
+		fuelCapacityKg,
+		opBurnMultiplier,
+	);
+	return { accelG: lo, totalFuelKg: finalCost.totalFuelKg, transferDays: finalCost.transferDays };
 }
 
 // --- Engine presets (Trans-Newtonian) ---

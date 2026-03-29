@@ -15,6 +15,7 @@ vi.mock("../rendering/scene", () => ({
 
 import { GameClock } from "../core/game-clock";
 import { state } from "../core/state";
+import { setTransferHooks } from "../core/transfers";
 import { COMET_TRAIL_STEP_ARC } from "../rendering/bodies";
 import {
 	buildTrailIndices,
@@ -24,6 +25,11 @@ import {
 	orbitToWorld,
 } from "../rendering/rendering";
 import { ZOOM_BASE } from "../rendering/scene";
+import {
+	asteroidProxy,
+	showTransferStatus,
+	visualCommitTransfer,
+} from "../rendering/ship-transfer";
 
 describe("orbitToWorld", () => {
 	const PI = Math.PI;
@@ -117,6 +123,8 @@ describe("createShip", () => {
 });
 
 describe("initiateTransfer", () => {
+	setTransferHooks(visualCommitTransfer, showTransferStatus, asteroidProxy);
+
 	function setupSystem() {
 		state.BODIES = [
 			{

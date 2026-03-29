@@ -4,13 +4,16 @@ import {
 	brachistochroneDeltaV,
 	brachistochroneTime,
 	checkTransfer,
+	computeTotalFuelCost,
 	ENGINE_TYPES,
 	exhaustVelocity,
+	findAffordableAccelG,
 	fuelRequired,
 	G_ACCEL,
 	hohmannDeltaV,
 	hohmannTransferDays,
 	muKmS,
+	OP_BURN_RATE,
 	rocketDeltaV,
 } from "../math/ship-physics";
 
@@ -257,5 +260,71 @@ describe("checkTransfer", () => {
 		expect(result.feasible).toBe(true);
 		// High Isp means fuel usage is a small fraction of total
 		expect(result.fuelUsedKg).toBeLessThan(ship.fuelKg * 0.5);
+	});
+});
+
+// --- Fuel cost model ---
+
+describe("computeTotalFuelCost", () => {
+	const distKm = 1.0 * AU_TO_KM; // ~1 AU (Earth to ~Mars)
+
+	it("returns additive fuel cost (rocket + operational burn)", () => {
+		const cost = computeTotalFuelCost(distKm, 0.1, 1_000_000, 5_000, 50_000);
+		expect(cost.rocketFuelKg).toBeGreaterThan(0);
+		expect(cost.opBurnKg).toBeGreaterThan(0);
+		expect(cost.totalFuelKg).toBeCloseTo(cost.rocketFuelKg + cost.opBurnKg, 6);
+		expect(cost.transferDays).toBeGreaterThan(0);
+	});
+
+	it("operational burn scales with OP_BURN_RATE and transfer days", () => {
+		const cost = computeTotalFuelCost(distKm, 0.1, 1_000_000, 5_000, 50_000);
+		const expectedOp = OP_BURN_RATE * 50_000 * cost.transferDays;
+		expect(cost.opBurnKg).toBeCloseTo(expectedOp, 6);
+	});
+
+	it("opBurnMultiplier > 1 reduces operational burn", () => {
+		const base = computeTotalFuelCost(distKm, 0.1, 1_000_000, 5_000, 50_000, 1.0);
+		const hard = computeTotalFuelCost(distKm, 0.1, 1_000_000, 5_000, 50_000, 2.0);
+		expect(hard.opBurnKg).toBeCloseTo(base.opBurnKg / 2, 6);
+	});
+
+	it("100-day trip costs ~10% capacity in op burn (not 100% like old formula)", () => {
+		// Find distance that gives ~100 day transfer at 0.1g
+		// T = 2*sqrt(d/a), d = (T/2)^2 * a, T=100d=8.64e6s, a=0.981
+		const d100 = ((100 * 86400) / 2) ** 2 * (0.1 * G_ACCEL);
+		const distKm100 = d100 / 1000;
+		const cost = computeTotalFuelCost(distKm100, 0.1, 1_000_000, 5_000, 50_000);
+		expect(cost.transferDays).toBeCloseTo(100, 0);
+		// Op burn should be ~10% of capacity, not 100%
+		expect(cost.opBurnKg / 50_000).toBeCloseTo(0.1, 1);
+	});
+});
+
+describe("findAffordableAccelG", () => {
+	const distKm = 1.0 * AU_TO_KM;
+
+	it("returns max accel when affordable", () => {
+		const result = findAffordableAccelG(distKm, 1_000_000, 5_000, 50_000, 0.1, 50_000);
+		if (!result) throw new Error("expected non-null result");
+		expect(result.accelG).toBeCloseTo(0.1, 3);
+	});
+
+	it("returns null when even minimum accel is unaffordable", () => {
+		const result = findAffordableAccelG(distKm, 1_000_000, 5_000, 50_000, 0.1, 1);
+		expect(result).toBeNull();
+	});
+
+	it("finds a throttled accel between min and max when budget is tight", () => {
+		// Use lower Isp (10,000s) where rocket fuel is significant and throttling helps
+		const lowIsp = 10_000;
+		const fullCost = computeTotalFuelCost(distKm, 10, lowIsp, 5_000, 50_000);
+		// Budget is 80% of full cost — forces throttle
+		const budget = fullCost.totalFuelKg * 0.8;
+		const result = findAffordableAccelG(distKm, lowIsp, 5_000, 50_000, 10, budget);
+		if (!result) throw new Error("expected non-null result");
+		expect(result.accelG).toBeLessThan(10);
+		expect(result.accelG).toBeGreaterThan(0.001);
+		expect(result.totalFuelKg).toBeLessThanOrEqual(budget);
+		expect(result.transferDays).toBeGreaterThan(fullCost.transferDays);
 	});
 });

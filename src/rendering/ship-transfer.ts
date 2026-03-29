@@ -1,16 +1,9 @@
 import * as THREE from "three";
 import { findAsteroidEntity, findBody, rebuildEntityMaps } from "../core/entities";
-import { resolveShipPhysics } from "../core/ship-utils";
 import { gameWarn, state } from "../core/state";
-import {
-	DIST_SCALE,
-	keplerRadius,
-	MOON_DIST_SCALE,
-	meanToTrue,
-	orbitSpeed,
-	scaleDist,
-} from "../math/orbit";
-import { AU_TO_KM, checkTransferKm, ENGINE_TYPES } from "../math/ship-physics";
+import { rngInt, seededRandom } from "../core/utils";
+import { keplerRadius, MOON_DIST_SCALE, meanToTrue, orbitSpeed, scaleDist } from "../math/orbit";
+import { ENGINE_TYPES } from "../math/ship-physics";
 import type {
 	AsteroidBeltEntry,
 	AsteroidInfo,
@@ -306,6 +299,18 @@ function resolveShipConfigStats(
 	};
 }
 
+function hashName(name: string): number {
+	let hash = 5381;
+	for (let i = 0; i < name.length; i++) {
+		hash = ((hash << 5) + hash + name.charCodeAt(i)) & 0x7fffffff;
+	}
+	return hash || 1;
+}
+
+export function rollOverhaulsUntilRefit(seed: string): number {
+	return rngInt(seededRandom(hashName(seed)), 3, 5);
+}
+
 export function createShip(config: ShipConfig): ShipEntry | undefined {
 	if (state.bodyMeshes.some((e) => e.data.name === config.name)) {
 		gameWarn(`Ship "${config.name}" already exists`);
@@ -438,13 +443,6 @@ export function createShip(config: ShipConfig): ShipEntry | undefined {
 					origin: "ship" as const,
 				},
 				{
-					id: "refit-check",
-					command: "major-refit" as const,
-					condition: { type: "hull-below" as const, threshold: 60 },
-					enabled: true,
-					origin: "ship" as const,
-				},
-				{
 					id: "morale-check",
 					command: "shore-leave" as const,
 					condition: { type: "morale-below" as const, threshold: 40 },
@@ -477,6 +475,8 @@ export function createShip(config: ShipConfig): ShipEntry | undefined {
 			supplies: resolved.maxSupplies,
 			maxSupplies: resolved.maxSupplies,
 			hullIntegrity: 100,
+			overhaulsSinceRefit: 0,
+			overhaulsUntilRefit: rollOverhaulsUntilRefit(config.name),
 		},
 		action: { type: null, commandId: null, startTime: 0, duration: 0, progress: 0 },
 		stationTarget: null,
@@ -630,37 +630,6 @@ function showTransferStatus(msg: string): void {
 }
 
 /**
- * Compute the real AU distance of a body from the star using world position.
- * World coords use sqrt compression: worldR = sqrt(au) * DIST_SCALE
- * Reverse: au = (worldR / DIST_SCALE)^2
- */
-function bodyAUFromPosition(body: BodyEntry): number {
-	const wx = body.mesh.position.x;
-	const wy = body.mesh.position.y;
-	const wz = body.mesh.position.z;
-	const worldR = Math.sqrt(wx * wx + wy * wy + wz * wz);
-	return (worldR / DIST_SCALE) ** 2;
-}
-
-/**
- * Compute straight-line distance in km between two bodies.
- * Uses actual angular positions to compute chord distance in AU space,
- * so bodies on opposite sides of the star have the correct large distance.
- */
-export function distanceKmBetween(a: BodyEntry, b: BodyEntry): number {
-	const auA = a.data.distance > 0 && !a.isMoon ? a.data.distance : bodyAUFromPosition(a);
-	const auB = b.data.distance > 0 && !b.isMoon ? b.data.distance : bodyAUFromPosition(b);
-	// Derive angular positions from world coordinates (XZ plane)
-	const angleA = Math.atan2(a.mesh.position.z, a.mesh.position.x);
-	const angleB = Math.atan2(b.mesh.position.z, b.mesh.position.x);
-	const axAU = Math.cos(angleA) * auA;
-	const azAU = Math.sin(angleA) * auA;
-	const bxAU = Math.cos(angleB) * auB;
-	const bzAU = Math.sin(angleB) * auB;
-	return Math.hypot(bxAU - axAU, bzAU - azAU) * AU_TO_KM;
-}
-
-/**
  * Build a lightweight BodyEntry-compatible proxy for an asteroid.
  * Reads position from the belt's Float32Array. Returns a fresh position object
  * per call -- safe to hold references across multiple calls.
@@ -686,45 +655,13 @@ export function asteroidProxy(asteroid: AsteroidInfo, beltEntry: AsteroidBeltEnt
 	} as unknown as BodyEntry;
 }
 
-export function initiateTransfer(
+/** Visual commit: compute spline knots and hand off to commitTransfer. */
+export function visualCommitTransfer(
 	entry: ShipEntry,
 	targetEntry: BodyEntry,
-	showUI = false,
-): boolean {
-	if (!entry.isShip || entry.shipState === "transferring") return false;
-
-	// Find current host body for distance calculation (body or asteroid)
-	const [hostBody, hostBodyFound] = findBody(entry.hostPlanetName);
-	let host: BodyEntry | undefined = hostBodyFound ? hostBody : undefined;
-	if (!host) {
-		const [hit, hitFound] = findAsteroidEntity(entry.hostPlanetName);
-		if (hitFound) host = asteroidProxy(hit.asteroid, hit.beltEntry);
-	}
-	if (!host) return false;
-
-	// Compute real distance in km between ship's host and target
-	const distKm = distanceKmBetween(host, targetEntry);
-	if (distKm < 1) return false;
-
-	const result = checkTransferKm(distKm, resolveShipPhysics(entry));
-
-	if (!result.feasible) {
-		if (showUI) {
-			showTransferStatus(
-				`Need ${result.deltaVRequired?.toFixed(1)} km/s, have ${result.deltaVAvailable?.toFixed(1)} km/s`,
-			);
-		}
-		return false;
-	}
-
-	// Store fuel cost -- consumed gradually during transfer, not upfront.
-	// TN engines have extreme Isp, making rocket-equation fuel negligible.
-	// Enforce a minimum burn: 1% of capacity per transfer day (thruster wear,
-	// active maneuvering, mid-course corrections) so transfers have real cost.
-	const gameDays = result.transferDays ?? 0;
-	const minBurn = 0.01 * entry.fuelCapacityKg * gameDays;
-	entry.transferFuelTotal = Math.max(result.fuelUsedKg ?? 0, minBurn);
-
+	gameDays: number,
+	targetName: string,
+): void {
 	const knots = computeHermiteKnots(
 		entry.mesh.position.x,
 		entry.mesh.position.y,
@@ -732,11 +669,8 @@ export function initiateTransfer(
 		targetEntry,
 		gameDays,
 	);
-
-	const r1 = host.data.distance || bodyAUFromPosition(host);
-	const r2 = targetEntry.data.distance || bodyAUFromPosition(targetEntry);
-	entry.orbitA = (r1 + r2) / 2;
-
-	commitTransfer(entry, knots, gameDays, targetEntry.data.name);
-	return true;
+	commitTransfer(entry, knots, gameDays, targetName);
 }
+
+export { initiateTransfer } from "../core/transfers";
+export { showTransferStatus };

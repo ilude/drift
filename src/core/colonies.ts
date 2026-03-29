@@ -1240,7 +1240,13 @@ function checkColonyWarnings(colony: ColonyState, qualities: ColonyQualities): v
 	}
 }
 
+const EARTH_FUEL_RESTOCK_PER_DAY = 5_000; // kg/day placeholder until production chains
+
 export function tickColony(colony: ColonyState, simDtDays: number): void {
+	// Placeholder: Earth has unlimited fuel production for early-game debugging
+	if (colony.bodyName === "Earth") {
+		colony.stockpile.fuelKg += EARTH_FUEL_RESTOCK_PER_DAY * simDtDays;
+	}
 	const qualities = computeColonyQualities(colony);
 	tickConstruction(colony, simDtDays, qualities);
 	tickMining(colony, simDtDays, qualities);
