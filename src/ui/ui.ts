@@ -16,6 +16,7 @@ import {
 	lodLevel,
 	MOON_LOD_ZOOM,
 } from "../math/visual";
+import { labelColor } from "../rendering/bodies";
 import { camera, labelContainer, setAntialias, ZOOM_BASE } from "../rendering/scene";
 import type { BodyEntry, CategoryKey, CategoryVisibility, ShipEntry, SystemData } from "../types";
 import { isShipEntry, isSurveyable } from "../types";
@@ -41,11 +42,49 @@ function handleBodyItemClick(e: MouseEvent, item: HTMLElement, entry: BodyEntry)
 
 const bodyListEl = document.getElementById("body-list") as HTMLElement;
 const shipFuelSpans = new Map<string, HTMLSpanElement>();
+const bodyListNameSpans = new Map<string, HTMLSpanElement>();
 
 function shipFuelHtml(entry: BodyEntry): string {
 	if (!isShipEntry(entry)) return "";
 	const pct = Math.round((entry.fuelKg / entry.fuelCapacityKg) * 100);
 	return `<span class="ship-fuel-pct" style="font-size:10px; color:#888; margin-left:auto">${pct}%</span>`;
+}
+
+function buildBodyListItem(entry: BodyEntry): HTMLDivElement {
+	const hasMoons = entry.moons && entry.moons.length > 0;
+	const item = document.createElement("div");
+	item.className = "body-list-item";
+
+	const toggleSpan = !isShipEntry(entry) && hasMoons ? `<span class="moon-toggle">[+]</span>` : "";
+	item.innerHTML = `<span class="body-color-dot" style="background:${entry.data.color}"></span>
+        <span class="body-list-name">${entry.data.name}</span>${shipFuelHtml(entry)}${toggleSpan}`;
+
+	if (isShipEntry(entry)) {
+		const spanEl = item.querySelector(".ship-fuel-pct") as HTMLSpanElement;
+		if (spanEl) shipFuelSpans.set(entry.data.name, spanEl);
+	} else {
+		const nameSpan = item.querySelector(".body-list-name") as HTMLSpanElement;
+		if (nameSpan) bodyListNameSpans.set(entry.data.name, nameSpan);
+	}
+	item.addEventListener("click", (e) => handleBodyItemClick(e, item, entry));
+	return item;
+}
+
+function buildMoonSublist(moons: BodyEntry[]): HTMLDivElement {
+	const moonList = document.createElement("div");
+	moonList.className = "moon-sublist";
+	moonList.style.display = "none";
+	for (const moon of moons) {
+		const mItem = document.createElement("div");
+		mItem.className = "body-list-item moon";
+		mItem.innerHTML = `<span class="body-color-dot" style="background:${moon.data.color}"></span>
+            <span class="body-list-name">${moon.data.name}</span>`;
+		const moonNameSpan = mItem.querySelector(".body-list-name") as HTMLSpanElement;
+		if (moonNameSpan) bodyListNameSpans.set(moon.data.name, moonNameSpan);
+		mItem.addEventListener("click", () => selectBody(moon));
+		moonList.appendChild(mItem);
+	}
+	return moonList;
 }
 
 export function buildBodyList(): void {
@@ -96,37 +135,12 @@ export function buildBodyList(): void {
 			if (toggle) toggle.textContent = collapsed ? "[-]" : "[+]";
 		});
 
-		entries.forEach((entry) => {
-			const hasMoons = entry.moons && entry.moons.length > 0;
-			const item = document.createElement("div");
-			item.className = "body-list-item";
-
-			const toggleSpan = !isShipEntry(entry) && hasMoons ? `<span class="moon-toggle">[+]</span>` : "";
-			item.innerHTML = `<span class="body-color-dot" style="background:${entry.data.color}"></span>
-                <span class="body-list-name">${entry.data.name}</span>${shipFuelHtml(entry)}${toggleSpan}`;
-
-			if (isShipEntry(entry)) {
-				const spanEl = item.querySelector(".ship-fuel-pct") as HTMLSpanElement;
-				if (spanEl) shipFuelSpans.set(entry.data.name, spanEl);
+		for (const entry of entries) {
+			list.appendChild(buildBodyListItem(entry));
+			if (entry.moons && entry.moons.length > 0) {
+				list.appendChild(buildMoonSublist(entry.moons));
 			}
-			item.addEventListener("click", (e) => handleBodyItemClick(e, item, entry));
-			list.appendChild(item);
-
-			if (hasMoons) {
-				const moonList = document.createElement("div");
-				moonList.className = "moon-sublist";
-				moonList.style.display = "none";
-				entry.moons.forEach((moon) => {
-					const mItem = document.createElement("div");
-					mItem.className = "body-list-item moon";
-					mItem.innerHTML = `<span class="body-color-dot" style="background:${moon.data.color}"></span>
-                        <span class="body-list-name">${moon.data.name}</span>`;
-					mItem.addEventListener("click", () => selectBody(moon));
-					moonList.appendChild(mItem);
-				});
-				list.appendChild(moonList);
-			}
-		});
+		}
 
 		bodyListEl.appendChild(section);
 	});
@@ -193,7 +207,6 @@ interface LabelUpdateCtx {
 	fov: number;
 	screenH: number;
 	screenW: number;
-	surveyTargets: Set<string>;
 	orbitingShipsAtBody: Map<string, ShipEntry[]>;
 	shouldUpdateTransforms: boolean;
 }
@@ -207,18 +220,24 @@ function setLabelDisplay(entry: BodyEntry, display: string): void {
 
 function updateBodyLabelContent(
 	entry: BodyEntry,
-	surveyTargets: Set<string>,
 	orbitingShipsAtBody: Map<string, ShipEntry[]>,
 ): void {
 	if (entry.isShip) return;
-	let suffix = "";
-	if (isSurveyable(entry) && entry.survey.surveyLevel > 0) suffix = " ✓";
-	else if (surveyTargets.has(entry.data.name)) suffix = " *";
-	const bodyName = entry.data.name + suffix;
+	const surveyed = isSurveyable(entry) && entry.survey.surveyLevel > 0;
+	const color =
+		entry.data.type === "Star" ? entry.data.color : labelColor(entry.data.type, surveyed);
+	if (entry.labelDiv.style.color !== color) {
+		entry.labelDiv.style.color = color;
+	}
+	const sidebarSpan = bodyListNameSpans.get(entry.data.name);
+	if (sidebarSpan) {
+		sidebarSpan.classList.toggle("surveyed", surveyed);
+	}
+	const bodyName = entry.data.name;
 	const orbitingShips = orbitingShipsAtBody.get(entry.data.name) || [];
 	let labelHtml = `<div style="line-height:1.2">${bodyName}`;
 	for (const ship of orbitingShips) {
-		labelHtml += `<div style="font-size:9px; color:#7a9a7a; margin-top:2px">${ship.data.name}</div>`;
+		labelHtml += `<div style="font-size:9px; color:#cccccc; margin-top:2px">${ship.data.name}</div>`;
 	}
 	labelHtml += "</div>";
 	if (entry.labelDiv.innerHTML !== labelHtml) {
@@ -312,7 +331,6 @@ function updateBodyLabelEntry(entry: BodyEntry, ctx: LabelUpdateCtx): void {
 		fov,
 		screenH,
 		screenW,
-		surveyTargets,
 		orbitingShipsAtBody,
 		shouldUpdateTransforms,
 	} = ctx;
@@ -342,7 +360,7 @@ function updateBodyLabelEntry(entry: BodyEntry, ctx: LabelUpdateCtx): void {
 	const showLabels = cv[catKey]?.labels ?? true;
 	const orbitingShipHidden = isShipEntry(entry) && entry.shipState === "orbiting";
 	setLabelDisplay(entry, showLabels && !orbitingShipHidden ? "" : "none");
-	updateBodyLabelContent(entry, surveyTargets, orbitingShipsAtBody);
+	updateBodyLabelContent(entry, orbitingShipsAtBody);
 	const radius = entry.screenSize || 0.3;
 	const dist = edgeVec.copy(entry.mesh.position).sub(camera.position).length();
 	const sr = calcScreenRadius(radius, dist, fov, screenH);
@@ -366,7 +384,7 @@ function getOrCreateAsteroidLabel(name: string): HTMLDivElement {
 	if (!label) {
 		label = document.createElement("div");
 		label.style.cssText =
-			"position:absolute;color:#8899aa;font-family:'Exo 2',sans-serif;" +
+			`position:absolute;color:${labelColor("Asteroid", false)};font-family:'Exo 2',sans-serif;` +
 			"font-size:10px;white-space:nowrap;text-shadow:0 0 4px #000,0 0 2px #000;opacity:0.85;";
 		labelContainer.appendChild(label);
 		asteroidLabels.set(name, label);
@@ -412,7 +430,7 @@ function updateAsteroidLabels(
 		const shipsAtAsteroid = orbitingShipsAtBody.get(entry.hostPlanetName) || [];
 		let asteroidHtml = entry.hostPlanetName;
 		for (const ship of shipsAtAsteroid) {
-			asteroidHtml += `<div style="font-size:9px; color:#7a9a7a; margin-top:2px">${ship.data.name}</div>`;
+			asteroidHtml += `<div style="font-size:9px; color:#cccccc; margin-top:2px">${ship.data.name}</div>`;
 		}
 		label.innerHTML = asteroidHtml;
 		label.style.display = "";
@@ -468,24 +486,6 @@ let labelFrameCounter = 0;
 const asteroidLabels = new Map<string, HTMLDivElement>();
 const astLabelVec = new THREE.Vector3();
 
-let _surveyTargets = new Set<string>();
-let _surveyTargetsDirty = true;
-
-export function markSurveyTargetsDirty(): void {
-	_surveyTargetsDirty = true;
-}
-
-function refreshSurveyTargets(): void {
-	if (!_surveyTargetsDirty) return;
-	_surveyTargets = new Set<string>();
-	for (const e of state.bodyMeshes) {
-		if (isShipEntry(e) && e.action.type === "survey-nearest" && e.action.target) {
-			_surveyTargets.add(e.action.target);
-		}
-	}
-	_surveyTargetsDirty = false;
-}
-
 function buildOrbitingShipsMap(): Map<string, ShipEntry[]> {
 	const map = new Map<string, ShipEntry[]>();
 	for (const entry of state.bodyMeshes) {
@@ -507,9 +507,6 @@ export function updateLabels(camDist: number): void {
 	const screenH = window.innerHeight;
 	const screenW = window.innerWidth;
 
-	refreshSurveyTargets();
-	const surveyTargets = _surveyTargets;
-
 	const needsScaleUpdate = scaleFactor !== lastScaleFactor;
 	const needsLodUpdate =
 		lastLodCamDist < 0 || Math.abs(camDist - lastLodCamDist) / lastLodCamDist > 0.05;
@@ -530,7 +527,6 @@ export function updateLabels(camDist: number): void {
 		fov,
 		screenH,
 		screenW,
-		surveyTargets,
 		orbitingShipsAtBody,
 		shouldUpdateTransforms,
 	};

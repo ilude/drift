@@ -786,8 +786,12 @@ body {
 }
 
 .body-list-name {
-	color: #88cc88;
+	color: #bb9977;
 	font-size: 11px;
+}
+
+.body-list-name.surveyed {
+	color: #4488cc;
 }
 
 .moon-toggle {
@@ -810,7 +814,7 @@ body {
 }
 
 .body-list-item.moon .body-list-name {
-	color: #6a8a6a;
+	color: #bb9977;
 	font-size: 10px;
 }
 

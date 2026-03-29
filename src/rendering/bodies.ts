@@ -130,6 +130,23 @@ export const sharedResources: Set<THREE.BufferGeometry | THREE.Material> = new S
 	sharedTrailMat,
 ]);
 
+/** Per-body-type label colors: unsurveyed (warm) and surveyed (cool) */
+export const LABEL_COLORS: Record<string, { unsurveyed: string; surveyed: string }> = {
+	Planet: { unsurveyed: "#bb9977", surveyed: "#4488cc" },
+	"Dwarf Planet": { unsurveyed: "#cc8855", surveyed: "#3366bb" },
+	Moon: { unsurveyed: "#aa9988", surveyed: "#55bbcc" },
+	Comet: { unsurveyed: "#ccbb55", surveyed: "#33aaaa" },
+	Centaur: { unsurveyed: "#cc7766", surveyed: "#7766bb" },
+	Asteroid: { unsurveyed: "#ccaa44", surveyed: "#4466aa" },
+};
+const FALLBACK_COLORS = { unsurveyed: "#bb9977", surveyed: "#4488cc" };
+
+/** Get the label color for a body type and survey state. Stars use their own data.color. */
+export function labelColor(bodyType: string, surveyed: boolean): string {
+	const pair = LABEL_COLORS[bodyType] ?? FALLBACK_COLORS;
+	return surveyed ? pair.surveyed : pair.unsurveyed;
+}
+
 export function createLabel(name: string, color: string, isMoon: boolean): HTMLDivElement {
 	const div = document.createElement("div");
 	div.textContent = name;
@@ -381,7 +398,8 @@ function createBody(data: BodyData, parentMesh: THREE.Mesh | null): PlanetEntry 
 
 	const { orbitLine, orbitRadius } = createOrbitRingIfNeeded(data, isMoon);
 
-	const labelDiv = createLabel(data.name, isMoon ? "#4a6a4a" : data.color, isMoon);
+	const initialColor = data.type === "Star" ? data.color : labelColor(data.type, false);
+	const labelDiv = createLabel(data.name, initialColor, isMoon);
 	const trail = createTrail(data.color, TRAIL_MAX_POINTS);
 
 	const entry: PlanetEntry = {
@@ -489,7 +507,7 @@ export function createComets(): void {
 		mesh.add(selRing);
 		scene.add(mesh);
 
-		const labelDiv = createLabel(name, color, false);
+		const labelDiv = createLabel(name, labelColor("Comet", false), false);
 		const trail = createTrail(color, COMET_TRAIL_MAX_POINTS);
 
 		const entry = {
