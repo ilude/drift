@@ -1299,6 +1299,7 @@ document.addEventListener("visibilitychange", () => {
 		stopBackgroundTick();
 		if (_speedBeforeHide !== 0 && state.timeSpeed === 0) {
 			state.timeSpeed = _speedBeforeHide;
+			window.dispatchEvent(new Event("wake-render"));
 		}
 		// Reset the clock delta so returning to the tab doesn't produce a giant dt
 		timer.update();
