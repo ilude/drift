@@ -55,6 +55,7 @@ function tryThrottle(
 	ispS: number,
 	dryMassKg: number,
 	opMult: number,
+	fuelMod: number,
 	showUI: boolean,
 ): { totalFuelKg: number; transferDays: number; accelG: number } | null {
 	const throttled = findAffordableAccelG(
@@ -65,6 +66,7 @@ function tryThrottle(
 		maxAccelG,
 		entry.fuelKg,
 		opMult,
+		fuelMod,
 	);
 	if (!throttled) {
 		if (showUI && _showStatus) {
@@ -170,6 +172,7 @@ export function initiateTransfer(
 		physics.dryMassKg,
 		entry.fuelCapacityKg,
 		opMult,
+		physics.fuelMod,
 	);
 
 	if (cost.totalFuelKg > entry.fuelKg) {
@@ -180,6 +183,7 @@ export function initiateTransfer(
 			physics.ispS,
 			physics.dryMassKg,
 			opMult,
+			physics.fuelMod,
 			showUI,
 		);
 		if (!throttled) return false;

@@ -218,6 +218,7 @@ function estimateReturnFuelKg(ship: ShipEntry): number | null {
 		physics.dryMassKg,
 		ship.fuelCapacityKg,
 		state.fuelBurnMultiplier,
+		physics.fuelMod,
 	);
 	return cost.totalFuelKg;
 }

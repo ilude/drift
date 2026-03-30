@@ -408,6 +408,7 @@ function tankerRoundTripFuel(
 		physics.dryMassKg,
 		tanker.fuelCapacityKg,
 		state.fuelBurnMultiplier,
+		physics.fuelMod,
 	);
 	return oneWay.totalFuelKg * 2.5; // 2x travel + safety margin
 }
@@ -504,38 +505,49 @@ export function invalidateRefuelTargetCache(): void {
 	_refuelTargetCache.clear();
 }
 
-function collectBodyCandidates(
+export interface SurveyCandidate {
+	name: string;
+	distSq: number;
+	x: number;
+	z: number;
+}
+
+export function collectBodyCandidates(
 	sx: number,
 	sz: number,
 	claimed: Set<string>,
-): { name: string; distSq: number }[] {
-	const out: { name: string; distSq: number }[] = [];
+): SurveyCandidate[] {
+	const out: SurveyCandidate[] = [];
 	for (const body of state.bodyMeshes) {
 		if (isShipEntry(body)) continue;
 		if (!isSurveyable(body)) continue;
 		if (body.survey.surveyLevel !== 0) continue;
 		if (claimed.has(body.data.name)) continue;
-		const dx = body.mesh.position.x - sx;
-		const dz = body.mesh.position.z - sz;
-		out.push({ name: body.data.name, distSq: dx * dx + dz * dz });
+		const bx = body.mesh.position.x;
+		const bz = body.mesh.position.z;
+		const dx = bx - sx;
+		const dz = bz - sz;
+		out.push({ name: body.data.name, distSq: dx * dx + dz * dz, x: bx, z: bz });
 	}
 	return out;
 }
 
-function collectAsteroidCandidates(
+export function collectAsteroidCandidates(
 	sx: number,
 	sz: number,
 	claimed: Set<string>,
-): { name: string; distSq: number }[] {
-	const out: { name: string; distSq: number }[] = [];
+): SurveyCandidate[] {
+	const out: SurveyCandidate[] = [];
 	for (const beltEntry of state.asteroidBelts) {
 		for (const asteroid of beltEntry.asteroids) {
 			if (asteroid.survey.surveyLevel !== 0) continue;
 			if (claimed.has(asteroid.designation)) continue;
 			const idx = asteroid.beltIndex ?? 0;
-			const ax = beltEntry.positions[idx * 3] - sx;
-			const az = beltEntry.positions[idx * 3 + 2] - sz;
-			out.push({ name: asteroid.designation, distSq: ax * ax + az * az });
+			const bx = beltEntry.positions[idx * 3];
+			const bz = beltEntry.positions[idx * 3 + 2];
+			const dx = bx - sx;
+			const dz = bz - sz;
+			out.push({ name: asteroid.designation, distSq: dx * dx + dz * dz, x: bx, z: bz });
 		}
 	}
 	return out;

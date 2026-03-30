@@ -169,11 +169,12 @@ export function computeTotalFuelCost(
 	dryMassKg: number,
 	fuelCapacityKg: number,
 	opBurnMultiplier = 1.0,
+	fuelMod = 1.0,
 ): FuelCostResult {
 	const accelMS2 = accelG * G_ACCEL;
 	const dvKmS = brachistochroneDeltaVKm(distKm, accelMS2);
 	const veKmS = exhaustVelocity(ispS) / 1000;
-	const rocketFuelKg = fuelRequired(veKmS, dryMassKg, dvKmS);
+	const rocketFuelKg = fuelRequired(veKmS, dryMassKg, dvKmS) * fuelMod;
 	const transferDays = brachistochroneTimeKm(distKm, accelMS2);
 	const opBurnKg = (OP_BURN_RATE * fuelCapacityKg * transferDays) / Math.max(0.01, opBurnMultiplier);
 	return {
@@ -196,17 +197,14 @@ export function findAffordableAccelG(
 	maxAccelG: number,
 	fuelBudgetKg: number,
 	opBurnMultiplier = 1.0,
+	fuelMod = 1.0,
 	minAccelG = 0.001,
 ): ThrottleResult | null {
+	const fc = (accel: number) =>
+		computeTotalFuelCost(distKm, accel, ispS, dryMassKg, fuelCapacityKg, opBurnMultiplier, fuelMod);
+
 	// Check if max accel is already affordable
-	const maxCost = computeTotalFuelCost(
-		distKm,
-		maxAccelG,
-		ispS,
-		dryMassKg,
-		fuelCapacityKg,
-		opBurnMultiplier,
-	);
+	const maxCost = fc(maxAccelG);
 	if (maxCost.totalFuelKg <= fuelBudgetKg) {
 		return {
 			accelG: maxAccelG,
@@ -216,36 +214,20 @@ export function findAffordableAccelG(
 	}
 
 	// Check if even minimum accel is unaffordable
-	const minCost = computeTotalFuelCost(
-		distKm,
-		minAccelG,
-		ispS,
-		dryMassKg,
-		fuelCapacityKg,
-		opBurnMultiplier,
-	);
-	if (minCost.totalFuelKg > fuelBudgetKg) return null;
+	if (fc(minAccelG).totalFuelKg > fuelBudgetKg) return null;
 
 	// Binary search for the highest affordable acceleration
 	let lo = minAccelG;
 	let hi = maxAccelG;
 	for (let i = 0; i < 20; i++) {
 		const mid = (lo + hi) / 2;
-		const cost = computeTotalFuelCost(distKm, mid, ispS, dryMassKg, fuelCapacityKg, opBurnMultiplier);
-		if (cost.totalFuelKg <= fuelBudgetKg) {
+		if (fc(mid).totalFuelKg <= fuelBudgetKg) {
 			lo = mid;
 		} else {
 			hi = mid;
 		}
 	}
-	const finalCost = computeTotalFuelCost(
-		distKm,
-		lo,
-		ispS,
-		dryMassKg,
-		fuelCapacityKg,
-		opBurnMultiplier,
-	);
+	const finalCost = fc(lo);
 	return { accelG: lo, totalFuelKg: finalCost.totalFuelKg, transferDays: finalCost.transferDays };
 }
 
