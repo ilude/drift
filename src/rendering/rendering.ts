@@ -7,6 +7,7 @@ import {
 	keplerRadius,
 	MOON_DIST_SCALE,
 	meanToTrue,
+	orbitToWorld,
 	scaleDist,
 } from "../math/orbit";
 import {
@@ -18,7 +19,7 @@ import {
 import { moonOrbitScale } from "../math/visual";
 import type { CategoryKey, PlanetEntry, ShipEntry } from "../types";
 import { isCometEntry, isShipEntry } from "../types";
-import { COMET_TRAIL_STEP_ARC, orbitToWorld } from "./bodies";
+import { COMET_TRAIL_STEP_ARC } from "./bodies";
 import { camera, ZOOM_BASE } from "./scene";
 import {
 	asteroidProxy,
@@ -26,6 +27,7 @@ import {
 	hermiteDerivative,
 	SHIP_LOCAL_ORBIT,
 	stationKeepingOffset,
+	stationKeepingPosition,
 	transferPosition,
 } from "./ship-transfer";
 
@@ -56,7 +58,6 @@ export {
 	createAsteroidBelts,
 	createBodies,
 	createComets,
-	orbitToWorld,
 	sharedResources,
 } from "./bodies";
 export { createShip, initiateTransfer } from "./ship-transfer";
@@ -114,14 +115,8 @@ function updateOrbitingShip(entry: ShipEntry, simDt: number): void {
 	entry.angle += entry.speed * simDt;
 	const host = resolveTarget(entry.hostPlanetName);
 	if (host) {
-		const offset = stationKeepingOffset(host);
-		const ox = Math.cos(entry.angle) * offset;
-		const oz = Math.sin(entry.angle) * offset;
-		entry.mesh.position.set(
-			host.mesh.position.x + ox,
-			host.mesh.position.y,
-			host.mesh.position.z + oz,
-		);
+		const pos = stationKeepingPosition(host, entry.angle);
+		entry.mesh.position.set(pos.x, pos.y, pos.z);
 	}
 }
 
@@ -142,14 +137,14 @@ function maybeResplineTransfer(
 		return;
 	}
 
-	const offset = stationKeepingOffset(tgt);
 	const approachAngle = Math.atan2(
 		entry.mesh.position.z - tgt.mesh.position.z,
 		entry.mesh.position.x - tgt.mesh.position.x,
 	);
-	const newP1x = tgt.mesh.position.x + Math.cos(approachAngle) * offset;
+	const newP1 = stationKeepingPosition(tgt, approachAngle);
+	const newP1x = newP1.x;
 	const newP1y = tgt.mesh.position.y ?? 0;
-	const newP1z = tgt.mesh.position.z + Math.sin(approachAngle) * offset;
+	const newP1z = newP1.z;
 
 	const endpointDeltaSq =
 		(newP1x - entry.p1x) ** 2 + (newP1y - entry.p1y) ** 2 + (newP1z - entry.p1z) ** 2;
@@ -207,21 +202,6 @@ function maybeResplineTransfer(
 		entry.p1y = newP1y;
 		entry.p1z = newP1z;
 	}
-}
-
-/** Apply capture-blend smoothing in the final 15% of a transfer. */
-function captureBlend(
-	tgt: NonNullable<ReturnType<typeof resolveTarget>>,
-	p: { x: number; y: number; z: number },
-	tNow: number,
-): { x: number; y: number; z: number } {
-	const offset = stationKeepingOffset(tgt);
-	const targetPos = {
-		x: tgt.mesh.position.x,
-		y: tgt.mesh.position.y ?? 0,
-		z: tgt.mesh.position.z,
-	};
-	return captureBlendPosition(p, targetPos, offset, tNow);
 }
 
 /** Inject sub-step trail points for high-warp transfers to avoid gaps.
@@ -310,7 +290,14 @@ function updateTransferringShip(entry: ShipEntry, simDt: number): void {
 	const tEasedNow = tNow * tNow * (3 - 2 * tNow);
 	const p = transferPosition(entry, tEasedNow);
 
-	const final = tgt ? captureBlend(tgt, p, tNow) : p;
+	const final = tgt
+		? captureBlendPosition(
+				p,
+				{ x: tgt.mesh.position.x, y: tgt.mesh.position.y ?? 0, z: tgt.mesh.position.z },
+				stationKeepingOffset(tgt),
+				tNow,
+			)
+		: p;
 	entry.mesh.position.set(final.x, final.y, final.z);
 
 	const substepsInjected = injectSubstepTrail(entry, simDt, tNow);

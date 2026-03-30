@@ -35,6 +35,21 @@ export function stationKeepingOffset(host: { mesh: { userData?: { baseSize?: num
 	const hostSize = host.mesh.userData?.baseSize ?? 0.02;
 	return Math.max(SHIP_LOCAL_ORBIT * 0.5, hostSize * 1.5);
 }
+
+/** Compute world-space station-keeping position around a host at a given angle. */
+export function stationKeepingPosition(
+	host: {
+		mesh: { position: { x: number; y: number; z: number }; userData?: { baseSize?: number } };
+	},
+	angle: number,
+): { x: number; y: number; z: number } {
+	const offset = stationKeepingOffset(host);
+	return {
+		x: host.mesh.position.x + Math.cos(angle) * offset,
+		y: host.mesh.position.y,
+		z: host.mesh.position.z + Math.sin(angle) * offset,
+	};
+}
 const SHIP_TAIL_LENGTH: number = 20;
 const shipTailMat: THREE.LineBasicMaterial = new THREE.LineBasicMaterial({
 	color: "#999999",
@@ -485,12 +500,8 @@ export function createShip(config: ShipConfig): ShipEntry | undefined {
 
 	// Snap ship to host planet's station-keeping orbit on creation
 	if (hostFound) {
-		const offset = stationKeepingOffset(hostPlanetEntry);
-		mesh.position.set(
-			hostPlanetEntry.mesh.position.x + Math.cos(entry.angle) * offset,
-			hostPlanetEntry.mesh.position.y,
-			hostPlanetEntry.mesh.position.z + Math.sin(entry.angle) * offset,
-		);
+		const pos = stationKeepingPosition(hostPlanetEntry, entry.angle);
+		mesh.position.set(pos.x, pos.y, pos.z);
 	}
 
 	state.bodyMeshes.push(entry);
@@ -525,22 +536,14 @@ export function completeTransfer(entry: ShipEntry, entryAngle = 0): void {
 	// Snap mesh to current visual position of target
 	const [target, targetFound] = findBody(transferTarget);
 	if (targetFound) {
-		const offset = stationKeepingOffset(target);
-		entry.mesh.position.set(
-			target.mesh.position.x + Math.cos(entry.angle) * offset,
-			target.mesh.position.y,
-			target.mesh.position.z + Math.sin(entry.angle) * offset,
-		);
+		const pos = stationKeepingPosition(target, entry.angle);
+		entry.mesh.position.set(pos.x, pos.y, pos.z);
 	} else {
 		const [hit, hitFound] = findAsteroidEntity(transferTarget);
 		if (hitFound) {
 			const proxy = asteroidProxy(hit.asteroid, hit.beltEntry);
-			const offset = stationKeepingOffset(proxy);
-			entry.mesh.position.set(
-				proxy.mesh.position.x + Math.cos(entry.angle) * offset,
-				proxy.mesh.position.y ?? 0,
-				proxy.mesh.position.z + Math.sin(entry.angle) * offset,
-			);
+			const pos = stationKeepingPosition(proxy, entry.angle);
+			entry.mesh.position.set(pos.x, pos.y, pos.z);
 		}
 	}
 }

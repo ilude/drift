@@ -16,13 +16,13 @@ vi.mock("../rendering/scene", () => ({
 import { GameClock } from "../core/game-clock";
 import { state } from "../core/state";
 import { setTransferHooks } from "../core/transfers";
+import { orbitToWorld } from "../math/orbit";
 import { COMET_TRAIL_STEP_ARC } from "../rendering/bodies";
 import {
 	buildTrailIndices,
 	createShip,
 	hasAngleCrossed,
 	initiateTransfer,
-	orbitToWorld,
 } from "../rendering/rendering";
 import { ZOOM_BASE } from "../rendering/scene";
 import {

@@ -28,8 +28,6 @@ import type {
 import { cometGroup, labelContainer, scene, trailGroups } from "./scene";
 import { createStarMaterial, generateBodyTexture, generateCloudTextureForBody } from "./textures";
 
-export { orbitToWorld } from "../math/orbit";
-
 export function nameHash(str: string): number {
 	let h = 5381;
 	for (let i = 0; i < str.length; i++) {
