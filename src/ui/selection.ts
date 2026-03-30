@@ -236,7 +236,7 @@ export function updateAllPinnedPanels(): void {
 }
 
 const ZOOM_DIST_RECENTER: number = ZOOM_BASE / 0.25;
-const ZOOM_DIST_STAR: number = 75;
+const ZOOM_DIST_STAR: number = ZOOM_DIST_RECENTER;
 const ZOOM_DIST_PLANET: number = 38;
 const ZOOM_DIST_MOON: number = 20;
 
