@@ -4,6 +4,7 @@ import type {
 	ColonyConstructionProject,
 	ColonyInstallationId,
 	ColonyInstallations,
+	ColonyProductionProject,
 	ColonyQualities,
 	ColonyResearchProject,
 	ColonyState,
@@ -161,6 +162,38 @@ export const CONSTRUCTION_DEFS: ConstructionDefinition[] = [
 		description:
 			"Limited hull construction and refit capacity. Placeholder for future ship production.",
 		resourceCost: { iron: 1000, copper: 300, aluminum: 200, silicon: 100 },
+	},
+];
+
+interface ProductionDefinition {
+	id: string;
+	name: string;
+	bpCost: number;
+	description: string;
+	resourceCost?: Record<string, number>;
+}
+
+export const PRODUCTION_DEFS: readonly ProductionDefinition[] = [
+	{
+		id: "flat-mine",
+		name: "Automated Mine (flat-packed)",
+		bpCost: 100,
+		description: "Flat-packed automated mine for deployment at remote bodies.",
+		resourceCost: { iron: 300, copper: 100, aluminum: 50 },
+	},
+	{
+		id: "flat-mass-driver",
+		name: "Mass Driver (flat-packed)",
+		bpCost: 150,
+		description: "Flat-packed mass driver for launching resources to other colonies.",
+		resourceCost: { iron: 500, copper: 200, aluminum: 100, silicon: 50 },
+	},
+	{
+		id: "flat-fuel-depot",
+		name: "Fuel Depot (flat-packed)",
+		bpCost: 80,
+		description: "Flat-packed fuel depot for remote refueling.",
+		resourceCost: { iron: 300, copper: 100, aluminum: 50 },
 	},
 ];
 
@@ -628,9 +661,11 @@ function createColony(
 			fuelKg: stockpile?.fuelKg ?? 0,
 			supplies: stockpile?.supplies ?? 0,
 			resources: { ...(stockpile?.resources ?? {}) },
+			flatPacked: {},
 		},
 		researchPoints: 0,
 		constructionProjects: [],
+		productionProjects: [],
 		transferQueue: [],
 	};
 }
@@ -1201,6 +1236,20 @@ export function getColonyResourceStock(bodyName: string, resourceId: string): nu
 	return colony?.stockpile.resources[resourceId] ?? 0;
 }
 
+export function getProductionProjectEtaDays(
+	project: ColonyProductionProject,
+	bpPerDay: number,
+	totalAllocationPct: number,
+): number | null {
+	if (project.paused || bpPerDay <= 0 || project.allocationPct <= 0) return null;
+	const def = getProductionDef(project.itemId);
+	if (!def) return null;
+	const effectiveRate = bpPerDay * (project.allocationPct / Math.max(totalAllocationPct, 100));
+	if (effectiveRate <= 0) return null;
+	const bpRemaining = project.quantityRemaining * def.bpCost - project.progressBp;
+	return bpRemaining / effectiveRate;
+}
+
 export function addConstructionProject(
 	bodyName: string,
 	installationId: ColonyInstallationId,
@@ -1235,6 +1284,108 @@ export function toggleConstructionProjectPaused(bodyName: string, projectId: str
 	const project = colony?.constructionProjects.find((entry) => entry.id === projectId);
 	if (!project) return;
 	project.paused = !project.paused;
+}
+
+export function getProductionDef(itemId: string): ProductionDefinition | undefined {
+	return PRODUCTION_DEFS.find((d) => d.id === itemId);
+}
+
+export function canAffordProduction(colony: ColonyState, itemId: string): boolean {
+	const def = getProductionDef(itemId);
+	if (!def?.resourceCost) return true;
+	for (const [resourceId, amount] of Object.entries(def.resourceCost)) {
+		if ((colony.stockpile.resources[resourceId] ?? 0) < amount) return false;
+	}
+	return true;
+}
+
+export function getProductionBpPerDay(colony: ColonyState): number {
+	const qualities = computeColonyQualities(colony);
+	return (
+		BASE_CONSTRUCTION_BP_RATE * colony.installations.constructionFactory * qualities.construction
+	);
+}
+
+export function addProductionProject(
+	colony: ColonyState,
+	itemId: string,
+	quantity: number,
+	allocationPct: number,
+): ColonyProductionProject | null {
+	if (!getProductionDef(itemId) || quantity <= 0 || allocationPct <= 0) return null;
+	const project: ColonyProductionProject = {
+		id: `prod-${projectCounter++}`,
+		itemId,
+		quantityRemaining: quantity,
+		totalQuantity: quantity,
+		allocationPct,
+		progressBp: 0,
+		paused: false,
+	};
+	colony.productionProjects.push(project);
+	return project;
+}
+
+export function pauseProductionProject(colony: ColonyState, projectId: string): void {
+	const project = colony.productionProjects.find((p) => p.id === projectId);
+	if (!project) return;
+	project.paused = !project.paused;
+}
+
+export function cancelProductionProject(colony: ColonyState, projectId: string): void {
+	colony.productionProjects = colony.productionProjects.filter((p) => p.id !== projectId);
+}
+
+function completeProductionUnit(
+	colony: ColonyState,
+	project: ColonyProductionProject,
+	def: ProductionDefinition,
+): void {
+	project.progressBp -= def.bpCost;
+	if (def.resourceCost) {
+		for (const [resourceId, amount] of Object.entries(def.resourceCost)) {
+			colony.stockpile.resources[resourceId] = (colony.stockpile.resources[resourceId] ?? 0) - amount;
+		}
+	}
+	colony.stockpile.flatPacked[project.itemId] =
+		(colony.stockpile.flatPacked[project.itemId] ?? 0) + 1;
+	project.quantityRemaining--;
+}
+
+function tickProductionProject(
+	colony: ColonyState,
+	project: ColonyProductionProject,
+	totalBp: number,
+	totalAllocation: number,
+): void {
+	const def = getProductionDef(project.itemId);
+	if (!def) return;
+	project.progressBp += totalBp * (project.allocationPct / totalAllocation);
+	while (project.quantityRemaining > 0 && project.progressBp >= def.bpCost) {
+		if (!canAffordProduction(colony, project.itemId)) break;
+		completeProductionUnit(colony, project, def);
+	}
+}
+
+function tickProduction(colony: ColonyState, simDtDays: number, qualities: ColonyQualities): void {
+	if (!colony.productionProjects) return;
+	const activeProjects = colony.productionProjects.filter((p) => !p.paused);
+	if (activeProjects.length === 0 || colony.installations.constructionFactory <= 0) return;
+
+	const totalAllocation = activeProjects.reduce((sum, p) => sum + p.allocationPct, 0);
+	if (totalAllocation <= 0) return;
+
+	const totalBp =
+		BASE_CONSTRUCTION_BP_RATE *
+		colony.installations.constructionFactory *
+		qualities.construction *
+		simDtDays;
+
+	for (const project of activeProjects) {
+		tickProductionProject(colony, project, totalBp, totalAllocation);
+	}
+
+	colony.productionProjects = colony.productionProjects.filter((p) => p.quantityRemaining > 0);
 }
 
 export function consumeColonyFuel(bodyName: string, amountKg: number): number {
@@ -1433,6 +1584,7 @@ export function tickColony(colony: ColonyState, simDtDays: number): void {
 	}
 	const qualities = computeColonyQualities(colony);
 	tickConstruction(colony, simDtDays, qualities);
+	tickProduction(colony, simDtDays, qualities);
 	tickMining(colony, simDtDays, qualities);
 	tickResearch(colony, simDtDays);
 	routeTransferQueue(colony);

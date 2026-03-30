@@ -232,6 +232,17 @@ export interface ColonyStockpile {
 	fuelKg: number;
 	supplies: number;
 	resources: Record<string, number>;
+	flatPacked: Record<string, number>;
+}
+
+export interface ColonyProductionProject {
+	id: string;
+	itemId: string;
+	quantityRemaining: number;
+	totalQuantity: number;
+	allocationPct: number;
+	progressBp: number;
+	paused: boolean;
 }
 
 export interface ColonyState {
@@ -243,6 +254,7 @@ export interface ColonyState {
 	stockpile: ColonyStockpile;
 	researchPoints: number;
 	constructionProjects: ColonyConstructionProject[];
+	productionProjects: ColonyProductionProject[];
 	transferQueue: ScientistTransferRequest[];
 }
 

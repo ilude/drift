@@ -2,7 +2,9 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
 	addColonyStock,
 	addConstructionProject,
+	addProductionProject,
 	canAffordConstruction,
+	canAffordProduction,
 	computeColonyQualities,
 	computeColonyWorkforce,
 	computeResearchProgress,
@@ -456,5 +458,67 @@ describe("computeResearchProgress", () => {
 	it("zero labs produces zero RP gain", () => {
 		const result = computeResearchProgress(0, 1, 1, 1, 1);
 		expect(result.rpGain).toBe(0);
+	});
+});
+
+describe("factory production", () => {
+	beforeEach(() => {
+		state.colonies.clear();
+		state.bodyMeshes = [mockPlanet("Earth")];
+		rebuildEntityMaps();
+		seedStartingColonies();
+	});
+
+	it("tickColony advances production projects", () => {
+		const [colony] = getColony("Earth");
+		if (!colony) throw new Error("no colony");
+		// Ensure resources available
+		addColonyStock("Earth", "iron", 10_000);
+		addColonyStock("Earth", "copper", 5_000);
+		addColonyStock("Earth", "aluminum", 5_000);
+		addProductionProject(colony, "flat-mine", 1, 100);
+		// Tick enough days to complete (100 BP at ~8 BP/day = ~12 days)
+		for (let i = 0; i < 20; i++) tickColony(colony, 1);
+		expect(colony.stockpile.flatPacked["flat-mine"] ?? 0).toBeGreaterThanOrEqual(1);
+	});
+
+	it("production deducts resources on completion", () => {
+		const [colony] = getColony("Earth");
+		if (!colony) throw new Error("no colony");
+		addColonyStock("Earth", "iron", 10_000);
+		addColonyStock("Earth", "copper", 5_000);
+		addColonyStock("Earth", "aluminum", 5_000);
+		const ironBefore = colony.stockpile.resources.iron ?? 0;
+		addProductionProject(colony, "flat-mine", 1, 100);
+		for (let i = 0; i < 20; i++) tickColony(colony, 1);
+		expect(colony.stockpile.resources.iron ?? 0).toBeLessThan(ironBefore);
+	});
+
+	it("canAffordProduction returns false when resources insufficient", () => {
+		const [colony] = getColony("Earth");
+		if (!colony) throw new Error("no colony");
+		colony.stockpile.resources = {}; // empty
+		expect(canAffordProduction(colony, "flat-mine")).toBe(false);
+	});
+
+	it("canAffordProduction returns true with sufficient resources", () => {
+		const [colony] = getColony("Earth");
+		if (!colony) throw new Error("no colony");
+		addColonyStock("Earth", "iron", 10_000);
+		addColonyStock("Earth", "copper", 5_000);
+		addColonyStock("Earth", "aluminum", 5_000);
+		expect(canAffordProduction(colony, "flat-mine")).toBe(true);
+	});
+
+	it("paused production projects are skipped", () => {
+		const [colony] = getColony("Earth");
+		if (!colony) throw new Error("no colony");
+		addColonyStock("Earth", "iron", 10_000);
+		addColonyStock("Earth", "copper", 5_000);
+		addColonyStock("Earth", "aluminum", 5_000);
+		addProductionProject(colony, "flat-mine", 1, 100);
+		colony.productionProjects[0].paused = true;
+		for (let i = 0; i < 20; i++) tickColony(colony, 1);
+		expect(colony.stockpile.flatPacked["flat-mine"] ?? 0).toBe(0);
 	});
 });

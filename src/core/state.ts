@@ -63,7 +63,7 @@ export function speedLabel(timeSpeed: number): string {
 
 export const MASTER_SEED: number = 42;
 const SAVE_KEY = "solar-sim-state";
-const SAVE_VERSION = 8;
+const SAVE_VERSION = 9;
 
 export const state: AppState = {
 	bodyMeshes: [],
@@ -207,8 +207,10 @@ export function saveState(): void {
 				fuelKg: colony.stockpile.fuelKg,
 				supplies: colony.stockpile.supplies,
 				resources: { ...colony.stockpile.resources },
+				flatPacked: { ...colony.stockpile.flatPacked },
 			},
 			constructionProjects: (colony.constructionProjects ?? []).map((project) => ({ ...project })),
+			productionProjects: (colony.productionProjects ?? []).map((project) => ({ ...project })),
 			transferQueue: (colony.transferQueue ?? []).map((request) => ({ ...request })),
 		})),
 		scientists: Array.from(state.scientists.values()).map((scientist) => ({
@@ -241,23 +243,34 @@ export function saveState(): void {
 	}
 }
 
-function migrateVersionedState(migrated: SavedStateData): SavedStateData {
-	if (migrated.version === 4) {
-		migrated.version = 5;
+function migrateShipsV5(ships: SavedStateData["ships"]): void {
+	for (const ship of ships) {
+		const m = ship.maintenance as unknown as Record<string, unknown>;
+		if (m.totalAge === undefined) m.totalAge = m.age;
+		if (m.lastRefitAge === undefined) m.lastRefitAge = 0;
 	}
+}
+
+function migrateColoniesV8(colonies: SavedStateData["colonies"]): void {
+	for (const colony of colonies ?? []) {
+		const s = colony.stockpile as Record<string, unknown>;
+		if (!s.flatPacked) s.flatPacked = {};
+		const c = colony as Record<string, unknown>;
+		if (!c.productionProjects) c.productionProjects = [];
+	}
+}
+
+function migrateVersionedState(migrated: SavedStateData): SavedStateData {
+	if (migrated.version === 4) migrated.version = 5;
 	if (migrated.version === 5) {
-		for (const ship of migrated.ships) {
-			const m = ship.maintenance as unknown as Record<string, unknown>;
-			if (m.totalAge === undefined) m.totalAge = m.age;
-			if (m.lastRefitAge === undefined) m.lastRefitAge = 0;
-		}
+		migrateShipsV5(migrated.ships);
 		migrated.version = 6;
 	}
-	if (migrated.version === 6) {
-		migrated.version = 7;
-	}
-	if (migrated.version === 7) {
-		migrated.version = 8;
+	if (migrated.version === 6) migrated.version = 7;
+	if (migrated.version === 7) migrated.version = 8;
+	if (migrated.version === 8) {
+		migrateColoniesV8(migrated.colonies);
+		migrated.version = 9;
 	}
 	return migrated;
 }
@@ -354,8 +367,10 @@ function deepCopyColony(colony: ColonyState): ColonyState {
 			fuelKg: colony.stockpile.fuelKg,
 			supplies: colony.stockpile.supplies,
 			resources: { ...colony.stockpile.resources },
+			flatPacked: { ...(colony.stockpile.flatPacked ?? {}) },
 		},
 		constructionProjects: (colony.constructionProjects ?? []).map((p) => ({ ...p })),
+		productionProjects: (colony.productionProjects ?? []).map((p) => ({ ...p })),
 		transferQueue: (colony.transferQueue ?? []).map((r) => ({ ...r })),
 	};
 }
