@@ -34,15 +34,20 @@ function markDirty(): void {
 	for (const cb of _intentChangeCallbacks) cb();
 }
 
+// Track when each intent was published (in sim-days) for staleness checks.
+const _intentPublishedAt = new Map<string, number>();
+
 /** Publish or update a ship's intent in the shared pool. */
 export function publishIntent(shipName: string, intent: ShipIntent): void {
 	state.shipIntents.set(shipName, intent);
+	_intentPublishedAt.set(shipName, state.simTime.days);
 	markDirty();
 }
 
 /** Remove a ship's intent from the pool (ship destroyed or removed). */
 export function clearIntent(shipName: string): void {
 	state.shipIntents.delete(shipName);
+	_intentPublishedAt.delete(shipName);
 	markDirty();
 }
 
@@ -67,10 +72,15 @@ export function invalidateIntentsCache(): void {
 	_mergedClaimsCache.clear();
 }
 
+const TANKER_HOLD_TIMEOUT_DAYS = 60;
+
 /** Check if any other ship has a tanking intent targeting the given ship name. */
 export function isTankerInboundFor(shipName: string): boolean {
-	for (const intent of state.shipIntents.values()) {
-		if (intent.type === "tanking" && intent.target === shipName) return true;
+	for (const [tankerName, intent] of state.shipIntents) {
+		if (intent.type !== "tanking" || intent.target !== shipName) continue;
+		const publishedAt = _intentPublishedAt.get(tankerName) ?? state.simTime.days;
+		const age = state.simTime.days - publishedAt;
+		if (age < TANKER_HOLD_TIMEOUT_DAYS) return true;
 	}
 	return false;
 }

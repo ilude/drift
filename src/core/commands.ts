@@ -343,7 +343,8 @@ function tickMalfunctionCheck(ship: ShipEntry, simDt: number): void {
 	while (currentCheck < checkIndex) {
 		currentCheck++;
 		const intervalAge = currentCheck * MALFUNCTION_INTERVAL;
-		const rng = seededRandom(Math.floor(intervalAge));
+		const nameHash = ship.data.name.split("").reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 0);
+		const rng = seededRandom((nameHash ^ Math.floor(intervalAge)) >>> 0);
 		const failChance = bathtubFailRate(
 			ship.maintenance.age,
 			ship.maintenance.hullIntegrity,
@@ -418,12 +419,10 @@ function tankerRoundTripFuel(
 function canAffordRoundTrip(
 	tanker: ShipEntry,
 	tankerHost: BodyEntry | undefined | null,
-	candidateHostName: string,
+	targetHost: BodyEntry | undefined | null,
 	reserveFloor: number,
 ): boolean {
-	if (!tankerHost) return true; // can't compute distance, allow optimistically
-	const [targetHost, targetHostFound] = findBody(candidateHostName);
-	if (!targetHostFound) return true;
+	if (!tankerHost || !targetHost) return true;
 	const tripFuel = tankerRoundTripFuel(tanker, tankerHost, targetHost);
 	return tripFuel + reserveFloor <= tanker.fuelKg;
 }
@@ -451,9 +450,20 @@ export function selectNextRefuelTarget(tanker: ShipEntry): Result<string> {
 	const reserveFloor = tanker.fuelCapacityKg * TANKER_RESERVE_FLOOR;
 	const candidates: { name: string; fuelPct: number }[] = [];
 
+	// Pre-resolve host bodies O(n) once to avoid repeated findBody calls inside the loop
+	const hostByShip = new Map<string, BodyEntry>();
+	for (const entry of state.bodyMeshes) {
+		if (!isShipEntry(entry)) continue;
+		const [h, hf] = findBody(entry.hostPlanetName);
+		if (hf) hostByShip.set(entry.data.name, h);
+	}
+
 	for (const entry of state.bodyMeshes) {
 		if (!isRefuelCandidate(entry, shipName, claimed)) continue;
-		if (!canAffordRoundTrip(tanker, tankerHost, entry.hostPlanetName, reserveFloor)) continue;
+		if (
+			!canAffordRoundTrip(tanker, tankerHost, hostByShip.get(entry.data.name) ?? null, reserveFloor)
+		)
+			continue;
 		const fuelPct = (entry.fuelKg / entry.fuelCapacityKg) * 100;
 		candidates.push({ name: entry.data.name, fuelPct });
 	}

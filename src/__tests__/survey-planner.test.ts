@@ -260,4 +260,18 @@ describe("clearSurveyPlan", () => {
 		clearSurveyPlan(ship);
 		expect(ship.surveyPlan).toBeNull();
 	});
+
+	it("removes intent from pool when plan is cleared", () => {
+		const earth = mockBody("Earth", 200, 0, true);
+		const t1 = mockBody("X", 210, 0);
+		const t2 = mockBody("Y", 220, 0);
+		const ship = mockShip("Explorer", 200, 0);
+		setupSystem([earth, t1, t2], [ship]);
+		ship.surveyPlan = { targets: ["X", "Y"], accelG: 0.1 };
+		publishIntent("Explorer", { type: "survey-plan", targets: ["X", "Y"], shipName: "Explorer" });
+
+		clearSurveyPlan(ship);
+		expect(ship.surveyPlan).toBeNull();
+		expect(state.shipIntents.get("Explorer")).toBeUndefined();
+	});
 });

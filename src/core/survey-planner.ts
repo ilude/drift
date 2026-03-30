@@ -5,7 +5,7 @@ import { isSurveyable } from "../types";
 import { getNearestColonyForShip } from "./colonies";
 import { collectAsteroidCandidates, collectBodyCandidates } from "./commands";
 import { findBody } from "./entities";
-import { getClaimedTargets, publishIntent } from "./intents";
+import { clearIntent, getClaimedTargets, publishIntent } from "./intents";
 import { resolveShipPhysics, resolveShipSensorLevel } from "./ship-utils";
 import { state } from "./state";
 
@@ -267,4 +267,5 @@ export function advanceSurveyPlan(ship: ShipEntry): string | null {
 export function clearSurveyPlan(ship: ShipEntry): void {
 	if (!ship.surveyPlan) return;
 	ship.surveyPlan = null;
+	clearIntent(ship.data.name);
 }

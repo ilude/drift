@@ -21,7 +21,7 @@ import {
 	tickShipSimulation,
 } from "../core/commands";
 import { rebuildEntityMaps } from "../core/entities";
-import { invalidateIntentsCache } from "../core/intents";
+import { invalidateIntentsCache, isTankerInboundFor, publishIntent } from "../core/intents";
 import { resolveShipSensorLevel } from "../core/ship-utils";
 import { state } from "../core/state";
 import type { BodyEntry, ColonyState, CommandEntry, ShipDesign, ShipEntry } from "../types";
@@ -754,6 +754,29 @@ describe("selectNextSurveyTarget -- intents", () => {
 		const [ownTarget, ownFound] = selectNextSurveyTarget(ship);
 		expect(ownFound).toBe(true);
 		expect(ownTarget).toBe("Mars");
+	});
+});
+
+// --- isTankerInboundFor timeout ---
+
+describe("isTankerInboundFor timeout", () => {
+	beforeEach(() => {
+		state.shipIntents.clear();
+		invalidateIntentsCache();
+	});
+
+	it("returns true when tanker intent is fresh", () => {
+		state.simTime = { days: 100 };
+		publishIntent("Tanker", { type: "tanking", target: "Explorer", shipName: "Tanker" });
+		state.simTime = { days: 150 };
+		expect(isTankerInboundFor("Explorer")).toBe(true);
+	});
+
+	it("returns false when tanker intent is stale (>60 days)", () => {
+		state.simTime = { days: 100 };
+		publishIntent("Tanker", { type: "tanking", target: "Explorer", shipName: "Tanker" });
+		state.simTime = { days: 161 };
+		expect(isTankerInboundFor("Explorer")).toBe(false);
 	});
 });
 
@@ -1594,6 +1617,49 @@ describe("tickShipSimulation -- malfunction learning", () => {
 		tickShipSimulation(ship, 91, 2000);
 		// Malfunction fires with integrity=1 and high age → judgment should increase
 		expect(ship.commander.judgment).toBeGreaterThan(judgmentBefore);
+	});
+});
+
+// --- malfunction RNG diversity ---
+
+describe("malfunction RNG diversity", () => {
+	it("two ships with same age get different malfunction sequences", () => {
+		const alpha = mockShip({
+			shipState: "transferring" as const,
+			maintenance: {
+				age: 1440,
+				totalAge: 1440,
+				lastRefitAge: 0,
+				supplies: 100,
+				maxSupplies: 100,
+				hullIntegrity: 20,
+				overhaulsSinceRefit: 0,
+				overhaulsUntilRefit: 3,
+			},
+			commander: { judgment: 0.3, experience: 0 },
+		});
+		alpha.data.name = "Alpha";
+		const beta = mockShip({
+			shipState: "transferring" as const,
+			maintenance: {
+				age: 1440,
+				totalAge: 1440,
+				lastRefitAge: 0,
+				supplies: 100,
+				maxSupplies: 100,
+				hullIntegrity: 20,
+				overhaulsSinceRefit: 0,
+				overhaulsUntilRefit: 3,
+			},
+			commander: { judgment: 0.3, experience: 0 },
+		});
+		beta.data.name = "Beta";
+		tickShipSimulation(alpha, 31, 2000);
+		tickShipSimulation(beta, 31, 2000);
+		const alphaDamage = 20 - alpha.maintenance.hullIntegrity;
+		const betaDamage = 20 - beta.maintenance.hullIntegrity;
+		// With ship-identity seeding, damage should differ (or both zero — no malfunction triggered)
+		expect(alphaDamage !== betaDamage || alphaDamage === 0).toBe(true);
 	});
 });
 
