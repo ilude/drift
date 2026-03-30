@@ -481,6 +481,7 @@ export function createShip(config: ShipConfig): ShipEntry | undefined {
 		},
 		action: { type: null, commandId: null, startTime: 0, duration: 0, progress: 0 },
 		stationTarget: null,
+		surveyPlan: null,
 		keelDate: state.simTime.days,
 		designId: config.designId ?? null,
 	} as ShipEntry;

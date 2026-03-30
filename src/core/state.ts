@@ -161,6 +161,9 @@ export function saveState(): void {
 		commander: { ...ship.commander },
 		maintenance: { ...ship.maintenance },
 		commandTree: { entries: [...ship.commandTree.entries] },
+		...(ship.surveyPlan
+			? { surveyPlan: { targets: [...ship.surveyPlan.targets], accelG: ship.surveyPlan.accelG } }
+			: {}),
 		...(ship.shipState === "transferring"
 			? {
 					shipState: ship.shipState,
@@ -295,6 +298,7 @@ function restoreShipFields(ship: ShipEntry, saved: SavedShipData): void {
 	}
 	if (saved.commandTree) ship.commandTree = saved.commandTree;
 	if (saved.commander) ship.commander = saved.commander;
+	ship.surveyPlan = saved.surveyPlan ?? null;
 }
 
 function applySplineFields(ship: ShipEntry, saved: SavedShipData): void {

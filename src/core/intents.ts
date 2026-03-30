@@ -19,7 +19,9 @@ function rebuildClaimsCache(): void {
 	for (const [shipName, intent] of state.shipIntents) {
 		const targets = new Set<string>();
 		if (intent.type === "surveying") targets.add(intent.target);
-		else if (intent.type === "transferring") targets.add(intent.destination);
+		else if (intent.type === "survey-plan") {
+			for (const t of intent.targets) targets.add(t);
+		} else if (intent.type === "transferring") targets.add(intent.destination);
 		else if (intent.type === "tanking") targets.add(intent.target);
 		if (targets.size > 0) _claimsByShip.set(shipName, targets);
 	}

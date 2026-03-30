@@ -170,6 +170,7 @@ export interface CommandResult {
 
 export type ShipIntent =
 	| { type: "surveying"; target: string; shipName: string }
+	| { type: "survey-plan"; targets: string[]; shipName: string }
 	| { type: "transferring"; destination: string; shipName: string }
 	| { type: "refueling"; location: string; shipName: string }
 	| { type: "overhauling"; location: string; shipName: string }
@@ -177,6 +178,11 @@ export type ShipIntent =
 	| { type: "idle"; location: string; shipName: string }
 	| { type: "tanking"; target: string; shipName: string }
 	| { type: "refitting"; location: string; shipName: string };
+
+export interface SurveyPlan {
+	targets: string[];
+	accelG: number;
+}
 
 // --- Ship sub-interfaces ---
 
@@ -472,6 +478,7 @@ export interface ShipEntry extends BaseEntry {
 	action: ShipAction;
 	// Station-keeping: track a non-planet body (comet, moon) instead of orbiting host
 	stationTarget: string | null;
+	surveyPlan: SurveyPlan | null;
 	// Commissioning date in sim-days (set at creation, never changes)
 	keelDate: number;
 	// Ship design reference (null for legacy ships)
@@ -799,6 +806,7 @@ export interface SavedShipData {
 	t1x?: number;
 	t1y?: number;
 	t1z?: number;
+	surveyPlan?: SurveyPlan;
 }
 
 export interface SavedStateData {

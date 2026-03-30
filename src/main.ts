@@ -133,7 +133,7 @@ function seedDefaultDesigns(): void {
 	const engineId = `eng-${++state.designCounter}`;
 	const defaultEngine: EngineDesign = {
 		id: engineId,
-		name: "Standard TN Drive",
+		name: "Kouri Mark I",
 		tierId: "conventional",
 		powerPct: 100,
 		sizeHS: 10,
