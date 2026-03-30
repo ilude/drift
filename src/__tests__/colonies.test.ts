@@ -3,17 +3,23 @@ import {
 	addColonyStock,
 	addConstructionProject,
 	addProductionProject,
+	addShipbuildProject,
 	canAffordConstruction,
 	canAffordProduction,
+	cancelShipbuildProject,
 	computeColonyQualities,
 	computeColonyWorkforce,
 	computeResearchProgress,
+	computeShipResourceCost,
 	consumeColonyFuel,
 	consumeColonySupplies,
+	drainCompletedShipbuilds,
 	getColony,
 	getColonyResourceStock,
 	getNearestColonyForShip,
 	getScientistsAtColony,
+	getShipbuildBpPerDay,
+	pauseShipbuildProject,
 	queueResearchProjectForScientist,
 	resetColonyWarningState,
 	seedStartingColonies,
@@ -94,9 +100,11 @@ function makeColony(bodyName: string, overrides: Partial<ColonyState> = {}): Col
 			storage: 1,
 			shipyard: 0,
 		},
-		stockpile: { fuelKg: 1000, supplies: 100, resources: {} },
+		stockpile: { fuelKg: 1000, supplies: 100, resources: {}, flatPacked: {} },
 		researchPoints: 0,
 		constructionProjects: [],
+		productionProjects: [],
+		shipbuildProjects: [],
 		transferQueue: [],
 		...overrides,
 	};
@@ -520,5 +528,205 @@ describe("factory production", () => {
 		colony.productionProjects[0].paused = true;
 		for (let i = 0; i < 20; i++) tickColony(colony, 1);
 		expect(colony.stockpile.flatPacked["flat-mine"] ?? 0).toBe(0);
+	});
+});
+
+describe("shipbuilding", () => {
+	function makeShipDesign(dryMassKg: number) {
+		return {
+			id: "design-test",
+			name: "Test Ship",
+			engineDesignId: "eng-1",
+			engineCount: 1,
+			components: [],
+			dryMassKg,
+			fuelCapacityKg: 10_000,
+			cargoCapacityKg: 0,
+			crewCapacity: 10,
+			maxSupplies: 100,
+			sensorMultiplier: 1,
+			accelG: 0.1,
+			ispS: 10_000,
+			armorHp: 0,
+		};
+	}
+
+	beforeEach(() => {
+		state.colonies.clear();
+		state.shipDesigns.clear();
+		state.bodyMeshes = [mockPlanet("Earth")];
+		rebuildEntityMaps();
+		// drain any leftover completed builds from previous tests
+		drainCompletedShipbuilds();
+	});
+
+	it("computeShipResourceCost scales with mass", () => {
+		const design = makeShipDesign(1000);
+		const cost = computeShipResourceCost(design);
+		expect(cost.iron).toBe(Math.ceil(1000 / 5));
+		expect(cost.aluminum).toBe(Math.ceil(1000 / 20));
+		expect(cost.copper).toBe(Math.ceil(1000 / 50));
+		expect(cost.silicon).toBe(Math.ceil(1000 / 100));
+	});
+
+	it("getShipbuildBpPerDay is zero without shipyards", () => {
+		const colony = makeColony("Earth");
+		expect(getShipbuildBpPerDay(colony)).toBe(0);
+	});
+
+	it("getShipbuildBpPerDay is positive with shipyards", () => {
+		const colony = makeColony("Earth", {
+			installations: {
+				constructionFactory: 1,
+				repairYard: 0,
+				fuelDepot: 0,
+				mine: 0,
+				lab: 0,
+				academy: 0,
+				storage: 0,
+				shipyard: 1,
+			},
+		});
+		expect(getShipbuildBpPerDay(colony)).toBeGreaterThan(0);
+	});
+
+	it("tickShipbuilding completes ship and pushes to drain queue", () => {
+		const design = makeShipDesign(500);
+		state.shipDesigns.set(design.id, design);
+		const totalBp = Math.ceil(500 / 50); // 10
+		const cost = computeShipResourceCost(design);
+		const colony = makeColony("Earth", {
+			installations: {
+				constructionFactory: 0,
+				repairYard: 0,
+				fuelDepot: 0,
+				mine: 0,
+				lab: 0,
+				academy: 0,
+				storage: 0,
+				shipyard: 1,
+			},
+			stockpile: {
+				fuelKg: 0,
+				supplies: 0,
+				resources: { ...cost },
+				flatPacked: {},
+			},
+		});
+		state.colonies.set("Earth", colony);
+		addShipbuildProject(colony, design.id, "SS Tester");
+		// Tick enough days to finish (10 BP, ~0.7 BP/day with base quality)
+		for (let i = 0; i < totalBp * 10; i++) tickColony(colony, 1);
+		const completed = drainCompletedShipbuilds();
+		expect(completed.length).toBe(1);
+		expect(completed[0].name).toBe("SS Tester");
+		expect(completed[0].bodyName).toBe("Earth");
+		expect(completed[0].designId).toBe(design.id);
+	});
+
+	it("tickShipbuilding deducts resources on completion", () => {
+		const design = makeShipDesign(500);
+		state.shipDesigns.set(design.id, design);
+		const cost = computeShipResourceCost(design);
+		const colony = makeColony("Earth", {
+			installations: {
+				constructionFactory: 0,
+				repairYard: 0,
+				fuelDepot: 0,
+				mine: 0,
+				lab: 0,
+				academy: 0,
+				storage: 0,
+				shipyard: 1,
+			},
+			stockpile: {
+				fuelKg: 0,
+				supplies: 0,
+				resources: { ...cost },
+				flatPacked: {},
+			},
+		});
+		state.colonies.set("Earth", colony);
+		addShipbuildProject(colony, design.id, "SS Deduct");
+		for (let i = 0; i < 200; i++) tickColony(colony, 1);
+		drainCompletedShipbuilds();
+		// Resources should be depleted
+		for (const [res, amount] of Object.entries(cost)) {
+			expect(colony.stockpile.resources[res] ?? 0).toBeLessThanOrEqual(0);
+			expect(amount).toBeGreaterThan(0);
+		}
+	});
+
+	it("tickShipbuilding stalls when resources insufficient", () => {
+		const design = makeShipDesign(500);
+		state.shipDesigns.set(design.id, design);
+		const colony = makeColony("Earth", {
+			installations: {
+				constructionFactory: 0,
+				repairYard: 0,
+				fuelDepot: 0,
+				mine: 0,
+				lab: 0,
+				academy: 0,
+				storage: 0,
+				shipyard: 1,
+			},
+			stockpile: {
+				fuelKg: 0,
+				supplies: 0,
+				resources: {}, // no resources
+				flatPacked: {},
+			},
+		});
+		state.colonies.set("Earth", colony);
+		addShipbuildProject(colony, design.id, "SS Stall");
+		for (let i = 0; i < 200; i++) tickColony(colony, 1);
+		const completed = drainCompletedShipbuilds();
+		expect(completed.length).toBe(0);
+		// Project still present, stalled at totalBp
+		expect(colony.shipbuildProjects.length).toBe(1);
+		expect(colony.shipbuildProjects[0].progressBp).toBe(colony.shipbuildProjects[0].totalBp);
+	});
+
+	it("paused shipbuild projects are skipped", () => {
+		const design = makeShipDesign(500);
+		state.shipDesigns.set(design.id, design);
+		const cost = computeShipResourceCost(design);
+		const colony = makeColony("Earth", {
+			installations: {
+				constructionFactory: 0,
+				repairYard: 0,
+				fuelDepot: 0,
+				mine: 0,
+				lab: 0,
+				academy: 0,
+				storage: 0,
+				shipyard: 1,
+			},
+			stockpile: {
+				fuelKg: 0,
+				supplies: 0,
+				resources: { ...cost },
+				flatPacked: {},
+			},
+		});
+		state.colonies.set("Earth", colony);
+		addShipbuildProject(colony, design.id, "SS Paused");
+		pauseShipbuildProject(colony, colony.shipbuildProjects[0].id);
+		for (let i = 0; i < 200; i++) tickColony(colony, 1);
+		const completed = drainCompletedShipbuilds();
+		expect(completed.length).toBe(0);
+		expect(colony.shipbuildProjects[0].progressBp).toBe(0);
+	});
+
+	it("cancelShipbuildProject removes project", () => {
+		const design = makeShipDesign(500);
+		state.shipDesigns.set(design.id, design);
+		const colony = makeColony("Earth");
+		state.colonies.set("Earth", colony);
+		addShipbuildProject(colony, design.id, "SS Cancel");
+		expect(colony.shipbuildProjects.length).toBe(1);
+		cancelShipbuildProject(colony, colony.shipbuildProjects[0].id);
+		expect(colony.shipbuildProjects.length).toBe(0);
 	});
 });

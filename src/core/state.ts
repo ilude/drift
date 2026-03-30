@@ -63,7 +63,7 @@ export function speedLabel(timeSpeed: number): string {
 
 export const MASTER_SEED: number = 42;
 const SAVE_KEY = "solar-sim-state";
-const SAVE_VERSION = 9;
+const SAVE_VERSION = 10;
 
 export const state: AppState = {
 	bodyMeshes: [],
@@ -133,6 +133,7 @@ export const state: AppState = {
 		"colony-understaffed": false,
 		"colony-idle": false,
 		"colony-blocked": false,
+		"ship-built": false,
 	},
 	firstSurveyCompleted: false,
 	surveyedCount: 0,
@@ -211,6 +212,10 @@ export function saveState(): void {
 			},
 			constructionProjects: (colony.constructionProjects ?? []).map((project) => ({ ...project })),
 			productionProjects: (colony.productionProjects ?? []).map((project) => ({ ...project })),
+			shipbuildProjects: (colony.shipbuildProjects ?? []).map((project) => ({
+				...project,
+				resourceCost: { ...project.resourceCost },
+			})),
 			transferQueue: (colony.transferQueue ?? []).map((request) => ({ ...request })),
 		})),
 		scientists: Array.from(state.scientists.values()).map((scientist) => ({
@@ -253,10 +258,17 @@ function migrateShipsV5(ships: SavedStateData["ships"]): void {
 
 function migrateColoniesV8(colonies: SavedStateData["colonies"]): void {
 	for (const colony of colonies ?? []) {
-		const s = colony.stockpile as Record<string, unknown>;
+		const s = colony.stockpile as unknown as Record<string, unknown>;
 		if (!s.flatPacked) s.flatPacked = {};
-		const c = colony as Record<string, unknown>;
+		const c = colony as unknown as Record<string, unknown>;
 		if (!c.productionProjects) c.productionProjects = [];
+	}
+}
+
+function migrateColoniesV9(colonies: SavedStateData["colonies"]): void {
+	for (const colony of colonies ?? []) {
+		const c = colony as unknown as Record<string, unknown>;
+		if (!c.shipbuildProjects) c.shipbuildProjects = [];
 	}
 }
 
@@ -271,6 +283,10 @@ function migrateVersionedState(migrated: SavedStateData): SavedStateData {
 	if (migrated.version === 8) {
 		migrateColoniesV8(migrated.colonies);
 		migrated.version = 9;
+	}
+	if (migrated.version === 9) {
+		migrateColoniesV9(migrated.colonies);
+		migrated.version = 10;
 	}
 	return migrated;
 }
@@ -371,6 +387,10 @@ function deepCopyColony(colony: ColonyState): ColonyState {
 		},
 		constructionProjects: (colony.constructionProjects ?? []).map((p) => ({ ...p })),
 		productionProjects: (colony.productionProjects ?? []).map((p) => ({ ...p })),
+		shipbuildProjects: (colony.shipbuildProjects ?? []).map((p) => ({
+			...p,
+			resourceCost: { ...p.resourceCost },
+		})),
 		transferQueue: (colony.transferQueue ?? []).map((r) => ({ ...r })),
 	};
 }

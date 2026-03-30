@@ -1,6 +1,7 @@
 import "./style.css";
 import * as THREE from "three";
 import {
+	drainCompletedShipbuilds,
 	getNearestColonyForShip,
 	getServiceQualityForShip,
 	getSurveySpeedMultiplier,
@@ -1220,6 +1221,10 @@ function runBackgroundTick(): void {
 
 	state.simTime.advanceDays(simDt);
 	tickColonies(simDt);
+	for (const build of drainCompletedShipbuilds()) {
+		createShip({ name: build.name, hostPlanetName: build.bodyName, designId: build.designId });
+		addNotification("ship-built", `${build.name} completed at ${build.bodyName}`);
+	}
 	for (const entry of state.bodyMeshes) {
 		if (!isShipEntry(entry)) continue;
 		tickShip(entry, simDt);
@@ -1294,6 +1299,10 @@ function tickSimulation(dt: number, simActive: boolean): [number, number, number
 		const simDt = dt * state.timeSpeed;
 		state.simTime.advanceDays(simDt);
 		tickColonies(simDt);
+		for (const build of drainCompletedShipbuilds()) {
+			createShip({ name: build.name, hostPlanetName: build.bodyName, designId: build.designId });
+			addNotification("ship-built", `${build.name} completed at ${build.bodyName}`);
+		}
 		for (const entry of state.bodyMeshes) {
 			if (isShipEntry(entry)) {
 				tickShip(entry, simDt);

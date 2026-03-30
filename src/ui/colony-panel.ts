@@ -1,16 +1,36 @@
 import {
 	addConstructionProject,
+	addProductionProject,
+	addShipbuildProject,
 	CONSTRUCTION_DEFS,
+	canAffordShipbuild,
 	cancelConstructionProject,
+	cancelProductionProject,
+	cancelShipbuildProject,
 	computeColonyQualities,
 	computeColonyWorkforce,
+	computeShipResourceCost,
 	getColony,
 	getColonyBuildPointsPerDay,
 	getConstructionProjectEtaDays,
+	getProductionBpPerDay,
+	getProductionDef,
+	getProductionProjectEtaDays,
+	getShipbuildBpPerDay,
 	getSurveySpeedMultiplier,
+	PRODUCTION_DEFS,
+	pauseProductionProject,
+	pauseShipbuildProject,
 	toggleConstructionProjectPaused,
 } from "../core/colonies";
-import type { ColonyConstructionProject, PlanetEntry } from "../types";
+import { state } from "../core/state";
+import type {
+	ColonyConstructionProject,
+	ColonyProductionProject,
+	ColonyShipbuildProject,
+	PlanetEntry,
+	ShipDesign,
+} from "../types";
 
 function getSection(): HTMLElement | null {
 	return document.getElementById("info-colony-section");
@@ -139,7 +159,234 @@ function renderConstruction(entry: PlanetEntry): string {
 	`;
 }
 
+function renderProductionRow(
+	project: ColonyProductionProject,
+	bpPerDay: number,
+	totalAllocationPct: number,
+): string {
+	const def = getProductionDef(project.itemId);
+	const percentDone =
+		project.totalQuantity <= 0
+			? 0
+			: Math.round(
+					((project.totalQuantity - project.quantityRemaining) / project.totalQuantity) * 100,
+				);
+	const etaDays = project.paused
+		? null
+		: getProductionProjectEtaDays(project, bpPerDay, totalAllocationPct);
+	const etaText = project.paused ? "Paused" : etaDays === null ? "—" : `${Math.ceil(etaDays)} days`;
+	return `
+		<div class="colony-project">
+			<div>
+				<div class="colony-project-title">${def?.name ?? project.itemId} × ${project.quantityRemaining}</div>
+				<div class="colony-project-meta">${project.allocationPct}% industry • ${percentDone}% complete • ETA: ${etaText}</div>
+			</div>
+			<div class="colony-project-actions">
+				<button type="button" class="ctrl-btn colony-prod-toggle" data-project-id="${project.id}">${project.paused ? "Resume" : "Pause"}</button>
+				<button type="button" class="ctrl-btn colony-prod-cancel" data-project-id="${project.id}">Cancel</button>
+			</div>
+		</div>
+	`;
+}
+
+function renderProduction(entry: PlanetEntry): string {
+	const [colony, found] = getColony(entry.data.name);
+	if (!found) return "";
+	if (colony.installations.constructionFactory <= 0) return "";
+
+	const bpPerDay = getProductionBpPerDay(colony);
+	const totalAllocationPct = (colony.productionProjects ?? []).reduce(
+		(sum, p) => sum + (p.paused ? 0 : p.allocationPct),
+		0,
+	);
+
+	const options = PRODUCTION_DEFS.map(
+		(def) => `<option value="${def.id}">${def.name} (${def.bpCost} BP)</option>`,
+	).join("");
+
+	const projects =
+		(colony.productionProjects ?? []).length === 0
+			? `<div class="colony-empty">No production projects queued.</div>`
+			: (colony.productionProjects ?? [])
+					.map((p) => renderProductionRow(p, bpPerDay, totalAllocationPct))
+					.join("");
+
+	return `
+		<div class="colony-section-block">
+			<div class="colony-subheader">Production</div>
+			<div class="colony-capacity-stats" style="margin-bottom:6px">
+				<span>Capacity: <b>${bpPerDay.toFixed(1)} BP/day</b></span>
+			</div>
+			<div class="colony-form">
+				<select id="colony-prod-item">${options}</select>
+				<input id="colony-prod-qty" type="number" min="1" max="99" value="1">
+				<select id="colony-prod-allocation">
+					<option value="10">10%</option>
+					<option value="20" selected>20%</option>
+					<option value="30">30%</option>
+					<option value="50">50%</option>
+					<option value="100">100%</option>
+				</select>
+				<button type="button" class="ctrl-btn" id="colony-prod-add">Add Project</button>
+			</div>
+			<div class="colony-project-list">${projects}</div>
+		</div>
+	`;
+}
+
+function formatResourceCost(cost: Record<string, number>, stock: Record<string, number>): string {
+	return Object.entries(cost)
+		.map(([id, amount]) => {
+			const have = Math.floor(stock[id] ?? 0);
+			const canAfford = have >= amount;
+			const cls = canAfford ? "colony-cost-ok" : "colony-cost-short";
+			return `<span class="${cls}">${id} ${amount.toLocaleString()} (${have.toLocaleString()})</span>`;
+		})
+		.join(" ");
+}
+
+function renderShipbuildRow(
+	project: ColonyShipbuildProject,
+	bpPerDay: number,
+	designName: string,
+): string {
+	const pct = project.totalBp <= 0 ? 0 : Math.round((project.progressBp / project.totalBp) * 100);
+	const remaining = Math.max(0, project.totalBp - project.progressBp);
+	const etaText =
+		project.paused || bpPerDay <= 0
+			? project.paused
+				? "Paused"
+				: "—"
+			: `${Math.ceil(remaining / bpPerDay)} days`;
+	return `
+		<div class="colony-project">
+			<div style="flex:1">
+				<div class="colony-project-title">${project.shipName} <span style="color:#6a8a6a">(${designName})</span></div>
+				<div class="colony-project-meta">${pct}% complete • ETA: ${etaText}</div>
+				<div class="colony-project-bar-track" style="height:4px;background:#1a2a1a;border-radius:2px;margin-top:4px">
+					<div style="width:${pct}%;height:100%;background:#446644;border-radius:2px"></div>
+				</div>
+			</div>
+			<div class="colony-project-actions">
+				<button type="button" class="ctrl-btn colony-ship-toggle" data-project-id="${project.id}">${project.paused ? "Resume" : "Pause"}</button>
+				<button type="button" class="ctrl-btn colony-ship-cancel" data-project-id="${project.id}">Cancel</button>
+			</div>
+		</div>
+	`;
+}
+
+function getDesignDisplayName(design: ShipDesign): string {
+	const massT = Math.round(design.dryMassKg / 1000);
+	const accel = design.accelG.toFixed(3);
+	const cargo =
+		design.cargoCapacityKg > 0 ? ` · ${Math.round(design.cargoCapacityKg / 1000)}t cargo` : "";
+	return `${design.name} (${massT}t · ${accel}G${cargo})`;
+}
+
+function generateShipName(designName: string, existingCount: number): string {
+	const num = String(existingCount + 1).padStart(3, "0");
+	return `ISS ${designName}-${num}`;
+}
+
+function renderShipyard(entry: PlanetEntry): string {
+	const [colony, found] = getColony(entry.data.name);
+	if (!found || colony.installations.shipyard <= 0) return "";
+
+	const bpPerDay = getShipbuildBpPerDay(colony);
+	const designs = Array.from(state.shipDesigns.values());
+
+	const designOptions =
+		designs.length === 0
+			? `<option value="">No designs available</option>`
+			: designs.map((d) => `<option value="${d.id}">${getDesignDisplayName(d)}</option>`).join("");
+
+	const firstDesign = designs[0];
+	let costPreview = "";
+	let defaultShipName = "";
+	if (firstDesign) {
+		const cost = computeShipResourceCost(firstDesign);
+		const affordable = canAffordShipbuild(colony, firstDesign);
+		const costHtml = formatResourceCost(cost, colony.stockpile.resources);
+		const totalBp = Math.ceil(firstDesign.dryMassKg / 50);
+		const etaDays = bpPerDay > 0 ? Math.ceil(totalBp / bpPerDay) : null;
+		const etaText = etaDays === null ? "—" : `${etaDays} days`;
+		costPreview = `
+			<div class="colony-cost-preview ${affordable ? "" : "colony-cost-unaffordable"}">
+				<span style="color:#8a9a8a;font-size:10px">Cost: </span>${costHtml}
+				<span style="color:#6a8a6a;font-size:10px;margin-left:6px">Build: ${totalBp} BP · ETA: ${etaText}</span>
+			</div>
+		`;
+		const existingCount = colony.shipbuildProjects.filter(
+			(p) => state.shipDesigns.get(p.designId)?.name === firstDesign.name,
+		).length;
+		defaultShipName = generateShipName(firstDesign.name, existingCount);
+	}
+
+	const projects =
+		(colony.shipbuildProjects ?? []).length === 0
+			? `<div class="colony-empty">No ships under construction.</div>`
+			: (colony.shipbuildProjects ?? [])
+					.map((p) => {
+						const design = state.shipDesigns.get(p.designId);
+						return renderShipbuildRow(p, bpPerDay, design?.name ?? p.designId);
+					})
+					.join("");
+
+	return `
+		<div class="colony-section-block">
+			<div class="colony-subheader">Shipyard</div>
+			<div class="colony-capacity-stats" style="margin-bottom:6px">
+				<span>Capacity: <b>${bpPerDay.toFixed(1)} BP/day</b></span>
+			</div>
+			<div class="colony-form">
+				<select id="colony-ship-design" style="flex:1">${designOptions}</select>
+				<input id="colony-ship-name" type="text" placeholder="Ship name" style="width:140px" value="${defaultShipName}">
+				<button type="button" class="ctrl-btn" id="colony-ship-build">Build Ship</button>
+			</div>
+			<div id="colony-ship-cost">${costPreview}</div>
+			<div class="colony-project-list">${projects}</div>
+		</div>
+	`;
+}
+
+function onShipDesignChange(
+	bodyName: string,
+	designEl: HTMLSelectElement,
+	nameEl: HTMLInputElement,
+	costDiv: HTMLElement,
+): void {
+	const [colony, found] = getColony(bodyName);
+	if (!found) return;
+	const design = state.shipDesigns.get(designEl.value);
+	if (!design) {
+		costDiv.innerHTML = "";
+		return;
+	}
+	const cost = computeShipResourceCost(design);
+	const affordable = canAffordShipbuild(colony, design);
+	const costHtml = formatResourceCost(cost, colony.stockpile.resources);
+	const bpPerDay = getShipbuildBpPerDay(colony);
+	const totalBp = Math.ceil(design.dryMassKg / 50);
+	const etaDays = bpPerDay > 0 ? Math.ceil(totalBp / bpPerDay) : null;
+	const etaText = etaDays === null ? "—" : `${etaDays} days`;
+	costDiv.innerHTML = `
+		<div class="colony-cost-preview ${affordable ? "" : "colony-cost-unaffordable"}">
+			<span style="color:#8a9a8a;font-size:10px">Cost: </span>${costHtml}
+			<span style="color:#6a8a6a;font-size:10px;margin-left:6px">Build: ${totalBp} BP · ETA: ${etaText}</span>
+		</div>
+	`;
+	// Auto-fill name if empty or still matches the auto-generated pattern
+	const existingCount = colony.shipbuildProjects.filter(
+		(p) => state.shipDesigns.get(p.designId)?.name === design.name,
+	).length;
+	const autoName = generateShipName(design.name, existingCount);
+	if (!nameEl.value || /^ISS .+-\d{3}$/.test(nameEl.value)) {
+		nameEl.value = autoName;
+	}
+}
+
 function attachEvents(entry: PlanetEntry): void {
+	// Construction
 	const buildAdd = document.getElementById("colony-build-add");
 	buildAdd?.addEventListener("click", () => {
 		const installationEl = document.getElementById(
@@ -176,6 +423,95 @@ function attachEvents(entry: PlanetEntry): void {
 			renderColonyPanel(entry);
 		});
 	});
+
+	// Production
+	const prodAdd = document.getElementById("colony-prod-add");
+	prodAdd?.addEventListener("click", () => {
+		const [colony, found] = getColony(entry.data.name);
+		if (!found) return;
+		const itemEl = document.getElementById("colony-prod-item") as HTMLSelectElement | null;
+		const qtyEl = document.getElementById("colony-prod-qty") as HTMLInputElement | null;
+		const allocationEl = document.getElementById(
+			"colony-prod-allocation",
+		) as HTMLSelectElement | null;
+		if (!itemEl || !qtyEl || !allocationEl) return;
+		addProductionProject(
+			colony,
+			itemEl.value,
+			Math.max(1, Number(qtyEl.value) || 1),
+			Math.max(1, Number(allocationEl.value) || 20),
+		);
+		renderColonyPanel(entry);
+	});
+
+	document.querySelectorAll(".colony-prod-toggle").forEach((el) => {
+		el.addEventListener("click", () => {
+			const [colony, found] = getColony(entry.data.name);
+			if (!found) return;
+			const projectId = (el as HTMLElement).dataset.projectId;
+			if (!projectId) return;
+			pauseProductionProject(colony, projectId);
+			renderColonyPanel(entry);
+		});
+	});
+
+	document.querySelectorAll(".colony-prod-cancel").forEach((el) => {
+		el.addEventListener("click", () => {
+			const [colony, found] = getColony(entry.data.name);
+			if (!found) return;
+			const projectId = (el as HTMLElement).dataset.projectId;
+			if (!projectId) return;
+			cancelProductionProject(colony, projectId);
+			renderColonyPanel(entry);
+		});
+	});
+
+	// Shipyard — update cost preview when design selection changes
+	const designEl = document.getElementById("colony-ship-design") as HTMLSelectElement | null;
+	const nameEl = document.getElementById("colony-ship-name") as HTMLInputElement | null;
+	const costDiv = document.getElementById("colony-ship-cost");
+
+	if (designEl && nameEl && costDiv) {
+		designEl.addEventListener("change", () =>
+			onShipDesignChange(entry.data.name, designEl, nameEl, costDiv),
+		);
+	}
+
+	const buildBtn = document.getElementById("colony-ship-build");
+	buildBtn?.addEventListener("click", () => {
+		const [colony, found] = getColony(entry.data.name);
+		if (!found) return;
+		if (!designEl || !nameEl) return;
+		const designId = designEl.value;
+		const shipName = nameEl.value.trim();
+		const design = state.shipDesigns.get(designId);
+		if (!design || !shipName) return;
+		if (!canAffordShipbuild(colony, design)) return;
+		addShipbuildProject(colony, designId, shipName);
+		renderColonyPanel(entry);
+	});
+
+	document.querySelectorAll(".colony-ship-toggle").forEach((el) => {
+		el.addEventListener("click", () => {
+			const [colony, found] = getColony(entry.data.name);
+			if (!found) return;
+			const projectId = (el as HTMLElement).dataset.projectId;
+			if (!projectId) return;
+			pauseShipbuildProject(colony, projectId);
+			renderColonyPanel(entry);
+		});
+	});
+
+	document.querySelectorAll(".colony-ship-cancel").forEach((el) => {
+		el.addEventListener("click", () => {
+			const [colony, found] = getColony(entry.data.name);
+			if (!found) return;
+			const projectId = (el as HTMLElement).dataset.projectId;
+			if (!projectId) return;
+			cancelShipbuildProject(colony, projectId);
+			renderColonyPanel(entry);
+		});
+	});
 }
 
 export function renderColonyPanel(entry: PlanetEntry): void {
@@ -191,6 +527,8 @@ export function renderColonyPanel(entry: PlanetEntry): void {
 	section.innerHTML = `
 		${renderOverview(entry)}
 		${renderConstruction(entry)}
+		${renderProduction(entry)}
+		${renderShipyard(entry)}
 	`;
 	attachEvents(entry);
 }

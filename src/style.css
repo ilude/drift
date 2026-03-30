@@ -616,6 +616,31 @@ body {
 	margin-bottom: 8px;
 }
 
+.colony-cost-preview {
+	font-size: 10px;
+	margin-bottom: 6px;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	align-items: center;
+}
+
+.colony-cost-ok {
+	color: #88cc88;
+}
+
+.colony-cost-short {
+	color: #cc6644;
+}
+
+.colony-cost-unaffordable .colony-cost-ok {
+	color: #cc6644;
+}
+
+.colony-form input[type="text"] {
+	width: auto;
+}
+
 /* Controls */
 .ctrl-btn {
 	background: #141420;

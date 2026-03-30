@@ -7,12 +7,14 @@ import type {
 	ColonyProductionProject,
 	ColonyQualities,
 	ColonyResearchProject,
+	ColonyShipbuildProject,
 	ColonyState,
 	ColonyWorkforce,
 	GameLogCategory,
 	PlanetEntry,
 	Result,
 	ScientistState,
+	ShipDesign,
 	ShipEntry,
 } from "../types";
 import { isPlanetEntry, isSurveyable } from "../types";
@@ -666,6 +668,7 @@ function createColony(
 		researchPoints: 0,
 		constructionProjects: [],
 		productionProjects: [],
+		shipbuildProjects: [],
 		transferQueue: [],
 	};
 }
@@ -1336,6 +1339,115 @@ export function cancelProductionProject(colony: ColonyState, projectId: string):
 	colony.productionProjects = colony.productionProjects.filter((p) => p.id !== projectId);
 }
 
+// --- Shipbuilding ---
+
+const BASE_SHIPBUILD_BP_RATE = 1;
+
+const _completedShipbuilds: { designId: string; name: string; bodyName: string }[] = [];
+
+export function drainCompletedShipbuilds(): { designId: string; name: string; bodyName: string }[] {
+	const result = [..._completedShipbuilds];
+	_completedShipbuilds.length = 0;
+	return result;
+}
+
+export function computeShipResourceCost(design: ShipDesign): Record<string, number> {
+	const massKg = design.dryMassKg;
+	return {
+		iron: Math.ceil(massKg / 5),
+		aluminum: Math.ceil(massKg / 20),
+		copper: Math.ceil(massKg / 50),
+		silicon: Math.ceil(massKg / 100),
+	};
+}
+
+export function getShipbuildBpPerDay(colony: ColonyState): number {
+	const qualities = computeColonyQualities(colony);
+	return BASE_SHIPBUILD_BP_RATE * colony.installations.shipyard * qualities.shipbuilding;
+}
+
+export function canAffordShipbuild(colony: ColonyState, design: ShipDesign): boolean {
+	const cost = computeShipResourceCost(design);
+	for (const [resourceId, amount] of Object.entries(cost)) {
+		if ((colony.stockpile.resources[resourceId] ?? 0) < amount) return false;
+	}
+	return true;
+}
+
+export function addShipbuildProject(
+	colony: ColonyState,
+	designId: string,
+	shipName: string,
+): ColonyShipbuildProject | null {
+	const design = state.shipDesigns.get(designId);
+	if (!design) return null;
+	const resourceCost = computeShipResourceCost(design);
+	const totalBp = Math.ceil(design.dryMassKg / 50);
+	const project: ColonyShipbuildProject = {
+		id: `ship-${projectCounter++}`,
+		designId,
+		shipName,
+		totalBp,
+		progressBp: 0,
+		paused: false,
+		resourceCost,
+	};
+	colony.shipbuildProjects.push(project);
+	return project;
+}
+
+export function cancelShipbuildProject(colony: ColonyState, projectId: string): void {
+	colony.shipbuildProjects = colony.shipbuildProjects.filter((p) => p.id !== projectId);
+}
+
+export function pauseShipbuildProject(colony: ColonyState, projectId: string): void {
+	const project = colony.shipbuildProjects.find((p) => p.id === projectId);
+	if (!project) return;
+	project.paused = !project.paused;
+}
+
+function tickShipbuilding(
+	colony: ColonyState,
+	simDtDays: number,
+	qualities: ColonyQualities,
+): void {
+	if (!colony.shipbuildProjects || colony.shipbuildProjects.length === 0) return;
+	if (colony.installations.shipyard <= 0) return;
+
+	const project = colony.shipbuildProjects.find((p) => !p.paused);
+	if (!project) return;
+
+	const bpGain =
+		BASE_SHIPBUILD_BP_RATE * colony.installations.shipyard * qualities.shipbuilding * simDtDays;
+	project.progressBp += bpGain;
+
+	if (project.progressBp >= project.totalBp) {
+		// Check resources before completing
+		for (const [resourceId, amount] of Object.entries(project.resourceCost)) {
+			if ((colony.stockpile.resources[resourceId] ?? 0) < amount) {
+				// Stall: not enough resources, cap progress at totalBp
+				project.progressBp = project.totalBp;
+				return;
+			}
+		}
+		// Deduct resources
+		for (const [resourceId, amount] of Object.entries(project.resourceCost)) {
+			colony.stockpile.resources[resourceId] = (colony.stockpile.resources[resourceId] ?? 0) - amount;
+		}
+		_completedShipbuilds.push({
+			designId: project.designId,
+			name: project.shipName,
+			bodyName: colony.bodyName,
+		});
+		colony.shipbuildProjects = colony.shipbuildProjects.filter((p) => p.id !== project.id);
+		pushGameLog("Ship", `${project.shipName} construction complete at ${colony.bodyName}`, {
+			ship: project.shipName,
+			colony: colony.bodyName,
+			date: formatSimDate(state.simTime.days),
+		});
+	}
+}
+
 function completeProductionUnit(
 	colony: ColonyState,
 	project: ColonyProductionProject,
@@ -1585,6 +1697,7 @@ export function tickColony(colony: ColonyState, simDtDays: number): void {
 	const qualities = computeColonyQualities(colony);
 	tickConstruction(colony, simDtDays, qualities);
 	tickProduction(colony, simDtDays, qualities);
+	tickShipbuilding(colony, simDtDays, qualities);
 	tickMining(colony, simDtDays, qualities);
 	tickResearch(colony, simDtDays);
 	routeTransferQueue(colony);

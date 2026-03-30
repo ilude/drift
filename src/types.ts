@@ -245,6 +245,16 @@ export interface ColonyProductionProject {
 	paused: boolean;
 }
 
+export interface ColonyShipbuildProject {
+	id: string;
+	designId: string;
+	shipName: string;
+	totalBp: number;
+	progressBp: number;
+	paused: boolean;
+	resourceCost: Record<string, number>;
+}
+
 export interface ColonyState {
 	bodyName: string;
 	name: string;
@@ -255,6 +265,7 @@ export interface ColonyState {
 	researchPoints: number;
 	constructionProjects: ColonyConstructionProject[];
 	productionProjects: ColonyProductionProject[];
+	shipbuildProjects: ColonyShipbuildProject[];
 	transferQueue: ScientistTransferRequest[];
 }
 
@@ -372,7 +383,8 @@ export type NotificationType =
 	| "action-complete"
 	| "colony-understaffed"
 	| "colony-idle"
-	| "colony-blocked";
+	| "colony-blocked"
+	| "ship-built";
 
 export interface GameNotification {
 	id: number;
@@ -731,6 +743,7 @@ export interface NotificationPauseConfig {
 	"colony-understaffed": boolean;
 	"colony-idle": boolean;
 	"colony-blocked": boolean;
+	"ship-built": boolean;
 }
 
 export interface AppState {
