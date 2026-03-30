@@ -28,6 +28,8 @@ const COMMAND_NAMES: Record<CommandType, string> = {
 	overhaul: "Overhaul",
 	"major-refit": "Major refit",
 	"return-to-base": "Return to base",
+	"load-cargo": "Load cargo",
+	"unload-cargo": "Unload cargo",
 	idle: "Hold position",
 };
 

@@ -162,6 +162,9 @@ export function saveState(): void {
 		commander: { ...ship.commander },
 		maintenance: { ...ship.maintenance },
 		commandTree: { entries: [...ship.commandTree.entries] },
+		cargoHold: { ...(ship.cargoHold ?? {}) },
+		missionOrders: (ship.missionOrders ?? []).map((s) => ({ ...s })),
+		missionOrderIndex: ship.missionOrderIndex ?? 0,
 		...(ship.surveyPlan
 			? {
 					surveyPlan: {
@@ -338,6 +341,9 @@ function restoreShipFields(ship: ShipEntry, saved: SavedShipData): void {
 	} else {
 		ship.surveyPlan = null;
 	}
+	ship.cargoHold = saved.cargoHold ? { ...saved.cargoHold } : {};
+	ship.missionOrders = (saved.missionOrders ?? []).map((s) => ({ ...s }));
+	ship.missionOrderIndex = saved.missionOrderIndex ?? 0;
 }
 
 function applySplineFields(ship: ShipEntry, saved: SavedShipData): void {

@@ -489,6 +489,10 @@ export function createShip(config: ShipConfig): ShipEntry | undefined {
 		surveyPlan: null,
 		keelDate: state.simTime.days,
 		designId: config.designId ?? null,
+		// Cargo logistics
+		cargoHold: {},
+		missionOrders: [],
+		missionOrderIndex: 0,
 	} as ShipEntry;
 
 	// Velocity tail -- always visible, short trail showing direction

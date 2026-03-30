@@ -77,6 +77,10 @@ function commandToResult(
 			return { action: "refuel-ship" };
 		case "return-to-base":
 			return { action: "refuel" };
+		case "load-cargo":
+			return { action: "load-cargo" };
+		case "unload-cargo":
+			return { action: "unload-cargo" };
 		case "idle":
 			return { action: "idle" };
 	}

@@ -131,7 +131,21 @@ export type CommandType =
 	| "overhaul"
 	| "major-refit"
 	| "return-to-base"
+	| "load-cargo"
+	| "unload-cargo"
 	| "idle";
+
+// --- Mission order types ---
+
+export type MissionStepType = "load-cargo" | "unload-cargo" | "transfer-to" | "repeat";
+
+export interface MissionStep {
+	id: string;
+	type: MissionStepType;
+	target?: string;
+	itemId?: string;
+	quantity?: number;
+}
 
 export type CommandCondition =
 	| { type: "always" }
@@ -162,6 +176,8 @@ export interface CommandResult {
 		| "overhaul"
 		| "major-refit"
 		| "shore-leave"
+		| "load-cargo"
+		| "unload-cargo"
 		| "idle";
 	target?: string;
 }
@@ -516,6 +532,10 @@ export interface ShipEntry extends BaseEntry {
 	keelDate: number;
 	// Ship design reference (null for legacy ships)
 	designId: string | null;
+	// Cargo logistics
+	cargoHold: Record<string, number>;
+	missionOrders: MissionStep[];
+	missionOrderIndex: number;
 }
 
 export type BodyEntry = PlanetEntry | CometEntry | ShipEntry;
@@ -828,6 +848,10 @@ export interface SavedShipData {
 	transferStartTime?: number;
 	transferTimeDays?: number;
 	transferFuelTotal?: number;
+	// Cargo logistics
+	cargoHold?: Record<string, number>;
+	missionOrders?: MissionStep[];
+	missionOrderIndex?: number;
 	// Hermite spline knots
 	p0x?: number;
 	p0y?: number;

@@ -1,6 +1,12 @@
 import "./style.css";
 import * as THREE from "three";
 import {
+	advanceMissionTransferStep,
+	getMissionTransferTarget,
+	hasMissionOrders,
+	tickMissionOrders,
+} from "./core/cargo";
+import {
 	drainCompletedShipbuilds,
 	getNearestColonyForShip,
 	getServiceQualityForShip,
@@ -940,6 +946,11 @@ function dispatchCommand(ship: ShipEntry, result: CommandResult): void {
 		case "refuel-ship":
 			handleRefuelShipCommand(ship);
 			break;
+		case "load-cargo":
+		case "unload-cargo":
+			// Cargo loading/unloading is handled by tickMissionOrders; set idle action
+			ship.action = noAction();
+			break;
 		case "idle":
 			ship.action = noAction();
 			publishIntent(ship.data.name, {
@@ -1029,13 +1040,46 @@ function tickActionTimer(ship: ShipEntry, simDt: number): boolean {
 }
 
 /** Evaluate the command tree for an idle ship, throttled to every 0.5 sim-days. */
-function tickIdleCommander(ship: ShipEntry): void {
+function tickIdleCommander(ship: ShipEntry, simDt: number): void {
 	const lastEval = _lastCommandEval.get(ship.data.name) ?? 0;
 	if (state.simTime.days - lastEval < 0.5) return;
 	_lastCommandEval.set(ship.data.name, state.simTime.days);
-	gameLog(`[tickShip] ${ship.data.name}: idle, commander deciding`);
+
+	// Commander safety checks fire first (fuel, hull, morale)
 	const [decision, hasDecision] = commanderDecide(ship);
+	const isSafetyOverride = hasDecision && decision.action !== "survey" && decision.action !== "idle";
+
+	if (isSafetyOverride) {
+		dispatchCommand(ship, decision);
+		return;
+	}
+
+	// Mission orders take priority over autonomous command tree
+	if (hasMissionOrders(ship)) {
+		const transferTarget = getMissionTransferTarget(ship);
+		if (transferTarget) {
+			handleMissionTransfer(ship, transferTarget);
+		} else {
+			tickMissionOrders(ship, simDt);
+		}
+		return;
+	}
+
+	gameLog(`[tickShip] ${ship.data.name}: idle, commander deciding`);
 	if (hasDecision) dispatchCommand(ship, decision);
+}
+
+/** Initiate a mission-order transfer to a named target. */
+function handleMissionTransfer(ship: ShipEntry, targetName: string): void {
+	const [te, teFound] = findPlanet(targetName);
+	if (teFound && initiateTransfer(ship, te)) {
+		ship.action = mkAction("transfer-to", "mission-transfer", 0, 0, targetName);
+		publishIntent(ship.data.name, {
+			type: "transferring",
+			destination: targetName,
+			shipName: ship.data.name,
+		});
+	}
 }
 
 /** Called each frame for every ship. Handles simulation + action timers. */
@@ -1056,7 +1100,7 @@ function tickShip(ship: ShipEntry, simDt: number): void {
 	// Auto-evaluate command tree when idle and orbiting (kicks off autonomous behavior)
 	// Skip until positions have been computed (simTime > 0.1 ensures at least a few frames)
 	if (ship.shipState === "orbiting" && !ship.action.type && state.simTime.days > 0.1) {
-		tickIdleCommander(ship);
+		tickIdleCommander(ship, simDt);
 	}
 }
 
@@ -1162,6 +1206,9 @@ export function onTransferComplete(ship: ShipEntry): void {
 	if (isAtColony(ship) && ship.action.type !== "survey-nearest") {
 		clearSurveyPlan(ship);
 	}
+
+	// Advance mission order if this transfer was driven by a mission step
+	advanceMissionTransferStep(ship);
 
 	startArrivalAction(ship);
 }
