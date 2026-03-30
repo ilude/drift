@@ -231,7 +231,9 @@ export type ColonyInstallationId =
 	| "lab"
 	| "academy"
 	| "storage"
-	| "shipyard";
+	| "shipyard"
+	| "automated-mine"
+	| "mass-driver";
 
 export interface ColonyInstallations {
 	constructionFactory: number;
@@ -242,6 +244,8 @@ export interface ColonyInstallations {
 	academy: number;
 	storage: number;
 	shipyard: number;
+	automatedMine: number;
+	massDriver: number;
 }
 
 export interface ColonyStockpile {
@@ -283,6 +287,7 @@ export interface ColonyState {
 	productionProjects: ColonyProductionProject[];
 	shipbuildProjects: ColonyShipbuildProject[];
 	transferQueue: ScientistTransferRequest[];
+	massDriverTarget: string | null;
 }
 
 export interface ColonyWorkforce {

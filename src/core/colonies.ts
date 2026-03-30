@@ -165,6 +165,20 @@ export const CONSTRUCTION_DEFS: ConstructionDefinition[] = [
 			"Limited hull construction and refit capacity. Placeholder for future ship production.",
 		resourceCost: { iron: 1000, copper: 300, aluminum: 200, silicon: 100 },
 	},
+	{
+		id: "automated-mine",
+		name: "Automated Mine",
+		bpCost: 120,
+		description: "Robotic mining installation. No workforce required.",
+		resourceCost: { iron: 400, copper: 150, aluminum: 100, silicon: 50 },
+	},
+	{
+		id: "mass-driver",
+		name: "Mass Driver",
+		bpCost: 200,
+		description: "Electromagnetic launcher for shipping resources to other colonies.",
+		resourceCost: { iron: 800, copper: 300, aluminum: 200, silicon: 150 },
+	},
 ];
 
 interface ProductionDefinition {
@@ -563,6 +577,8 @@ const INSTALLATION_WORKERS: Record<keyof ColonyInstallations, number> = {
 	academy: 50_000,
 	storage: 10_000,
 	shipyard: 250_000,
+	automatedMine: 0,
+	massDriver: 10_000,
 };
 
 function rand(): number {
@@ -670,6 +686,7 @@ function createColony(
 		productionProjects: [],
 		shipbuildProjects: [],
 		transferQueue: [],
+		massDriverTarget: null,
 	};
 }
 
@@ -724,6 +741,8 @@ export function seedStartingColonies(): void {
 					academy: 1,
 					storage: 6,
 					shipyard: 1,
+					automatedMine: 0,
+					massDriver: 0,
 				},
 				{
 					fuelKg: 2_000_000,
@@ -765,6 +784,8 @@ export function seedStartingColonies(): void {
 				academy: 0,
 				storage: 2,
 				shipyard: 0,
+				automatedMine: 0,
+				massDriver: 0,
 			},
 			{ fuelKg: 100_000, supplies: 2_000 },
 		),
@@ -1600,6 +1621,12 @@ function tickConstruction(
 				case "shipyard":
 					colony.installations.shipyard++;
 					break;
+				case "automated-mine":
+					colony.installations.automatedMine++;
+					break;
+				case "mass-driver":
+					colony.installations.massDriver++;
+					break;
 			}
 		}
 	}
@@ -1687,6 +1714,65 @@ function checkColonyWarnings(colony: ColonyState, qualities: ColonyQualities): v
 	}
 }
 
+// --- Automated mining (no workforce) ---
+
+function tickAutomatedMining(colony: ColonyState, simDtDays: number): void {
+	const count = colony.installations.automatedMine;
+	if (count <= 0) return;
+	const [body, found] = findBody(colony.bodyName);
+	if (!found || !isSurveyable(body)) return;
+	for (const deposit of body.survey.deposits ?? []) {
+		const remaining = deposit.quantity - deposit.mined;
+		if (remaining <= 0) continue;
+		const amount = Math.min(remaining, BASE_MINING_RATE * count * deposit.accessibility * simDtDays);
+		if (amount <= 0) continue;
+		deposit.mined += amount;
+		addColonyStock(colony.bodyName, deposit.resourceId, amount);
+	}
+}
+
+// --- Mass driver ---
+
+const MASS_DRIVER_RATE_PER_DAY = 500; // kg/day per mass driver
+
+function tickMassDriver(colony: ColonyState, simDtDays: number): void {
+	if (colony.installations.massDriver <= 0 || !colony.massDriverTarget) return;
+	const [targetColony, targetFound] = getColony(colony.massDriverTarget);
+	if (!targetFound || targetColony.installations.massDriver <= 0) return;
+
+	let remaining = MASS_DRIVER_RATE_PER_DAY * colony.installations.massDriver * simDtDays;
+	for (const [resourceId, amount] of Object.entries(colony.stockpile.resources)) {
+		if (amount <= 0 || remaining <= 0) continue;
+		const transfer = Math.min(amount, remaining);
+		colony.stockpile.resources[resourceId] -= transfer;
+		targetColony.stockpile.resources[resourceId] =
+			(targetColony.stockpile.resources[resourceId] ?? 0) + transfer;
+		remaining -= transfer;
+	}
+}
+
+// --- Flat-pack assembly ---
+
+const FLAT_PACK_INSTALL_MAP: Record<string, keyof ColonyInstallations> = {
+	"flat-mine": "automatedMine",
+	"flat-automated-mine": "automatedMine",
+	"flat-mass-driver": "massDriver",
+	"flat-fuel-depot": "fuelDepot",
+};
+
+export function assembleFlatPack(colony: ColonyState, flatPackId: string): boolean {
+	const count = colony.stockpile.flatPacked[flatPackId] ?? 0;
+	if (count <= 0) return false;
+	const installKey = FLAT_PACK_INSTALL_MAP[flatPackId];
+	if (!installKey) return false;
+	colony.stockpile.flatPacked[flatPackId] = count - 1;
+	if (colony.stockpile.flatPacked[flatPackId] <= 0) {
+		delete colony.stockpile.flatPacked[flatPackId];
+	}
+	colony.installations[installKey]++;
+	return true;
+}
+
 const EARTH_FUEL_RESTOCK_PER_DAY = 5_000; // kg/day placeholder until production chains
 
 export function tickColony(colony: ColonyState, simDtDays: number): void {
@@ -1699,6 +1785,8 @@ export function tickColony(colony: ColonyState, simDtDays: number): void {
 	tickProduction(colony, simDtDays, qualities);
 	tickShipbuilding(colony, simDtDays, qualities);
 	tickMining(colony, simDtDays, qualities);
+	tickAutomatedMining(colony, simDtDays);
+	tickMassDriver(colony, simDtDays);
 	tickResearch(colony, simDtDays);
 	routeTransferQueue(colony);
 	settleTransfers(colony);

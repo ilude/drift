@@ -4,6 +4,7 @@ import {
 	addConstructionProject,
 	addProductionProject,
 	addShipbuildProject,
+	assembleFlatPack,
 	canAffordConstruction,
 	canAffordProduction,
 	cancelShipbuildProject,
@@ -99,8 +100,11 @@ function makeColony(bodyName: string, overrides: Partial<ColonyState> = {}): Col
 			academy: 0,
 			storage: 1,
 			shipyard: 0,
+			automatedMine: 0,
+			massDriver: 0,
 		},
 		stockpile: { fuelKg: 1000, supplies: 100, resources: {}, flatPacked: {} },
+		massDriverTarget: null,
 		researchPoints: 0,
 		constructionProjects: [],
 		productionProjects: [],
@@ -728,5 +732,135 @@ describe("shipbuilding", () => {
 		expect(colony.shipbuildProjects.length).toBe(1);
 		cancelShipbuildProject(colony, colony.shipbuildProjects[0].id);
 		expect(colony.shipbuildProjects.length).toBe(0);
+	});
+});
+
+describe("automated mining + mass driver", () => {
+	beforeEach(() => {
+		state.colonies.clear();
+		state.bodyMeshes = [];
+	});
+
+	it("automated mines extract without workforce", () => {
+		const body = mockPlanet("Asteroid-1", {
+			survey: {
+				surveyLevel: 1,
+				deposits: [
+					{ resourceId: "iron", quantity: 1000, accessibility: 1, mined: 0, minSurveyLevel: 1 },
+				],
+			},
+		});
+		state.bodyMeshes = [body];
+		rebuildEntityMaps();
+		const colony = makeColony("Asteroid-1", {
+			population: 0,
+			installations: {
+				constructionFactory: 0,
+				repairYard: 0,
+				fuelDepot: 0,
+				mine: 0,
+				lab: 0,
+				academy: 0,
+				storage: 0,
+				shipyard: 0,
+				automatedMine: 2,
+				massDriver: 0,
+			},
+		});
+		state.colonies.set("Asteroid-1", colony);
+
+		tickColony(colony, 1);
+		expect(getColonyResourceStock("Asteroid-1", "iron")).toBeGreaterThan(0);
+	});
+
+	it("mass driver transfers resources to target colony", () => {
+		const body1 = mockPlanet("Outpost");
+		const body2 = mockPlanet("Earth");
+		state.bodyMeshes = [body1, body2];
+		rebuildEntityMaps();
+
+		const outpost = makeColony("Outpost", {
+			population: 0,
+			installations: {
+				constructionFactory: 0,
+				repairYard: 0,
+				fuelDepot: 0,
+				mine: 0,
+				lab: 0,
+				academy: 0,
+				storage: 0,
+				shipyard: 0,
+				automatedMine: 0,
+				massDriver: 1,
+			},
+			stockpile: { fuelKg: 0, supplies: 0, resources: { iron: 1000 }, flatPacked: {} },
+			massDriverTarget: "Earth",
+		});
+		const earth = makeColony("Earth", {
+			installations: {
+				constructionFactory: 1,
+				repairYard: 1,
+				fuelDepot: 1,
+				mine: 1,
+				lab: 3,
+				academy: 0,
+				storage: 1,
+				shipyard: 0,
+				automatedMine: 0,
+				massDriver: 1,
+			},
+		});
+		state.colonies.set("Outpost", outpost);
+		state.colonies.set("Earth", earth);
+
+		tickColony(outpost, 1);
+		expect(outpost.stockpile.resources.iron).toBeLessThan(1000);
+		expect(earth.stockpile.resources.iron ?? 0).toBeGreaterThan(0);
+	});
+
+	it("mass driver requires receiver to have mass driver", () => {
+		const body1 = mockPlanet("Outpost");
+		const body2 = mockPlanet("Earth");
+		state.bodyMeshes = [body1, body2];
+		rebuildEntityMaps();
+
+		const outpost = makeColony("Outpost", {
+			population: 0,
+			installations: {
+				constructionFactory: 0,
+				repairYard: 0,
+				fuelDepot: 0,
+				mine: 0,
+				lab: 0,
+				academy: 0,
+				storage: 0,
+				shipyard: 0,
+				automatedMine: 0,
+				massDriver: 1,
+			},
+			stockpile: { fuelKg: 0, supplies: 0, resources: { iron: 1000 }, flatPacked: {} },
+			massDriverTarget: "Earth",
+		});
+		const earth = makeColony("Earth"); // no mass driver
+		state.colonies.set("Outpost", outpost);
+		state.colonies.set("Earth", earth);
+
+		tickColony(outpost, 1);
+		expect(outpost.stockpile.resources.iron).toBe(1000); // no transfer
+	});
+
+	it("assembleFlatPack converts flat-pack to installation", () => {
+		const colony = makeColony("Earth", {
+			stockpile: { fuelKg: 0, supplies: 0, resources: {}, flatPacked: { "flat-mine": 2 } },
+		});
+		expect(assembleFlatPack(colony, "flat-mine")).toBe(true);
+		expect(colony.installations.automatedMine).toBe(1);
+		expect(colony.stockpile.flatPacked["flat-mine"]).toBe(1);
+	});
+
+	it("assembleFlatPack fails when no flat-packs", () => {
+		const colony = makeColony("Earth");
+		expect(assembleFlatPack(colony, "flat-mine")).toBe(false);
+		expect(colony.installations.automatedMine).toBe(0);
 	});
 });
