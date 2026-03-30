@@ -3,13 +3,17 @@
 // The commander interprets those rules, applying experience and judgment to override them
 // when the situation calls for it. The result is passed to the ship's crew to execute.
 
+import { computeTotalFuelCost } from "../math/ship-physics";
+import { distanceKmBetween } from "../math/transfer";
 import type { CommandCondition, CommandResult, Result, ShipEntry } from "../types";
 import { isSurveyable } from "../types";
-import { hasColony } from "./colonies";
+import { getNearestColonyForShip, hasColony } from "./colonies";
 import { checkCondition, evaluateCommandTree, hullCeiling } from "./commands";
 import { findBody } from "./entities";
 import { isTankerInboundFor } from "./intents";
 import { err, ok } from "./result";
+import { resolveShipPhysics } from "./ship-utils";
+import { state } from "./state";
 
 export function isAtColony(ship: ShipEntry): boolean {
 	return ship.shipState === "orbiting" && hasColony(ship.hostPlanetName);
@@ -148,8 +152,15 @@ export function checkHoldForTanker(ship: ShipEntry, result: CommandResult): Comm
 	return null;
 }
 
+function hasUnsurvedWorkAtHost(hostName: string): boolean {
+	const [host, hostFound] = findBody(hostName);
+	if (!hostFound) return false;
+	if (isSurveyable(host) && host.survey.surveyLevel === 0) return true;
+	return host.moons?.some((m) => isSurveyable(m) && m.survey.surveyLevel === 0) ?? false;
+}
+
 // "Finish the job before heading home" — defer maintenance when already at an unsurveyed
-// body, if the commander judges it safe enough to complete the survey first.
+// body (or one with unsurveyed moons), if the commander judges it safe enough to finish first.
 function checkDeferMaintenance(
 	ship: ShipEntry,
 	pendingResult: CommandResult,
@@ -160,10 +171,7 @@ function checkDeferMaintenance(
 	if (ship.shipState !== "orbiting") return null;
 	// Only applies at non-colony locations (at a colony, just do the maintenance)
 	if (hasColony(ship.hostPlanetName)) return null;
-
-	// Check if the current host is unsurveyed
-	const [host, hostFound] = findBody(ship.hostPlanetName);
-	if (!hostFound || !isSurveyable(host) || host.survey.surveyLevel > 0) return null;
+	if (!hasUnsurvedWorkAtHost(ship.hostPlanetName)) return null;
 
 	const j = ship.commander.judgment;
 	// Low-judgment commanders don't defer -- they follow orders literally
@@ -191,6 +199,49 @@ function checkDeferMaintenance(
 	return { action: "survey" };
 }
 
+// "Keep surveying while fuel allows" — when the command tree says refuel but the ship
+// has enough fuel to return home, continue surveying nearby targets instead of heading
+// back immediately. The commander estimates return fuel cost and only triggers return
+// when fuel is genuinely needed for the trip home.
+function estimateReturnFuelKg(ship: ShipEntry): number | null {
+	const [colony, colonyFound] = getNearestColonyForShip(ship);
+	if (!colonyFound) return null;
+	const [host, hostFound] = findBody(ship.hostPlanetName);
+	if (!hostFound) return null;
+	const distKm = distanceKmBetween(host, colony);
+	if (distKm < 1) return 0;
+	const physics = resolveShipPhysics(ship);
+	const cost = computeTotalFuelCost(
+		distKm,
+		physics.accelG,
+		physics.ispS,
+		physics.dryMassKg,
+		ship.fuelCapacityKg,
+		state.fuelBurnMultiplier,
+	);
+	return cost.totalFuelKg;
+}
+
+function checkDeferRefuel(ship: ShipEntry, pendingResult: CommandResult): CommandResult | null {
+	if (pendingResult.action !== "refuel") return null;
+	if (ship.shipState !== "orbiting") return null;
+	if (hasColony(ship.hostPlanetName)) return null;
+
+	const j = ship.commander.judgment;
+	if (j < 0.2) return null;
+
+	const returnCost = estimateReturnFuelKg(ship);
+	if (returnCost == null) return null;
+
+	// Safety margin: low-judgment commanders want 2x return fuel, high-judgment 1.3x
+	const margin = 2.0 - j * 0.7;
+	const fuelNeeded = returnCost * margin;
+
+	if (ship.fuelKg <= fuelNeeded) return null; // genuinely need to head home
+
+	return { action: "survey" };
+}
+
 // --- The single decision entry point ---
 
 // The commander evaluates standing orders, then applies judgment.
@@ -199,10 +250,15 @@ export function commanderDecide(ship: ShipEntry): Result<CommandResult> {
 	const [result, found] = evaluateCommandTree(ship);
 	if (!found) return err();
 
-	// Judgment overrides: preemptive service at colony, defer maintenance in the field
+	// Judgment overrides applied in order:
+	// 1. Preemptive service at colony (top off before departing)
+	// 2. Hold for inbound tanker (don't leave if tanker is coming)
+	// 3. Defer refuel when fuel allows (keep surveying in the field)
+	// 4. Defer maintenance in the field (finish survey before heading home)
 	const decided =
 		checkPreemptiveService(ship, result) ??
 		checkHoldForTanker(ship, result) ??
+		checkDeferRefuel(ship, result) ??
 		checkDeferMaintenance(ship, result) ??
 		result;
 	return ok(decided);

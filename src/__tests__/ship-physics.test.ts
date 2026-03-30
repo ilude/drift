@@ -219,7 +219,7 @@ describe("ENGINE_TYPES", () => {
 function shipFromEngine(engineId: string, fuelKg: number, dryMassKg: number) {
 	const engine = ENGINE_TYPES.find((e) => e.id === engineId);
 	if (!engine) throw new Error(`Unknown engine id: ${engineId}`);
-	return { fuelKg, dryMassKg, accelG: engine.accelG, ispS: engine.ispS };
+	return { fuelKg, dryMassKg, accelG: engine.accelG, ispS: engine.ispS, fuelMod: 1 };
 }
 
 describe("checkTransfer", () => {

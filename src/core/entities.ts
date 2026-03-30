@@ -15,6 +15,7 @@ import { state } from "./state";
 // --- Internal maps ---
 
 const bodyMap = new Map<string, BodyEntry>();
+const meshMap = new Map<object, BodyEntry>();
 const asteroidMap = new Map<string, { asteroid: AsteroidInfo; beltEntry: AsteroidBeltEntry }>();
 let cachedStar: PlanetEntry | undefined;
 
@@ -37,11 +38,13 @@ interface ResolvedEntity {
 
 export function rebuildEntityMaps(): void {
 	bodyMap.clear();
+	meshMap.clear();
 	asteroidMap.clear();
 	cachedStar = undefined;
 
 	for (const entry of state.bodyMeshes) {
 		bodyMap.set(entry.data.name, entry);
+		meshMap.set(entry.mesh, entry);
 		if (isPlanetEntry(entry) && entry.data.type === "Star") {
 			cachedStar = entry;
 		}
@@ -126,6 +129,10 @@ export function findShip(name?: string): Result<ShipEntry> {
 
 export function findStar(): Result<PlanetEntry> {
 	return cachedStar ? ok(cachedStar) : err();
+}
+
+export function findByMesh(mesh: object): BodyEntry | undefined {
+	return meshMap.get(mesh);
 }
 
 export function listShips(): ShipEntry[] {

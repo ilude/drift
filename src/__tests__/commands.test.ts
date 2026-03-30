@@ -579,20 +579,22 @@ describe("selectNextSurveyTarget", () => {
 		invalidateSurveyTargetCache();
 	});
 
-	it("skips bodies where isMoon is true", () => {
+	it("includes moons as survey candidates", () => {
 		const moon = mockBodyEntry("Luna", { isMoon: true });
 		const planet = mockBodyEntry("Mars");
 		state.bodyMeshes = [moon, planet] as BodyEntry[];
 		const [target, targetFound] = selectNextSurveyTarget(mockShipWithMesh());
 		expect(targetFound).toBe(true);
-		expect(target).toBe("Mars");
+		// Both are equidistant (mock distance = 1), so first match wins
+		expect(target).toBe("Luna");
 	});
 
-	it("returns null when only moon candidates exist", () => {
+	it("returns moon when only moon candidates exist", () => {
 		const moon = mockBodyEntry("Luna", { isMoon: true });
 		state.bodyMeshes = [moon] as BodyEntry[];
-		const [, notFound] = selectNextSurveyTarget(mockShipWithMesh());
-		expect(notFound).toBe(false);
+		const [target, found] = selectNextSurveyTarget(mockShipWithMesh());
+		expect(found).toBe(true);
+		expect(target).toBe("Luna");
 	});
 
 	it("skips already-surveyed bodies", () => {

@@ -1,7 +1,7 @@
 import { computeTotalFuelCost, findAffordableAccelG } from "../math/ship-physics";
 import { bodyAUFromPosition, distanceKmBetween } from "../math/transfer";
 import type { BodyEntry, ShipEntry } from "../types";
-import { findAsteroidEntity, findBody } from "./entities";
+import { findAsteroidEntity, findBody, findByMesh } from "./entities";
 import { resolveShipPhysics } from "./ship-utils";
 import { gameLog, state } from "./state";
 
@@ -106,7 +106,7 @@ export function completeTransferSim(entry: ShipEntry): void {
 
 	entry.shipState = "orbiting";
 	if (targetFound && target.isMoon && target.parentMesh) {
-		const parent = state.bodyMeshes.find((e) => e.mesh === target.parentMesh);
+		const parent = findByMesh(target.parentMesh);
 		entry.hostPlanetName = parent ? parent.data.name : transferTarget;
 	} else {
 		entry.hostPlanetName = transferTarget;

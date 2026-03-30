@@ -514,8 +514,6 @@ function collectBodyCandidates(
 		if (isShipEntry(body)) continue;
 		if (!isSurveyable(body)) continue;
 		if (body.survey.surveyLevel !== 0) continue;
-		if (body.data.type === "Star") continue;
-		if (body.isMoon) continue;
 		if (claimed.has(body.data.name)) continue;
 		const dx = body.mesh.position.x - sx;
 		const dz = body.mesh.position.z - sz;

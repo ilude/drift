@@ -135,6 +135,8 @@ export const state: AppState = {
 		"colony-blocked": false,
 	},
 	firstSurveyCompleted: false,
+	surveyedCount: 0,
+	totalSurveyableCount: 0,
 	engineDesigns: new Map(),
 	shipDesigns: new Map(),
 	missileDesigns: new Map(),

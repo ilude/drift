@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { findAsteroidEntity, findBody, rebuildEntityMaps } from "../core/entities";
+import { findAsteroidEntity, findBody, findByMesh, rebuildEntityMaps } from "../core/entities";
 import { gameWarn, state } from "../core/state";
 import { commitTransferSim, completeTransferSim } from "../core/transfers";
 import { rngInt, seededRandom } from "../core/utils";
@@ -180,7 +180,7 @@ export function predictTargetWorld(
 
 	// Moons: propagate parent orbit then add moon offset
 	if (targetEntry.isMoon && targetEntry.parentMesh) {
-		const parentEntry = state.bodyMeshes.find((e) => e.mesh === targetEntry.parentMesh);
+		const parentEntry = findByMesh(targetEntry.parentMesh);
 		let parentFutureX: number;
 		let parentFutureZ: number;
 		if (parentEntry && !isShipEntry(parentEntry) && !isCometEntry(parentEntry)) {

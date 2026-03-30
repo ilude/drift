@@ -125,7 +125,7 @@ export function hohmannTransferDays(r1AU: number, r2AU: number, starMassSolar: n
  * @param accelMS2 - sustained acceleration in m/s²
  * @returns transfer time in days
  */
-function brachistochroneTimeKm(distKm: number, accelMS2: number): number {
+export function brachistochroneTimeKm(distKm: number, accelMS2: number): number {
 	const d = distKm * 1000; // meters
 	const T = 2 * Math.sqrt(d / accelMS2); // seconds
 	return T / 86400; // days
@@ -137,22 +137,18 @@ function brachistochroneTimeKm(distKm: number, accelMS2: number): number {
  * @param accelMS2 - sustained acceleration in m/s²
  * @returns delta-v in km/s
  */
-function brachistochroneDeltaVKm(distKm: number, accelMS2: number): number {
+export function brachistochroneDeltaVKm(distKm: number, accelMS2: number): number {
 	const d = distKm * 1000; // meters
 	const dv = 2 * Math.sqrt(d * accelMS2); // m/s
 	return dv / 1000; // km/s
 }
 
-/**
- * Brachistochrone transfer time from AU orbit radii (convenience wrapper).
- */
+/** AU-based wrapper: brachistochrone transfer time between two orbital radii. */
 export function brachistochroneTime(r1AU: number, r2AU: number, accelMS2: number): number {
 	return brachistochroneTimeKm(Math.abs(r2AU - r1AU) * AU_TO_KM, accelMS2);
 }
 
-/**
- * Brachistochrone delta-v from AU orbit radii (convenience wrapper).
- */
+/** AU-based wrapper: brachistochrone delta-v between two orbital radii. */
 export function brachistochroneDeltaV(r1AU: number, r2AU: number, accelMS2: number): number {
 	return brachistochroneDeltaVKm(Math.abs(r2AU - r1AU) * AU_TO_KM, accelMS2);
 }
@@ -296,43 +292,19 @@ export const ENGINE_TYPES: EngineType[] = [
  * @param shipState - ship physics state
  * @returns transfer feasibility result
  */
+/**
+ * Check transfer feasibility using straight-line distance in km.
+ */
+/** AU-based wrapper: check transfer feasibility between two orbital radii. */
 export function checkTransfer(
 	r1AU: number,
 	r2AU: number,
 	_starMassSolar: number,
 	shipState: ShipPhysicsState,
 ): TransferResult {
-	const accelMS2 = shipState.accelG * G_ACCEL;
-	const dvTotal = brachistochroneDeltaV(r1AU, r2AU, accelMS2);
-	const veKmS = exhaustVelocity(shipState.ispS) / 1000; // m/s to km/s
-	const wetMass = shipState.dryMassKg + shipState.fuelKg;
-	const deltaVAvailable = rocketDeltaV(veKmS, wetMass, shipState.dryMassKg);
-	const fuelUsedKg = fuelRequired(veKmS, shipState.dryMassKg, dvTotal);
-	const transferDays = brachistochroneTime(r1AU, r2AU, accelMS2);
-
-	if (dvTotal > deltaVAvailable || fuelUsedKg > shipState.fuelKg) {
-		return {
-			feasible: false,
-			deltaVRequired: dvTotal,
-			deltaVAvailable,
-			fuelUsedKg,
-			transferDays,
-		};
-	}
-
-	return {
-		feasible: true,
-		fuelUsedKg,
-		deltaVRequired: dvTotal,
-		deltaVAvailable,
-		transferDays,
-	};
+	return checkTransferKm(Math.abs(r2AU - r1AU) * AU_TO_KM, shipState);
 }
 
-/**
- * Check transfer feasibility using straight-line distance in km.
- * For bodies that don't have clean AU orbital radii (comets, moons).
- */
 export function checkTransferKm(distKm: number, shipState: ShipPhysicsState): TransferResult {
 	const accelMS2 = shipState.accelG * G_ACCEL;
 	const dvTotal = brachistochroneDeltaVKm(distKm, accelMS2);

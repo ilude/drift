@@ -32,6 +32,33 @@ const CATEGORY_GROWTH_RATE = 0.0015;
 let projectCounter = 0;
 let scientistCounter = 0;
 
+// Per-colony project index — eliminates O(C×P) scan in tickResearch / checkColonyWarnings.
+const _projectsByColony = new Map<string, Set<ColonyResearchProject>>();
+
+function _indexAdd(project: ColonyResearchProject): void {
+	let set = _projectsByColony.get(project.colonyBodyName);
+	if (!set) {
+		set = new Set();
+		_projectsByColony.set(project.colonyBodyName, set);
+	}
+	set.add(project);
+}
+
+function _indexRemove(project: ColonyResearchProject): void {
+	_projectsByColony.get(project.colonyBodyName)?.delete(project);
+}
+
+export function rebuildProjectIndex(): void {
+	_projectsByColony.clear();
+	for (const project of state.researchProjects.values()) {
+		_indexAdd(project);
+	}
+}
+
+export function getProjectsForColony(bodyName: string): Set<ColonyResearchProject> {
+	return _projectsByColony.get(bodyName) ?? new Set();
+}
+
 type ResearchCategory = "industry" | "survey" | "logistics" | "research" | "biology";
 
 const RESEARCH_CATEGORIES: ResearchCategory[] = [
@@ -658,7 +685,7 @@ function maybeActivateNextProject(scientist: ScientistState): void {
 			existing.assignedLabs = Math.min(scientist.assignedLabs, scientist.adminCap);
 		} else {
 			const [def] = getResearchDef(nextTechId);
-			state.researchProjects.set(nextTechId, {
+			const newProject: ColonyResearchProject = {
 				techId: nextTechId,
 				colonyBodyName: scientist.colonyBodyName,
 				leadScientistId: scientist.id,
@@ -668,7 +695,9 @@ function maybeActivateNextProject(scientist: ScientistState): void {
 				queuedAt: state.simTime.days,
 				startedAt: state.simTime.days,
 				difficulty: def?.difficulty ?? 1,
-			});
+			};
+			state.researchProjects.set(nextTechId, newProject);
+			_indexAdd(newProject);
 		}
 		scientist.activeProjectTechId = nextTechId;
 		scientist.projectQueue.shift();
@@ -719,6 +748,7 @@ export function cancelResearchProject(techId: string): boolean {
 	const project = state.researchProjects.get(techId);
 	if (project) {
 		state.researchProjects.delete(techId);
+		_indexRemove(project);
 		if (project.leadScientistId) {
 			const scientist = state.scientists.get(project.leadScientistId);
 			if (scientist && scientist.activeProjectTechId === techId) {
@@ -755,6 +785,7 @@ export function setResearchPaused(techId: string, paused: boolean): boolean {
 function completeProject(project: ColonyResearchProject, scientist: ScientistState): void {
 	state.researchedTechs.add(project.techId);
 	state.researchProjects.delete(project.techId);
+	_indexRemove(project);
 	scientist.activeProjectTechId = null;
 	scientist.completedProjects.push(project.techId);
 	const [def] = getResearchDef(project.techId);
@@ -1097,8 +1128,7 @@ function tickMining(colony: ColonyState, simDtDays: number, qualities: ColonyQua
 }
 
 function tickResearch(colony: ColonyState, simDtDays: number): void {
-	for (const project of state.researchProjects.values()) {
-		if (project.colonyBodyName !== colony.bodyName) continue;
+	for (const project of getProjectsForColony(colony.bodyName)) {
 		tickResearchProject(project, simDtDays);
 	}
 	for (const scientist of getScientistsAtColony(colony.bodyName)) {
@@ -1204,9 +1234,13 @@ function checkColonyWarnings(colony: ColonyState, qualities: ColonyQualities): v
 		);
 	}
 
-	const hasActiveResearch = [...state.researchProjects.values()].some(
-		(p) => p.colonyBodyName === colony.bodyName && !p.paused,
-	);
+	let hasActiveResearch = false;
+	for (const p of getProjectsForColony(colony.bodyName)) {
+		if (!p.paused) {
+			hasActiveResearch = true;
+			break;
+		}
+	}
 	if (
 		colony.installations.lab > 0 &&
 		!hasActiveResearch &&

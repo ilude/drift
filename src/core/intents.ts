@@ -5,6 +5,8 @@ import { state } from "./state";
 // Rebuilt on any intent change; one rebuild serves all callers per frame.
 let _intentsDirty = true;
 const _claimsByShip = new Map<string, Set<string>>();
+// Secondary cache: excludeShipName -> merged Set of all other ships' claimed targets.
+const _mergedClaimsCache = new Map<string, Set<string>>();
 const _intentChangeCallbacks: (() => void)[] = [];
 
 /** Register a callback to be invoked whenever intents change (for cache invalidation). */
@@ -26,6 +28,7 @@ function rebuildClaimsCache(): void {
 
 function markDirty(): void {
 	_intentsDirty = true;
+	_mergedClaimsCache.clear();
 	for (const cb of _intentChangeCallbacks) cb();
 }
 
@@ -59,6 +62,7 @@ export function isTargetClaimed(targetName: string, excludeShipName: string): bo
 /** Force-invalidate the claimed targets cache (call after direct mutation of state.shipIntents in tests). */
 export function invalidateIntentsCache(): void {
 	_intentsDirty = true;
+	_mergedClaimsCache.clear();
 }
 
 /** Check if any other ship has a tanking intent targeting the given ship name. */
@@ -72,10 +76,13 @@ export function isTankerInboundFor(shipName: string): boolean {
 /** Get all target names claimed by ships other than the given one. Returns a Set for O(1) lookups. */
 export function getClaimedTargets(excludeShipName: string): Set<string> {
 	if (_intentsDirty) rebuildClaimsCache();
+	const cached = _mergedClaimsCache.get(excludeShipName);
+	if (cached !== undefined) return cached;
 	const result = new Set<string>();
 	for (const [shipName, targets] of _claimsByShip) {
 		if (shipName === excludeShipName) continue;
 		for (const t of targets) result.add(t);
 	}
+	_mergedClaimsCache.set(excludeShipName, result);
 	return result;
 }

@@ -562,7 +562,7 @@ function updateTimeDisplay(): void {
 	}
 }
 
-function updateSurveyDisplay(): void {
+export function initSurveyCounts(): void {
 	let total = 0;
 	let surveyed = 0;
 	for (const entry of state.bodyMeshes) {
@@ -572,11 +572,17 @@ function updateSurveyDisplay(): void {
 		}
 	}
 	for (const belt of state.asteroidBelts) {
+		total += belt.asteroids.length;
 		for (const ast of belt.asteroids) {
-			total++;
 			if (ast.survey.surveyLevel > 0) surveyed++;
 		}
 	}
+	state.totalSurveyableCount = total;
+	state.surveyedCount = surveyed;
+}
+
+function updateSurveyDisplay(): void {
+	const { surveyedCount: surveyed, totalSurveyableCount: total } = state;
 	const pct = total > 0 ? ((surveyed / total) * 100).toFixed(2) : "0.00";
 	const surveyText = `Surveyed: ${pct}%`;
 	if (surveyText !== lastSurveyText) {

@@ -25,6 +25,7 @@ import {
 import {
 	findAsteroidEntity,
 	findBody,
+	findByMesh,
 	findPlanet,
 	findShip,
 	findStar,
@@ -85,7 +86,14 @@ import {
 	updateSelectedBody,
 } from "./ui/selection";
 import type { PerfTimings } from "./ui/ui";
-import { buildBodyList, setupUI, updateHUD, updateLabels, updatePerfDisplay } from "./ui/ui";
+import {
+	buildBodyList,
+	initSurveyCounts,
+	setupUI,
+	updateHUD,
+	updateLabels,
+	updatePerfDisplay,
+} from "./ui/ui";
 
 // ---------------------------------------------------------------------------
 // Initialize
@@ -257,6 +265,7 @@ createShip({
 state.asteroidBelts = createAsteroidBelts();
 rebuildEntityMaps();
 seedStartingColonies();
+initSurveyCounts();
 
 // Mark Earth as fully surveyed (home world — all resources available)
 const [earthEntry, earthFound] = findBody("Earth");
@@ -386,6 +395,7 @@ function loadSystem(systemData: SystemData): void {
 	state.asteroidBelts = createAsteroidBelts();
 	rebuildEntityMaps();
 	seedStartingColonies();
+	initSurveyCounts();
 
 	buildBodyList();
 	cacheStarEntry();
@@ -457,12 +467,11 @@ function completeSurvey(ship: ShipEntry): void {
 			body.data.radius,
 			{
 				distanceAU: body.data.distance,
-				parentDistanceAU: body.parentMesh
-					? state.bodyMeshes.find((e) => e.mesh === body.parentMesh)?.data.distance
-					: undefined,
+				parentDistanceAU: body.parentMesh ? findByMesh(body.parentMesh)?.data.distance : undefined,
 			},
 		);
 		body.survey = { surveyLevel: 1, deposits };
+		state.surveyedCount++;
 
 		const names = deposits
 			.map((d) => d.resourceId)
@@ -489,6 +498,7 @@ function completeSurvey(ship: ShipEntry): void {
 				},
 			);
 			hit.asteroid.survey = { surveyLevel: 1, deposits };
+			state.surveyedCount++;
 
 			const idx = hit.asteroid.beltIndex ?? 0;
 			const c = hit.beltEntry.colors;
@@ -652,8 +662,7 @@ function handleSurveyCommand(ship: ShipEntry): void {
 	const isMoonOfHost =
 		targetBody.isMoon &&
 		targetBody.parentMesh &&
-		state.bodyMeshes.find((e) => e.mesh === targetBody?.parentMesh)?.data.name ===
-			ship.hostPlanetName;
+		findByMesh(targetBody?.parentMesh)?.data.name === ship.hostPlanetName;
 
 	if (isAtTarget || isMoonOfHost) {
 		handleSurveyAtLocation(ship, target, resolved.mass);

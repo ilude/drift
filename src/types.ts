@@ -613,6 +613,7 @@ export interface ShipPhysicsState {
 	dryMassKg: number;
 	accelG: number;
 	ispS: number;
+	fuelMod: number;
 }
 
 // --- Asteroid belt ---
@@ -726,6 +727,8 @@ export interface AppState {
 	notifications: GameNotification[];
 	notificationPauseConfig: NotificationPauseConfig;
 	firstSurveyCompleted: boolean;
+	surveyedCount: number;
+	totalSurveyableCount: number;
 	// Game hardness multipliers (1.0 = 100% = default, higher = slower/harder)
 	surveyMultiplier: number;
 	repairMultiplier: number;

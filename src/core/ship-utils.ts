@@ -6,11 +6,13 @@ export function resolveShipPhysics(ship: ShipEntry): ShipPhysicsState {
 	if (ship.designId) {
 		const design = state.shipDesigns.get(ship.designId);
 		if (design) {
+			const engineDesign = state.engineDesigns.get(design.engineDesignId);
 			return {
 				fuelKg: ship.fuelKg,
 				dryMassKg: ship.dryMassKg,
 				accelG: design.accelG,
 				ispS: design.ispS,
+				fuelMod: engineDesign?.fuelMod ?? 1,
 			};
 		}
 	}
@@ -21,5 +23,6 @@ export function resolveShipPhysics(ship: ShipEntry): ShipPhysicsState {
 		dryMassKg: ship.dryMassKg,
 		accelG: engine.accelG,
 		ispS: engine.ispS,
+		fuelMod: 1,
 	};
 }
