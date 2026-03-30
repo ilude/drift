@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
 	DAYS_PER_YEAR,
 	DIST_SCALE,
+	generateTrailPositions,
 	inclinedPosition,
 	keplerRadius,
 	meanToTrue,
@@ -117,6 +118,55 @@ describe("meanToTrue", () => {
 		// At M=π the true anomaly is also π regardless of eccentricity
 		const ν = meanToTrue(Math.PI, 0.967);
 		expect(ν).toBeCloseTo(Math.PI, 4);
+	});
+});
+
+describe("generateTrailPositions", () => {
+	it("returns Float32Array with length maxPoints * 3", () => {
+		const positions = generateTrailPositions(0, 0.001, 0, 1.0, 50);
+		expect(positions).toBeInstanceOf(Float32Array);
+		expect(positions.length).toBe(50 * 3);
+	});
+
+	it("circular orbit (e=0) produces constant radius for all points", () => {
+		const distance = 1.0; // AU
+		const angularSpeed = 0.001; // rad/day
+		const positions = generateTrailPositions(0, angularSpeed, 0, distance, 20);
+		const expectedR = scaleDist(distance);
+		for (let i = 0; i < 20; i++) {
+			const x = positions[i * 3];
+			const z = positions[i * 3 + 2];
+			const r = Math.sqrt(x * x + z * z);
+			expect(r).toBeCloseTo(expectedR, 3);
+		}
+	});
+
+	it("all y values are zero (planar orbit)", () => {
+		const positions = generateTrailPositions(1.0, 0.002, 0.3, 2.0, 30);
+		for (let i = 0; i < 30; i++) {
+			expect(positions[i * 3 + 1]).toBe(0);
+		}
+	});
+
+	it("returns zeroed array when angularSpeed is 0", () => {
+		const positions = generateTrailPositions(0, 0, 0.5, 1.0, 10);
+		for (let i = 0; i < positions.length; i++) {
+			expect(positions[i]).toBe(0);
+		}
+	});
+
+	it("first point is further back in time than last point", () => {
+		// With positive angularSpeed, first point is at the oldest (smallest) angle.
+		// For a circular orbit, the first x,z and last x,z should differ.
+		const positions = generateTrailPositions(Math.PI, 0.01, 0, 1.0, 100);
+		const x0 = positions[0];
+		const z0 = positions[2];
+		const xLast = positions[(100 - 1) * 3];
+		const zLast = positions[(100 - 1) * 3 + 2];
+		// They should not be the same point (100 steps of 0.01 * 0.02 rad apart)
+		const dx = xLast - x0;
+		const dz = zLast - z0;
+		expect(Math.sqrt(dx * dx + dz * dz)).toBeGreaterThan(0);
 	});
 });
 

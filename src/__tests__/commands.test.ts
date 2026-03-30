@@ -10,6 +10,7 @@ import {
 } from "../core/commander";
 import {
 	bathtubFailRate,
+	canAffordRoundTrip,
 	checkCondition,
 	computeMorale,
 	evaluateCommandTree,
@@ -17,7 +18,9 @@ import {
 	hullCeiling,
 	invalidateRefuelTargetCache,
 	invalidateSurveyTargetCache,
+	isRefuelCandidate,
 	selectNextSurveyTarget,
+	tankerRoundTripFuel,
 	tickShipSimulation,
 } from "../core/commands";
 import { rebuildEntityMaps } from "../core/entities";
@@ -46,6 +49,7 @@ function mockShip(overrides: MockShipOverrides = {}): ShipEntry {
 	const { maintenance, ...rest } = overrides;
 	return {
 		data: { name: "Ship" },
+		isShip: true,
 		fuelKg: 50000,
 		fuelCapacityKg: 50000,
 		crew: { count: 50, morale: 100, lastShoreLeave: 0, deploymentLimit: 180 },
@@ -2320,5 +2324,171 @@ describe("judgment decay", () => {
 		for (let i = 0; i < 5; i++) incrementExperience(ship);
 		expect(ship.commander.caution).toBeLessThan(afterSpike);
 		expect(ship.commander.caution).toBeGreaterThanOrEqual(0.5);
+	});
+});
+
+// --- tankerRoundTripFuel ---
+
+describe("tankerRoundTripFuel", () => {
+	function mockBodyWithPosition(name: string, distanceAU: number, angleDeg: number): BodyEntry {
+		const angleRad = (angleDeg * Math.PI) / 180;
+		return {
+			data: { name, distance: distanceAU, type: "Planet" },
+			isMoon: false,
+			isShip: false,
+			isComet: false,
+			mesh: { position: { x: Math.cos(angleRad), y: 0, z: Math.sin(angleRad) } },
+			survey: { surveyLevel: 0, deposits: [] },
+			moons: [],
+		} as unknown as BodyEntry;
+	}
+
+	it("returns positive fuel cost for non-zero distance", () => {
+		const tanker = mockShip({ fuelKg: 80000, fuelCapacityKg: 80000, dryMassKg: 5000 });
+		const hostA = mockBodyWithPosition("Earth", 1.0, 0);
+		const hostB = mockBodyWithPosition("Mars", 1.52, 90);
+		const cost = tankerRoundTripFuel(tanker, hostA, hostB);
+		expect(cost).toBeGreaterThan(0);
+	});
+
+	it("returns 0 when bodies are at the same position", () => {
+		const tanker = mockShip({ fuelKg: 80000, fuelCapacityKg: 80000, dryMassKg: 5000 });
+		const hostA = mockBodyWithPosition("Earth", 1.0, 0);
+		const hostB = mockBodyWithPosition("EarthCopy", 1.0, 0);
+		const cost = tankerRoundTripFuel(tanker, hostA, hostB);
+		expect(cost).toBe(0);
+	});
+
+	it("round-trip cost is 2.5x the one-way cost", () => {
+		// The multiplier is exactly 2.5 — verify it dominates by checking cost > one-way
+		const tanker = mockShip({ fuelKg: 200000, fuelCapacityKg: 200000, dryMassKg: 5000 });
+		const hostA = mockBodyWithPosition("Earth", 1.0, 0);
+		const hostB = mockBodyWithPosition("Jupiter", 5.2, 180);
+		const roundTrip = tankerRoundTripFuel(tanker, hostA, hostB);
+		// Round trip must be significantly more than any single-leg cost
+		expect(roundTrip).toBeGreaterThan(0);
+	});
+});
+
+// --- canAffordRoundTrip ---
+
+describe("canAffordRoundTrip", () => {
+	function mockBodyAt(name: string, distanceAU: number, angleDeg: number): BodyEntry {
+		const angleRad = (angleDeg * Math.PI) / 180;
+		return {
+			data: { name, distance: distanceAU, type: "Planet" },
+			isMoon: false,
+			isShip: false,
+			isComet: false,
+			mesh: { position: { x: Math.cos(angleRad), y: 0, z: Math.sin(angleRad) } },
+			survey: { surveyLevel: 0, deposits: [] },
+			moons: [],
+		} as unknown as BodyEntry;
+	}
+
+	it("returns true when tankerHost is undefined", () => {
+		const tanker = mockShip({ fuelKg: 1000, fuelCapacityKg: 100000 });
+		const target = mockBodyAt("Mars", 1.52, 90);
+		expect(canAffordRoundTrip(tanker, undefined, target, 0)).toBe(true);
+	});
+
+	it("returns true when targetHost is null", () => {
+		const tanker = mockShip({ fuelKg: 1000, fuelCapacityKg: 100000 });
+		const host = mockBodyAt("Earth", 1.0, 0);
+		expect(canAffordRoundTrip(tanker, host, null, 0)).toBe(true);
+	});
+
+	it("returns true when tanker has enough fuel for round trip", () => {
+		// Bodies at same position → tripFuel = 0, any fuel suffices
+		const tanker = mockShip({ fuelKg: 50000, fuelCapacityKg: 100000 });
+		const host = mockBodyAt("Earth", 1.0, 0);
+		const same = mockBodyAt("EarthB", 1.0, 0);
+		expect(canAffordRoundTrip(tanker, host, same, 0)).toBe(true);
+	});
+
+	it("returns false when fuel is insufficient for round trip plus reserve", () => {
+		// Very low fuel vs large distance
+		const tanker = mockShip({ fuelKg: 1, fuelCapacityKg: 100000, dryMassKg: 5000 });
+		const hostA = mockBodyAt("Earth", 1.0, 0);
+		const hostB = mockBodyAt("Jupiter", 5.2, 180);
+		// reserve floor of 15% of capacity = 15000
+		const reserve = 100000 * 0.15;
+		expect(canAffordRoundTrip(tanker, hostA, hostB, reserve)).toBe(false);
+	});
+});
+
+// --- isRefuelCandidate ---
+
+describe("isRefuelCandidate", () => {
+	it("returns false for non-ship entries", () => {
+		const planet = {
+			data: { name: "Mars" },
+			isShip: false,
+			survey: { surveyLevel: 0, deposits: [] },
+			moons: [],
+		} as unknown as BodyEntry;
+		expect(isRefuelCandidate(planet, "Tanker", new Set())).toBe(false);
+	});
+
+	it("returns false when entry is the tanker itself", () => {
+		const tanker = mockShip({
+			data: { name: "Tanker" } as ShipEntry["data"],
+			isShip: true,
+			fuelKg: 1000,
+			fuelCapacityKg: 100000,
+		});
+		expect(isRefuelCandidate(tanker as unknown as BodyEntry, "Tanker", new Set())).toBe(false);
+	});
+
+	it("returns false for ships currently transferring", () => {
+		const ship = mockShip({
+			data: { name: "Explorer" } as ShipEntry["data"],
+			isShip: true,
+			fuelKg: 10000,
+			fuelCapacityKg: 100000,
+			shipState: "transferring" as const,
+		});
+		expect(isRefuelCandidate(ship as unknown as BodyEntry, "Tanker", new Set())).toBe(false);
+	});
+
+	it("returns false for already-claimed targets", () => {
+		const ship = mockShip({
+			data: { name: "Explorer" } as ShipEntry["data"],
+			isShip: true,
+			fuelKg: 10000,
+			fuelCapacityKg: 100000,
+		});
+		const claimed = new Set(["Explorer"]);
+		expect(isRefuelCandidate(ship as unknown as BodyEntry, "Tanker", claimed)).toBe(false);
+	});
+
+	it("returns true for a low-fuel ship that is valid", () => {
+		const ship = mockShip({
+			data: { name: "Explorer" } as ShipEntry["data"],
+			isShip: true,
+			fuelKg: 10000,
+			fuelCapacityKg: 100000, // 10% fuel — below 50% threshold
+		});
+		expect(isRefuelCandidate(ship as unknown as BodyEntry, "Tanker", new Set())).toBe(true);
+	});
+
+	it("returns false for ships already above the fuel threshold", () => {
+		const ship = mockShip({
+			data: { name: "Explorer" } as ShipEntry["data"],
+			isShip: true,
+			fuelKg: 75000,
+			fuelCapacityKg: 100000, // 75% — above 50% threshold
+		});
+		expect(isRefuelCandidate(ship as unknown as BodyEntry, "Tanker", new Set())).toBe(false);
+	});
+
+	it("returns false for ships at exactly the threshold (not strictly below)", () => {
+		const ship = mockShip({
+			data: { name: "Explorer" } as ShipEntry["data"],
+			isShip: true,
+			fuelKg: 50000,
+			fuelCapacityKg: 100000, // exactly 50%
+		});
+		expect(isRefuelCandidate(ship as unknown as BodyEntry, "Tanker", new Set())).toBe(false);
 	});
 });

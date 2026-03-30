@@ -5,6 +5,7 @@ import {
 	canAffordConstruction,
 	computeColonyQualities,
 	computeColonyWorkforce,
+	computeResearchProgress,
 	consumeColonyFuel,
 	consumeColonySupplies,
 	getColony,
@@ -406,5 +407,54 @@ describe("colonies", () => {
 		tickColony(colony, 1);
 		const idleWarnings2 = state.notifications.filter((n) => n.type === "colony-idle");
 		expect(idleWarnings2.length).toBeGreaterThan(0);
+	});
+});
+
+describe("computeResearchProgress", () => {
+	const BASE_RESEARCH_RATE = 5;
+	const CATEGORY_GROWTH_RATE = 0.0015;
+
+	it("RP gain scales linearly with labs", () => {
+		const a = computeResearchProgress(1, 1, 1, 1, 1);
+		const b = computeResearchProgress(3, 1, 1, 1, 1);
+		expect(b.rpGain).toBeCloseTo(a.rpGain * 3);
+	});
+
+	it("RP gain scales with research quality", () => {
+		const a = computeResearchProgress(2, 0.5, 1, 1, 1);
+		const b = computeResearchProgress(2, 1.5, 1, 1, 1);
+		expect(b.rpGain).toBeCloseTo(a.rpGain * 3);
+	});
+
+	it("RP gain scales with category multiplier", () => {
+		const a = computeResearchProgress(2, 1, 1, 1, 1);
+		const b = computeResearchProgress(2, 1, 2, 1, 1);
+		expect(b.rpGain).toBeCloseTo(a.rpGain * 2);
+	});
+
+	it("RP gain scales with simDtDays", () => {
+		const a = computeResearchProgress(2, 1, 1, 1, 1);
+		const b = computeResearchProgress(2, 1, 1, 1, 10);
+		expect(b.rpGain).toBeCloseTo(a.rpGain * 10);
+	});
+
+	it("RP gain matches formula: BASE_RESEARCH_RATE * labs * quality * multiplier * dt", () => {
+		const result = computeResearchProgress(4, 1.2, 1.5, 2, 3);
+		expect(result.rpGain).toBeCloseTo(BASE_RESEARCH_RATE * 4 * 1.2 * 1.5 * 3);
+	});
+
+	it("experience gain proportional to difficulty * time", () => {
+		const result = computeResearchProgress(1, 1, 1, 3, 7);
+		expect(result.experienceGain).toBeCloseTo(3 * 7);
+	});
+
+	it("bonus growth proportional to difficulty * time * CATEGORY_GROWTH_RATE", () => {
+		const result = computeResearchProgress(1, 1, 1, 2, 5);
+		expect(result.bonusGrowth).toBeCloseTo(2 * 5 * CATEGORY_GROWTH_RATE);
+	});
+
+	it("zero labs produces zero RP gain", () => {
+		const result = computeResearchProgress(0, 1, 1, 1, 1);
+		expect(result.rpGain).toBe(0);
 	});
 });
