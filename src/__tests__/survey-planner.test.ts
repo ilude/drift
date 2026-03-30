@@ -45,7 +45,7 @@ function mockShip(name: string, x: number, z: number, overrides?: Partial<ShipEn
 		engineId: "conventional",
 		designId: null,
 		crew: { count: 10, morale: 100, lastShoreLeave: 0, deploymentLimit: 180 },
-		commander: { judgment: 0.5, experience: 0 },
+		commander: { caution: 0.5, initiative: 0.5, experience: 0 },
 		maintenance: {
 			age: 0,
 			totalAge: 0,
@@ -114,7 +114,9 @@ describe("computeSurveyPlan", () => {
 		const earth = mockBody("Earth", 200, 0, true);
 		const target1 = mockBody("Mars", 248, 0);
 		const target2 = mockBody("Jupiter", 454, 0);
-		const ship = mockShip("Explorer", 200, 0, { commander: { judgment: 0.1, experience: 0 } });
+		const ship = mockShip("Explorer", 200, 0, {
+			commander: { caution: 0.1, initiative: 0.1, experience: 0 },
+		});
 		setupSystem([earth, target1, target2], [ship]);
 
 		const plan = computeSurveyPlan(ship);

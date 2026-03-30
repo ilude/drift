@@ -468,7 +468,7 @@ export function createShip(config: ShipConfig): ShipEntry | undefined {
 		},
 		immediateCommand: null,
 		crew: { count: 50, morale: 100, lastShoreLeave: 0, deploymentLimit: 180 },
-		commander: { judgment: 0.3, experience: 0 },
+		commander: { caution: 0.3, initiative: 0.3, experience: 0 },
 		maintenance: {
 			age: 0,
 			totalAge: 0,

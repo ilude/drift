@@ -21,6 +21,7 @@ import {
 	tickShipSimulation,
 } from "../core/commands";
 import { rebuildEntityMaps } from "../core/entities";
+import { GameClock } from "../core/game-clock";
 import { invalidateIntentsCache, isTankerInboundFor, publishIntent } from "../core/intents";
 import { resolveShipSensorLevel } from "../core/ship-utils";
 import { state } from "../core/state";
@@ -48,7 +49,7 @@ function mockShip(overrides: MockShipOverrides = {}): ShipEntry {
 		fuelKg: 50000,
 		fuelCapacityKg: 50000,
 		crew: { count: 50, morale: 100, lastShoreLeave: 0, deploymentLimit: 180 },
-		commander: { judgment: 0.3, experience: 0 },
+		commander: { caution: 0.3, initiative: 0.3, experience: 0 },
 		maintenance: { ...DEFAULT_MAINTENANCE, ...maintenance },
 		action: { type: null, commandId: null, startTime: 0, duration: 0, progress: 0 },
 		commandTree: { entries: [] },
@@ -766,16 +767,16 @@ describe("isTankerInboundFor timeout", () => {
 	});
 
 	it("returns true when tanker intent is fresh", () => {
-		state.simTime = { days: 100 };
+		state.simTime = new GameClock(100);
 		publishIntent("Tanker", { type: "tanking", target: "Explorer", shipName: "Tanker" });
-		state.simTime = { days: 150 };
+		state.simTime = new GameClock(150);
 		expect(isTankerInboundFor("Explorer")).toBe(true);
 	});
 
 	it("returns false when tanker intent is stale (>60 days)", () => {
-		state.simTime = { days: 100 };
+		state.simTime = new GameClock(100);
 		publishIntent("Tanker", { type: "tanking", target: "Explorer", shipName: "Tanker" });
-		state.simTime = { days: 161 };
+		state.simTime = new GameClock(161);
 		expect(isTankerInboundFor("Explorer")).toBe(false);
 	});
 });
@@ -903,7 +904,7 @@ describe("checkPreemptiveService", () => {
 	it("returns null when not at colony", () => {
 		const ship = mockShip({
 			hostPlanetName: "Mars",
-			commander: { judgment: 1.0, experience: 50 },
+			commander: { caution: 1.0, initiative: 1.0, experience: 50 },
 			crew: { count: 50, morale: 45, lastShoreLeave: 0, deploymentLimit: 180 },
 			commandTree: {
 				entries: [
@@ -921,7 +922,7 @@ describe("checkPreemptiveService", () => {
 		// effective = 40 + 60 * 0.8 * 0.3 = 54.4 → 50 < 54.4 → triggers
 		const ship = mockShip({
 			hostPlanetName: "Earth",
-			commander: { judgment: 0.8, experience: 20 },
+			commander: { caution: 0.8, initiative: 0.8, experience: 20 },
 			crew: { count: 50, morale: 50, lastShoreLeave: 0, deploymentLimit: 180 },
 			commandTree: {
 				entries: [
@@ -941,7 +942,7 @@ describe("checkPreemptiveService", () => {
 		// effective = 40 + 60 * 0.3 * 0.3 = 45.4 → 50 > 45.4 → no trigger
 		const ship = mockShip({
 			hostPlanetName: "Earth",
-			commander: { judgment: 0.3, experience: 0 },
+			commander: { caution: 0.3, initiative: 0.3, experience: 0 },
 			crew: { count: 50, morale: 50, lastShoreLeave: 0, deploymentLimit: 180 },
 			commandTree: {
 				entries: [
@@ -963,7 +964,7 @@ describe("checkPreemptiveService", () => {
 			hostPlanetName: "Earth",
 			fuelKg: 12500,
 			fuelCapacityKg: 50000,
-			commander: { judgment: 0.9, experience: 30 },
+			commander: { caution: 0.9, initiative: 0.9, experience: 30 },
 			commandTree: {
 				entries: [
 					mockEntry("fuel-check", "refuel", {
@@ -982,7 +983,7 @@ describe("checkPreemptiveService", () => {
 		// effective = 30 + 70 * 0.8 * 0.3 = 46.8 → 40 < 46.8 → triggers
 		const ship = mockShip({
 			hostPlanetName: "Earth",
-			commander: { judgment: 0.8, experience: 10 },
+			commander: { caution: 0.8, initiative: 0.8, experience: 10 },
 			maintenance: {
 				age: 200,
 				totalAge: 0,
@@ -1011,7 +1012,7 @@ describe("checkPreemptiveService", () => {
 		const totalAge = 37.39 * 365; // ~13,637 days
 		const ship = mockShip({
 			hostPlanetName: "Earth",
-			commander: { judgment: 0.8, experience: 10 },
+			commander: { caution: 0.8, initiative: 0.8, experience: 10 },
 			maintenance: {
 				age: 0,
 				totalAge,
@@ -1036,7 +1037,7 @@ describe("checkPreemptiveService", () => {
 	it("skips disabled command tree entries", () => {
 		const ship = mockShip({
 			hostPlanetName: "Earth",
-			commander: { judgment: 1.0, experience: 50 },
+			commander: { caution: 1.0, initiative: 1.0, experience: 50 },
 			crew: { count: 50, morale: 30, lastShoreLeave: 0, deploymentLimit: 180 },
 			commandTree: {
 				entries: [
@@ -1053,7 +1054,7 @@ describe("checkPreemptiveService", () => {
 	it("works with transfer action as departure", () => {
 		const ship = mockShip({
 			hostPlanetName: "Earth",
-			commander: { judgment: 0.8, experience: 20 },
+			commander: { caution: 0.8, initiative: 0.8, experience: 20 },
 			crew: { count: 50, morale: 50, lastShoreLeave: 0, deploymentLimit: 180 },
 			commandTree: {
 				entries: [
@@ -1072,43 +1073,43 @@ describe("checkPreemptiveService", () => {
 
 describe("commander learning", () => {
 	it("learnFromMalfunction increases judgment with diminishing returns", () => {
-		const ship = mockShip({ commander: { judgment: 0.3, experience: 0 } });
+		const ship = mockShip({ commander: { caution: 0.3, initiative: 0.3, experience: 0 } });
 		learnFromMalfunction(ship);
 		// 0.3 + 0.08 * (1 - 0.3) = 0.3 + 0.056 = 0.356
-		expect(ship.commander.judgment).toBeCloseTo(0.356, 3);
+		expect(ship.commander.caution).toBeCloseTo(0.356, 3);
 	});
 
 	it("learnFromMalfunction has diminishing returns at high judgment", () => {
-		const ship = mockShip({ commander: { judgment: 0.85, experience: 0 } });
+		const ship = mockShip({ commander: { caution: 0.85, initiative: 0.85, experience: 0 } });
 		learnFromMalfunction(ship);
 		// 0.85 + 0.08 * (1 - 0.85) = 0.85 + 0.012 = 0.862
-		expect(ship.commander.judgment).toBeCloseTo(0.862, 3);
+		expect(ship.commander.caution).toBeCloseTo(0.862, 3);
 	});
 
 	it("learnFromMalfunction caps at 0.9", () => {
-		const ship = mockShip({ commander: { judgment: 0.89, experience: 0 } });
+		const ship = mockShip({ commander: { caution: 0.89, initiative: 0.89, experience: 0 } });
 		learnFromMalfunction(ship);
 		// 0.89 + 0.08 * 0.11 = 0.89 + 0.0088 = 0.8988 → below cap
 		learnFromMalfunction(ship);
 		// Should approach but not exceed 0.9
-		expect(ship.commander.judgment).toBeLessThanOrEqual(0.9);
+		expect(ship.commander.caution).toBeLessThanOrEqual(0.9);
 	});
 
 	it("learnFromEmergencyReturn increases judgment at lower rate", () => {
-		const ship = mockShip({ commander: { judgment: 0.3, experience: 0 } });
+		const ship = mockShip({ commander: { caution: 0.3, initiative: 0.3, experience: 0 } });
 		learnFromEmergencyReturn(ship);
 		// 0.3 + 0.05 * (1 - 0.3) = 0.3 + 0.035 = 0.335
-		expect(ship.commander.judgment).toBeCloseTo(0.335, 3);
+		expect(ship.commander.caution).toBeCloseTo(0.335, 3);
 	});
 
 	it("learnFromEmergencyReturn caps at 0.9", () => {
-		const ship = mockShip({ commander: { judgment: 0.9, experience: 0 } });
+		const ship = mockShip({ commander: { caution: 0.9, initiative: 0.9, experience: 0 } });
 		learnFromEmergencyReturn(ship);
-		expect(ship.commander.judgment).toBe(0.9);
+		expect(ship.commander.caution).toBe(0.9);
 	});
 
 	it("incrementExperience bumps counter", () => {
-		const ship = mockShip({ commander: { judgment: 0.3, experience: 5 } });
+		const ship = mockShip({ commander: { caution: 0.3, initiative: 0.3, experience: 5 } });
 		incrementExperience(ship);
 		expect(ship.commander.experience).toBe(6);
 	});
@@ -1140,7 +1141,7 @@ describe("commander defers maintenance", () => {
 	it("does not defer at a colony (just do the maintenance)", () => {
 		const ship = mockShip({
 			hostPlanetName: "Earth",
-			commander: { judgment: 0.9, experience: 10 },
+			commander: { caution: 0.9, initiative: 0.9, experience: 10 },
 			maintenance: {
 				age: 100,
 				totalAge: 0,
@@ -1167,7 +1168,7 @@ describe("commander defers maintenance", () => {
 	it("does not defer when host is already surveyed", () => {
 		const ship = mockShip({
 			hostPlanetName: "Mars",
-			commander: { judgment: 0.9, experience: 10 },
+			commander: { caution: 0.9, initiative: 0.9, experience: 10 },
 			maintenance: {
 				age: 100,
 				totalAge: 0,
@@ -1194,7 +1195,7 @@ describe("commander defers maintenance", () => {
 	it("does not defer when commander judgment is too low", () => {
 		const ship = mockShip({
 			hostPlanetName: "Ceres",
-			commander: { judgment: 0.15, experience: 0 },
+			commander: { caution: 0.15, initiative: 0.15, experience: 0 },
 			maintenance: {
 				age: 100,
 				totalAge: 0,
@@ -1224,7 +1225,7 @@ describe("commander defers maintenance", () => {
 		// 25 > 14 → safe to defer → survey instead
 		const ship = mockShip({
 			hostPlanetName: "Ceres",
-			commander: { judgment: 0.8, experience: 20 },
+			commander: { caution: 0.8, initiative: 0.8, experience: 20 },
 			maintenance: {
 				age: 100,
 				totalAge: 0,
@@ -1254,7 +1255,7 @@ describe("commander defers maintenance", () => {
 		// 12 < 20 → too risky → overhaul
 		const ship = mockShip({
 			hostPlanetName: "Ceres",
-			commander: { judgment: 0.5, experience: 10 },
+			commander: { caution: 0.5, initiative: 0.5, experience: 10 },
 			maintenance: {
 				age: 200,
 				totalAge: 0,
@@ -1286,7 +1287,7 @@ describe("commander defers maintenance", () => {
 			hostPlanetName: "Ceres",
 			fuelKg: 7500,
 			fuelCapacityKg: 50000,
-			commander: { judgment: 0.9, experience: 30 },
+			commander: { caution: 0.9, initiative: 0.9, experience: 30 },
 			commandTree: {
 				entries: [
 					mockEntry("fuel-check", "refuel", {
@@ -1310,7 +1311,7 @@ describe("commander defers maintenance", () => {
 			hostPlanetName: "Ceres",
 			fuelKg: 1500,
 			fuelCapacityKg: 50000,
-			commander: { judgment: 0.9, experience: 30 },
+			commander: { caution: 0.9, initiative: 0.9, experience: 30 },
 			commandTree: {
 				entries: [
 					mockEntry("fuel-check", "refuel", {
@@ -1356,7 +1357,7 @@ describe("commanderDecide", () => {
 		// At colony, morale 50%, threshold 40%, judgment 0.8 → preemptive service fires
 		const ship = mockShip({
 			hostPlanetName: "Earth",
-			commander: { judgment: 0.8, experience: 20 },
+			commander: { caution: 0.8, initiative: 0.8, experience: 20 },
 			crew: { count: 50, morale: 50, lastShoreLeave: 0, deploymentLimit: 180 },
 			commandTree: {
 				entries: [
@@ -1384,7 +1385,7 @@ describe("commanderDecide", () => {
 		// Hull 25%, threshold 30%, judgment 0.8 → defers overhaul to survey
 		const ship = mockShip({
 			hostPlanetName: "Ceres",
-			commander: { judgment: 0.8, experience: 20 },
+			commander: { caution: 0.8, initiative: 0.8, experience: 20 },
 			maintenance: {
 				age: 100,
 				totalAge: 0,
@@ -1418,7 +1419,7 @@ describe("checkPreemptiveService -- command mappings", () => {
 			hostPlanetName: "Earth",
 			fuelKg: 12500,
 			fuelCapacityKg: 50000,
-			commander: { judgment: 0.9, experience: 30 },
+			commander: { caution: 0.9, initiative: 0.9, experience: 30 },
 			commandTree: {
 				entries: [
 					mockEntry("fuel-check", "return-to-base", {
@@ -1438,7 +1439,7 @@ describe("checkPreemptiveService -- command mappings", () => {
 			hostPlanetName: "Earth",
 			fuelKg: 12500,
 			fuelCapacityKg: 50000,
-			commander: { judgment: 0.9, experience: 30 },
+			commander: { caution: 0.9, initiative: 0.9, experience: 30 },
 			commandTree: {
 				entries: [
 					mockEntry("fuel-check", "idle", {
@@ -1555,7 +1556,7 @@ describe("checkDeferMaintenance -- morale-below case", () => {
 		// 20 > 9 → safe to defer → survey instead
 		const ship = mockShip({
 			hostPlanetName: "Ceres",
-			commander: { judgment: 0.8, experience: 20 },
+			commander: { caution: 0.8, initiative: 0.8, experience: 20 },
 			crew: { count: 50, morale: 20, lastShoreLeave: 0, deploymentLimit: 180 },
 			commandTree: {
 				entries: [
@@ -1578,7 +1579,7 @@ describe("checkDeferMaintenance -- morale-below case", () => {
 		// 3 < 9 → too risky → take shore-leave
 		const ship = mockShip({
 			hostPlanetName: "Ceres",
-			commander: { judgment: 0.8, experience: 20 },
+			commander: { caution: 0.8, initiative: 0.8, experience: 20 },
 			crew: { count: 50, morale: 3, lastShoreLeave: 0, deploymentLimit: 180 },
 			commandTree: {
 				entries: [
@@ -1611,12 +1612,12 @@ describe("tickShipSimulation -- malfunction learning", () => {
 				maxSupplies: 100,
 				hullIntegrity: 1,
 			},
-			commander: { judgment: 0.3, experience: 0 },
+			commander: { caution: 0.3, initiative: 0.3, experience: 0 },
 		});
-		const judgmentBefore = ship.commander.judgment;
+		const judgmentBefore = ship.commander.caution;
 		tickShipSimulation(ship, 91, 2000);
 		// Malfunction fires with integrity=1 and high age → judgment should increase
-		expect(ship.commander.judgment).toBeGreaterThan(judgmentBefore);
+		expect(ship.commander.caution).toBeGreaterThan(judgmentBefore);
 	});
 });
 
@@ -1636,7 +1637,7 @@ describe("malfunction RNG diversity", () => {
 				overhaulsSinceRefit: 0,
 				overhaulsUntilRefit: 3,
 			},
-			commander: { judgment: 0.3, experience: 0 },
+			commander: { caution: 0.3, initiative: 0.3, experience: 0 },
 		});
 		alpha.data.name = "Alpha";
 		const beta = mockShip({
@@ -1651,7 +1652,7 @@ describe("malfunction RNG diversity", () => {
 				overhaulsSinceRefit: 0,
 				overhaulsUntilRefit: 3,
 			},
-			commander: { judgment: 0.3, experience: 0 },
+			commander: { caution: 0.3, initiative: 0.3, experience: 0 },
 		});
 		beta.data.name = "Beta";
 		tickShipSimulation(alpha, 31, 2000);
@@ -2209,28 +2210,115 @@ describe("getUnsurvevedMoonsOfHost -- sensor level filtering", () => {
 	});
 });
 
+describe("scored decisions", () => {
+	it("commanderDecide returns a result for a ship with a basic command tree", () => {
+		const ship = mockShip({
+			commander: { caution: 0.5, initiative: 0.7, experience: 10 },
+			commandTree: { entries: [mockEntry("1", "survey-nearest")] },
+		});
+		const result = commanderDecide(ship);
+		expect(result).toBeDefined();
+	});
+
+	it("higher-scored override wins over base command", () => {
+		// At colony, ship about to depart for survey with low morale — preemptive service fires
+		state.bodyMeshes = [];
+		state.colonies.set("Earth", {
+			bodyName: "Earth",
+			workforce: 1000,
+			population: 1000,
+			buildings: [],
+			researchAssigned: 0,
+		} as unknown as ColonyState);
+		const ship = mockShip({
+			hostPlanetName: "Earth",
+			commander: { caution: 0.9, initiative: 0.5, experience: 5 },
+			crew: { count: 50, morale: 30, lastShoreLeave: 0, deploymentLimit: 180 },
+			commandTree: {
+				entries: [
+					mockEntry("morale-check", "shore-leave", {
+						condition: { type: "morale-below", threshold: 40 },
+					}),
+					mockEntry("survey", "survey-nearest"),
+				],
+			},
+		});
+		const [result1, found1] = commanderDecide(ship);
+		expect(found1).toBe(true);
+		if (!result1) throw new Error("expected result");
+		// Preemptive service should fire: morale 30 < effective threshold with high caution
+		expect(result1.action).toBe("shore-leave");
+		state.colonies.delete("Earth");
+	});
+
+	it("tanker hold beats preemptive service (higher score)", () => {
+		// At colony with base command "survey", both overrides fire:
+		// - preemptive service fires (morale 55 < effective threshold ~58.5 with caution 0.9) at score 0.7
+		// - tanker hold fires (tanker is inbound) at score 0.85
+		// Tanker hold must win.
+		state.bodyMeshes = [];
+		state.colonies.set("Earth", {
+			bodyName: "Earth",
+			workforce: 1000,
+			population: 1000,
+			buildings: [],
+			researchAssigned: 0,
+		} as unknown as ColonyState);
+		state.shipIntents.clear();
+		invalidateIntentsCache();
+		publishIntent("ISS Tanker", { type: "tanking", target: "ISS Explorer", shipName: "ISS Tanker" });
+		invalidateIntentsCache();
+		// Command tree returns "survey" as base (morale condition does NOT fire at 55%)
+		// Preemptive service raises the morale threshold to ~58.5 so it fires at 55
+		const ship = mockShip({
+			data: { name: "ISS Explorer" } as ShipEntry["data"],
+			hostPlanetName: "Earth",
+			commander: { caution: 0.9, initiative: 0.5, experience: 5 },
+			crew: { count: 50, morale: 55, lastShoreLeave: 0, deploymentLimit: 180 },
+			commandTree: {
+				entries: [
+					// threshold 50 + (100-50)*0.9*0.3 = 50+13.5 = 63.5 effective → 55 < 63.5 → fires
+					mockEntry("morale-check", "shore-leave", {
+						condition: { type: "morale-below", threshold: 50 },
+					}),
+					mockEntry("survey", "survey-nearest"),
+				],
+			},
+		});
+		// Base result from tree: morale 55 < 50 is false → falls through to survey
+		const [result, found] = commanderDecide(ship);
+		expect(found).toBe(true);
+		if (!result) throw new Error("expected result");
+		// Tanker hold (score 0.85) beats preemptive service (score 0.7)
+		expect(result.action).toBe("idle");
+		state.colonies.delete("Earth");
+		state.shipIntents.clear();
+		invalidateIntentsCache();
+	});
+});
+
 describe("judgment decay", () => {
 	it("judgment drifts toward 0.5 on successful action completion", () => {
-		const ship = mockShip({ commander: { judgment: 0.8, experience: 0 } });
+		const ship = mockShip({ commander: { caution: 0.8, initiative: 0.8, experience: 0 } });
 		for (let i = 0; i < 10; i++) incrementExperience(ship);
-		expect(ship.commander.judgment).toBeLessThan(0.8);
-		expect(ship.commander.judgment).toBeGreaterThan(0.5);
+		expect(ship.commander.caution).toBeLessThan(0.8);
+		expect(ship.commander.caution).toBeGreaterThan(0.5);
 	});
 
 	it("judgment drifts up from low values", () => {
-		const ship = mockShip({ commander: { judgment: 0.2, experience: 0 } });
+		const ship = mockShip({ commander: { caution: 0.2, initiative: 0.2, experience: 0 } });
 		for (let i = 0; i < 10; i++) incrementExperience(ship);
-		expect(ship.commander.judgment).toBeGreaterThan(0.2);
-		expect(ship.commander.judgment).toBeLessThan(0.5);
+		expect(ship.commander.caution).toBeGreaterThan(0.2);
+		expect(ship.commander.caution).toBeLessThan(0.5);
 	});
 
 	it("malfunction spike overrides drift", () => {
-		const ship = mockShip({ commander: { judgment: 0.5, experience: 0 } });
+		const ship = mockShip({ commander: { caution: 0.5, initiative: 0.5, experience: 0 } });
 		learnFromMalfunction(ship);
-		const afterSpike = ship.commander.judgment;
+		const afterSpike = ship.commander.caution;
 		expect(afterSpike).toBeGreaterThan(0.5);
 		for (let i = 0; i < 5; i++) incrementExperience(ship);
-		expect(ship.commander.judgment).toBeLessThan(afterSpike);
-		expect(ship.commander.judgment).toBeGreaterThanOrEqual(0.5);
+		expect(ship.commander.caution).toBeLessThan(afterSpike);
+		expect(ship.commander.caution).toBeGreaterThanOrEqual(0.5);
 	});
 });

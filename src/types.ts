@@ -182,6 +182,7 @@ export type ShipIntent =
 export interface SurveyPlan {
 	targets: string[];
 	accelG: number;
+	returnFuelKg: number;
 }
 
 export interface SurveyCandidate {
@@ -201,7 +202,8 @@ export interface ShipCrew {
 }
 
 export interface Commander {
-	judgment: number;
+	caution: number;
+	initiative: number;
 	experience: number;
 }
 

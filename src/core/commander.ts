@@ -23,6 +23,11 @@ export function isAtColony(ship: ShipEntry): boolean {
 // --- Judgment constants ---
 
 const PREEMPTIVE_BUFFER = 0.3;
+
+/** Safety margin for fuel planning: low-caution commanders cut it close, high-caution want more buffer. */
+export function computeSafetyMargin(caution: number): number {
+	return 2.0 - caution * 0.7;
+}
 const MALFUNCTION_LEARNING_RATE = 0.08;
 const EMERGENCY_RETURN_LEARNING_RATE = 0.05;
 const JUDGMENT_CAP = 0.9;
@@ -77,6 +82,13 @@ function commandToResult(
 	}
 }
 
+// --- Scored decision system ---
+
+interface ScoredAction {
+	action: CommandResult;
+	score: number;
+}
+
 // --- Judgment overrides ---
 
 // "Service before departing colony" — raise maintenance thresholds when about to leave,
@@ -94,14 +106,14 @@ export function checkPreemptiveService(
 		return null;
 	}
 
-	const j = ship.commander.judgment;
+	const j = ship.commander.caution;
 
 	for (const entry of ship.commandTree.entries) {
 		if (!entry.enabled) continue;
 		const cond = entry.condition;
 		if (cond.type === "always") continue;
 
-		// Raise threshold based on commander judgment
+		// Raise threshold based on commander caution
 		let effective = cond.threshold + (100 - cond.threshold) * j * PREEMPTIVE_BUFFER;
 		// Cap hull threshold at hull ceiling — can't demand more than the ship can achieve
 		if (cond.type === "hull-below") {
@@ -175,8 +187,8 @@ function checkDeferMaintenance(
 	const maxLevel = resolveShipSensorLevel(ship);
 	if (!hasUnsurvedWorkAtHost(ship.hostPlanetName, maxLevel)) return null;
 
-	const j = ship.commander.judgment;
-	// Low-judgment commanders don't defer -- they follow orders literally
+	const j = ship.commander.initiative;
+	// Low-initiative commanders don't defer -- they follow orders literally
 	if (j < 0.2) return null;
 
 	for (const entry of ship.commandTree.entries) {
@@ -230,14 +242,13 @@ function checkDeferRefuel(ship: ShipEntry, pendingResult: CommandResult): Comman
 	if (ship.shipState !== "orbiting") return null;
 	if (hasColony(ship.hostPlanetName)) return null;
 
-	const j = ship.commander.judgment;
-	if (j < 0.2) return null;
+	if (ship.commander.initiative < 0.2) return null;
 
 	const returnCost = estimateReturnFuelKg(ship);
 	if (returnCost == null) return null;
 
-	// Safety margin: low-judgment commanders want 2x return fuel, high-judgment 1.3x
-	const margin = 2.0 - j * 0.7;
+	// Safety margin: low-caution commanders cut it close, high-caution want more buffer
+	const margin = computeSafetyMargin(ship.commander.caution);
 	const fuelNeeded = returnCost * margin;
 
 	if (ship.fuelKg <= fuelNeeded) return null; // genuinely need to head home
@@ -248,47 +259,81 @@ function checkDeferRefuel(ship: ShipEntry, pendingResult: CommandResult): Comman
 	return { action: "survey" };
 }
 
+// --- Score wrappers ---
+
+function scorePreemptiveService(ship: ShipEntry, base: CommandResult): ScoredAction | null {
+	const action = checkPreemptiveService(ship, base);
+	if (!action) return null;
+	return { action, score: 0.7 };
+}
+
+function scoreHoldForTanker(ship: ShipEntry, base: CommandResult): ScoredAction | null {
+	const action = checkHoldForTanker(ship, base);
+	if (!action) return null;
+	return { action, score: 0.85 };
+}
+
+function scoreDeferRefuel(ship: ShipEntry, base: CommandResult): ScoredAction | null {
+	const action = checkDeferRefuel(ship, base);
+	if (!action) return null;
+	const returnCost = estimateReturnFuelKg(ship);
+	if (returnCost == null || returnCost === 0) return { action, score: 0.6 };
+	const margin = computeSafetyMargin(ship.commander.caution);
+	const fuelMargin = ship.fuelKg / (returnCost * margin);
+	const score = 0.5 + 0.35 * Math.min(1, fuelMargin - 1);
+	return { action, score };
+}
+
+function scoreDeferMaintenance(ship: ShipEntry, base: CommandResult): ScoredAction | null {
+	const action = checkDeferMaintenance(ship, base);
+	if (!action) return null;
+	return { action, score: 0.6 };
+}
+
 // --- The single decision entry point ---
 
-// The commander evaluates standing orders, then applies judgment.
+// The commander evaluates standing orders, then applies judgment via a scored candidate system.
+// Each override returns a score (0–1); the highest score wins. Base command scores 0.5.
 // Returns the final decision for the crew to execute, or err() if nothing to do.
 export function commanderDecide(ship: ShipEntry): Result<CommandResult> {
 	const [result, found] = evaluateCommandTree(ship);
 	if (!found) return err();
 
-	// Judgment overrides applied in order:
-	// 1. Preemptive service at colony (top off before departing)
-	// 2. Hold for inbound tanker (don't leave if tanker is coming)
-	// 3. Defer refuel when fuel allows (keep surveying in the field)
-	// 4. Defer maintenance in the field (finish survey before heading home)
-	const decided =
-		checkPreemptiveService(ship, result) ??
-		checkHoldForTanker(ship, result) ??
-		checkDeferRefuel(ship, result) ??
-		checkDeferMaintenance(ship, result) ??
-		result;
+	const candidates: ScoredAction[] = [{ action: result, score: 0.5 }];
+
+	for (const scorer of [
+		scorePreemptiveService,
+		scoreHoldForTanker,
+		scoreDeferRefuel,
+		scoreDeferMaintenance,
+	]) {
+		const scored = scorer(ship, result);
+		if (scored) candidates.push(scored);
+	}
+
+	const best = candidates.reduce((a, b) => (a.score >= b.score ? a : b));
 
 	// Side-effect: create survey plan when departing colony for survey work
-	if (decided.action === "survey" && isAtColony(ship) && !ship.surveyPlan) {
+	if (best.action.action === "survey" && isAtColony(ship) && !ship.surveyPlan) {
 		ship.surveyPlan = computeSurveyPlan(ship);
 	}
 
-	return ok(decided);
+	return ok(best.action);
 }
 
 // --- Learning ---
 
 export function learnFromMalfunction(ship: ShipEntry): void {
-	ship.commander.judgment = Math.min(
+	ship.commander.caution = Math.min(
 		JUDGMENT_CAP,
-		ship.commander.judgment + MALFUNCTION_LEARNING_RATE * (1 - ship.commander.judgment),
+		ship.commander.caution + MALFUNCTION_LEARNING_RATE * (1 - ship.commander.caution),
 	);
 }
 
 export function learnFromEmergencyReturn(ship: ShipEntry): void {
-	ship.commander.judgment = Math.min(
+	ship.commander.caution = Math.min(
 		JUDGMENT_CAP,
-		ship.commander.judgment + EMERGENCY_RETURN_LEARNING_RATE * (1 - ship.commander.judgment),
+		ship.commander.caution + EMERGENCY_RETURN_LEARNING_RATE * (1 - ship.commander.caution),
 	);
 }
 
@@ -296,10 +341,9 @@ const JUDGMENT_DRIFT_RATE = 0.002;
 
 export function incrementExperience(ship: ShipEntry): void {
 	ship.commander.experience++;
-	const j = ship.commander.judgment;
-	if (j > 0.5) {
-		ship.commander.judgment = Math.max(0.5, j - JUDGMENT_DRIFT_RATE);
-	} else if (j < 0.5) {
-		ship.commander.judgment = Math.min(0.5, j + JUDGMENT_DRIFT_RATE);
+	for (const axis of ["caution", "initiative"] as const) {
+		const v = ship.commander[axis];
+		if (v > 0.5) ship.commander[axis] = Math.max(0.5, v - JUDGMENT_DRIFT_RATE);
+		else if (v < 0.5) ship.commander[axis] = Math.min(0.5, v + JUDGMENT_DRIFT_RATE);
 	}
 }

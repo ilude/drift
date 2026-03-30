@@ -3,6 +3,7 @@ import { AU_TO_KM, computeTotalFuelCost } from "../math/ship-physics";
 import type { ShipEntry, SurveyCandidate, SurveyPlan } from "../types";
 import { isSurveyable } from "../types";
 import { getNearestColonyForShip } from "./colonies";
+import { computeSafetyMargin } from "./commander";
 import { collectAsteroidCandidates, collectBodyCandidates } from "./commands";
 import { findBody } from "./entities";
 import { clearIntent, getClaimedTargets, publishIntent } from "./intents";
@@ -148,12 +149,93 @@ function simulateTour(
 	return { targets, totalDays: daysUsed };
 }
 
+/** Compute total tour distance for a sequence of candidate names. */
+function tourDistance(names: string[], candidates: SurveyCandidate[]): number {
+	const byName = new Map(candidates.map((c) => [c.name, c]));
+	let total = 0;
+	for (let i = 0; i + 1 < names.length; i++) {
+		const a = byName.get(names[i]);
+		const b = byName.get(names[i + 1]);
+		if (a && b) total += candidateDistKm(a.x, a.z, b.x, b.z);
+	}
+	return total;
+}
+
+/** 2-opt local search: try reversing each sub-segment and keep improvements. */
+function twoOptImprove(targets: string[], candidates: SurveyCandidate[]): string[] {
+	let best = targets.slice();
+	let improved = true;
+	while (improved) {
+		improved = false;
+		for (let i = 1; i < best.length - 1; i++) {
+			for (let j = i + 1; j < best.length; j++) {
+				const candidate = [
+					...best.slice(0, i),
+					...best.slice(i, j + 1).reverse(),
+					...best.slice(j + 1),
+				];
+				if (tourDistance(candidate, candidates) < tourDistance(best, candidates)) {
+					best = candidate;
+					improved = true;
+				}
+			}
+		}
+	}
+	return best;
+}
+
+/** Pick the best tour from candidates across throttle levels. */
+function selectBestTour(
+	tours: Array<{ tour: TourResult; accelG: number }>,
+): { targets: string[]; accelG: number } | null {
+	let bestTour: TourResult | null = null;
+	let bestAccelG = 0;
+	for (const { tour, accelG } of tours) {
+		if (
+			!bestTour ||
+			tour.targets.length > bestTour.targets.length ||
+			(tour.targets.length === bestTour.targets.length && tour.totalDays < bestTour.totalDays)
+		) {
+			bestTour = tour;
+			bestAccelG = accelG;
+		}
+	}
+	if (!bestTour) return null;
+	return { targets: bestTour.targets, accelG: bestAccelG };
+}
+
+/** Compute return fuel cost from the last plan target back to colony. */
+function computeReturnFuelKg(
+	targets: string[],
+	candidates: SurveyCandidate[],
+	colonyX: number,
+	colonyZ: number,
+	accelG: number,
+	physics: { ispS: number; dryMassKg: number; fuelCapacityKg: number; fuelMod: number },
+	opMult: number,
+): number {
+	if (targets.length === 0) return 0;
+	const lastTarget = candidates.find((c) => c.name === targets[targets.length - 1]);
+	if (!lastTarget) return 0;
+	const returnDist = candidateDistKm(lastTarget.x, lastTarget.z, colonyX, colonyZ);
+	const returnCost = computeTotalFuelCost(
+		returnDist,
+		accelG,
+		physics.ispS,
+		physics.dryMassKg,
+		physics.fuelCapacityKg,
+		opMult,
+		physics.fuelMod,
+	);
+	return returnCost.totalFuelKg;
+}
+
 /**
  * Compute a survey mission plan for a ship departing a colony.
  * Returns null if fewer than 2 candidates or commander judgment too low.
  */
 export function computeSurveyPlan(ship: ShipEntry): SurveyPlan | null {
-	if (ship.commander.judgment < 0.15) return null;
+	if (ship.commander.initiative < 0.15) return null;
 
 	const candidates = collectPlanCandidates(ship);
 	if (candidates.length < MIN_PLAN_TARGETS) return null;
@@ -170,53 +252,58 @@ export function computeSurveyPlan(ship: ShipEntry): SurveyPlan | null {
 
 	const physics = resolveShipPhysics(ship);
 	const opMult = state.fuelBurnMultiplier;
-	const j = ship.commander.judgment;
-
-	// Safety margin: high-judgment commanders cut it closer
-	const margin = 2.0 - j * 0.7; // 1.3x–2.0x
+	// Safety margin: cautious commanders want larger margins
+	const margin = computeSafetyMargin(ship.commander.caution); // 1.3x–2.0x
 
 	// Days budget: time until morale drops to threshold
 	const moraleThreshold = getMoraleThreshold(ship);
 	const daysSinceLeave = state.simTime.days - ship.crew.lastShoreLeave;
 	const daysBudget = estimateDaysBudget(daysSinceLeave, ship.crew.deploymentLimit, moraleThreshold);
 
-	let bestPlan: TourResult | null = null;
-	let bestAccelG = physics.accelG;
+	const physicsParams = {
+		ispS: physics.ispS,
+		dryMassKg: physics.dryMassKg,
+		fuelCapacityKg: ship.fuelCapacityKg,
+		fuelMod: physics.fuelMod,
+	};
 
-	for (const fraction of THROTTLE_LEVELS) {
+	const tours = THROTTLE_LEVELS.map((fraction) => {
 		const accelG = physics.accelG * fraction;
-		const tour = simulateTour(
-			candidates,
-			shipX,
-			shipZ,
-			colonyX,
-			colonyZ,
+		return {
+			tour: simulateTour(
+				candidates,
+				shipX,
+				shipZ,
+				colonyX,
+				colonyZ,
+				accelG,
+				ship.fuelKg / margin,
+				daysBudget,
+				physicsParams,
+				opMult,
+			),
 			accelG,
-			ship.fuelKg / margin,
-			daysBudget,
-			{
-				ispS: physics.ispS,
-				dryMassKg: physics.dryMassKg,
-				fuelCapacityKg: ship.fuelCapacityKg,
-				fuelMod: physics.fuelMod,
-			},
-			opMult,
-		);
-		if (!bestPlan || tour.targets.length > bestPlan.targets.length) {
-			bestPlan = tour;
-			bestAccelG = accelG;
-		} else if (
-			tour.targets.length === bestPlan.targets.length &&
-			tour.totalDays < bestPlan.totalDays
-		) {
-			bestPlan = tour;
-			bestAccelG = accelG;
-		}
+		};
+	});
+
+	const best = selectBestTour(tours);
+	if (!best || best.targets.length < MIN_PLAN_TARGETS) return null;
+
+	if (best.targets.length >= 4) {
+		best.targets = twoOptImprove(best.targets, candidates);
 	}
 
-	if (!bestPlan || bestPlan.targets.length < MIN_PLAN_TARGETS) return null;
+	const returnFuelKg = computeReturnFuelKg(
+		best.targets,
+		candidates,
+		colonyX,
+		colonyZ,
+		best.accelG,
+		physicsParams,
+		opMult,
+	);
 
-	const plan: SurveyPlan = { targets: bestPlan.targets, accelG: bestAccelG };
+	const plan: SurveyPlan = { targets: best.targets, accelG: best.accelG, returnFuelKg };
 
 	// Publish flight plan intent claiming only the next CLAIM_LOOKAHEAD targets
 	publishPlanClaims(ship.data.name, plan.targets);

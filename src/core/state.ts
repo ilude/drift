@@ -162,7 +162,13 @@ export function saveState(): void {
 		maintenance: { ...ship.maintenance },
 		commandTree: { entries: [...ship.commandTree.entries] },
 		...(ship.surveyPlan
-			? { surveyPlan: { targets: [...ship.surveyPlan.targets], accelG: ship.surveyPlan.accelG } }
+			? {
+					surveyPlan: {
+						targets: [...ship.surveyPlan.targets],
+						accelG: ship.surveyPlan.accelG,
+						returnFuelKg: ship.surveyPlan.returnFuelKg,
+					},
+				}
 			: {}),
 		...(ship.shipState === "transferring"
 			? {
@@ -298,7 +304,11 @@ function restoreShipFields(ship: ShipEntry, saved: SavedShipData): void {
 	}
 	if (saved.commandTree) ship.commandTree = saved.commandTree;
 	if (saved.commander) ship.commander = saved.commander;
-	ship.surveyPlan = saved.surveyPlan ?? null;
+	if (saved.surveyPlan) {
+		ship.surveyPlan = { ...saved.surveyPlan, returnFuelKg: saved.surveyPlan.returnFuelKg ?? 0 };
+	} else {
+		ship.surveyPlan = null;
+	}
 }
 
 function applySplineFields(ship: ShipEntry, saved: SavedShipData): void {
