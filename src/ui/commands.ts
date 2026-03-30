@@ -9,6 +9,7 @@ import {
 } from "../core/commands";
 import { findBody } from "../core/entities";
 import { state } from "../core/state";
+import { RESOURCES } from "../data/resources";
 import {
 	brachistochroneDeltaV,
 	brachistochroneTime,
@@ -16,7 +17,14 @@ import {
 	G_ACCEL,
 } from "../math/ship-physics";
 import { initiateTransfer } from "../rendering/rendering";
-import type { CommandCondition, CommandEntry, CommandType, ShipEntry } from "../types";
+import type {
+	CommandCondition,
+	CommandEntry,
+	CommandType,
+	MissionStep,
+	MissionStepType,
+	ShipEntry,
+} from "../types";
 import { isShipEntry } from "../types";
 
 const COMMAND_NAMES: Record<CommandType, string> = {
@@ -245,6 +253,9 @@ export function renderCommandTree(ship: ShipEntry, container: HTMLElement): void
 	});
 
 	container.appendChild(addBtn);
+
+	// Mission Orders section
+	renderMissionOrders(ship, container);
 }
 
 function buildRow(
@@ -468,4 +479,320 @@ function buildPresetList(ship: ShipEntry, container: HTMLElement): HTMLDivElemen
 	}
 
 	return list;
+}
+
+// --- Mission Orders UI ---
+
+const MISSION_STEP_LABELS: Record<MissionStepType, string> = {
+	"transfer-to": "Transfer",
+	"load-cargo": "Load",
+	"unload-cargo": "Unload",
+	repeat: "Repeat",
+};
+
+function missionStepId(): string {
+	return `mstep-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+}
+
+function formatMissionStep(step: MissionStep): string {
+	const label = MISSION_STEP_LABELS[step.type];
+	switch (step.type) {
+		case "transfer-to":
+			return `${label} \u2192 ${step.target ?? "?"}`;
+		case "load-cargo":
+		case "unload-cargo": {
+			const qty = step.quantity != null && step.quantity > 0 ? ` \u00d7${step.quantity}` : "";
+			return `${label} ${step.itemId ?? "?"}${qty}`;
+		}
+		case "repeat":
+			return `${label} \u21ba`;
+	}
+}
+
+function buildMissionTransferPicker(
+	ship: ShipEntry,
+	container: HTMLElement,
+	wrapper: HTMLElement,
+): void {
+	const dropdown = document.createElement("div");
+	dropdown.className = "cmd-preset-list";
+
+	const showCategories = () => {
+		dropdown.innerHTML = "";
+		for (const cat of TRANSFER_CATEGORIES) {
+			const count = state.bodyMeshes.filter((e) => e.data.type === cat.type).length;
+			if (count === 0) continue;
+			const item = document.createElement("div");
+			item.className = "cmd-preset-item";
+			item.textContent = `${cat.label} (${count}) \u25b8`;
+			item.addEventListener("click", () => showBodies(cat.type));
+			dropdown.appendChild(item);
+		}
+	};
+
+	const showBodies = (categoryType: string) => {
+		dropdown.innerHTML = "";
+		const backItem = document.createElement("div");
+		backItem.className = "cmd-preset-item";
+		backItem.textContent = "\u25c2 Back";
+		backItem.addEventListener("click", showCategories);
+		dropdown.appendChild(backItem);
+
+		const destinations = state.bodyMeshes.filter((e) => e.data.type === categoryType);
+		for (const dest of destinations) {
+			const item = document.createElement("div");
+			item.className = "cmd-preset-item";
+			item.textContent = dest.data.name;
+			item.addEventListener("click", () => {
+				ship.missionOrders.push({
+					id: missionStepId(),
+					type: "transfer-to",
+					target: dest.data.name,
+				});
+				ship.missionOrderIndex = 0;
+				dropdown.remove();
+				renderMissionOrders(ship, container);
+			});
+			dropdown.appendChild(item);
+		}
+	};
+
+	showCategories();
+	wrapper.appendChild(dropdown);
+}
+
+function buildItemPicker(
+	ship: ShipEntry,
+	container: HTMLElement,
+	wrapper: HTMLElement,
+	stepType: "load-cargo" | "unload-cargo",
+): void {
+	const dropdown = document.createElement("div");
+	dropdown.className = "cmd-preset-list";
+	dropdown.style.maxHeight = "200px";
+	dropdown.style.overflowY = "auto";
+
+	for (const res of RESOURCES) {
+		const item = document.createElement("div");
+		item.className = "cmd-preset-item";
+		item.textContent = `${res.symbol} ${res.name}`;
+		item.addEventListener("click", () => {
+			ship.missionOrders.push({
+				id: missionStepId(),
+				type: stepType,
+				itemId: res.id,
+			});
+			ship.missionOrderIndex = 0;
+			dropdown.remove();
+			renderMissionOrders(ship, container);
+		});
+		dropdown.appendChild(item);
+	}
+
+	wrapper.appendChild(dropdown);
+}
+
+function buildMissionStepRow(
+	ship: ShipEntry,
+	container: HTMLElement,
+	index: number,
+): HTMLDivElement {
+	const step = ship.missionOrders[index];
+	const row = document.createElement("div");
+	row.className = "cmd-row";
+	if (index === ship.missionOrderIndex) {
+		row.style.borderLeft = "2px solid #4a8a4a";
+		row.style.paddingLeft = "4px";
+	}
+
+	const upBtn = document.createElement("button");
+	upBtn.type = "button";
+	upBtn.className = "cmd-btn";
+	upBtn.textContent = "\u25b2";
+	upBtn.disabled = index === 0;
+	upBtn.addEventListener("click", () => {
+		const arr = ship.missionOrders;
+		[arr[index - 1], arr[index]] = [arr[index], arr[index - 1]];
+		ship.missionOrderIndex = 0;
+		renderMissionOrders(ship, container);
+	});
+
+	const downBtn = document.createElement("button");
+	downBtn.type = "button";
+	downBtn.className = "cmd-btn";
+	downBtn.textContent = "\u25bc";
+	downBtn.disabled = index === ship.missionOrders.length - 1;
+	downBtn.addEventListener("click", () => {
+		const arr = ship.missionOrders;
+		[arr[index], arr[index + 1]] = [arr[index + 1], arr[index]];
+		ship.missionOrderIndex = 0;
+		renderMissionOrders(ship, container);
+	});
+
+	const indexSpan = document.createElement("span");
+	indexSpan.style.color = index === ship.missionOrderIndex ? "#4a8a4a" : "#555";
+	indexSpan.style.fontSize = "9px";
+	indexSpan.style.minWidth = "14px";
+	indexSpan.textContent = `${index + 1}.`;
+
+	const labelSpan = document.createElement("span");
+	labelSpan.className = "cmd-command";
+	labelSpan.textContent = formatMissionStep(step);
+
+	const spacer = document.createElement("span");
+	spacer.style.flex = "1";
+
+	const removeBtn = document.createElement("button");
+	removeBtn.type = "button";
+	removeBtn.className = "cmd-btn";
+	removeBtn.textContent = "\u2715";
+	removeBtn.title = "Remove";
+	removeBtn.addEventListener("click", () => {
+		ship.missionOrders.splice(index, 1);
+		ship.missionOrderIndex = 0;
+		renderMissionOrders(ship, container);
+	});
+
+	row.appendChild(upBtn);
+	row.appendChild(downBtn);
+	row.appendChild(indexSpan);
+	row.appendChild(labelSpan);
+	row.appendChild(spacer);
+	row.appendChild(removeBtn);
+
+	return row;
+}
+
+function renderMissionOrders(ship: ShipEntry, container: HTMLElement): void {
+	let section = container.querySelector(".mission-orders-section") as HTMLElement | null;
+	if (section) section.remove();
+
+	section = document.createElement("div");
+	section.className = "mission-orders-section";
+
+	const heading = document.createElement("div");
+	heading.className = "cmd-heading";
+	heading.textContent = "Mission Orders";
+	section.appendChild(heading);
+
+	// Add Step + Clear All buttons
+	const btnRow = document.createElement("div");
+	btnRow.style.display = "flex";
+	btnRow.style.gap = "4px";
+	btnRow.style.marginBottom = "4px";
+
+	const addWrapper = document.createElement("div");
+	addWrapper.style.position = "relative";
+
+	const addBtn = document.createElement("button");
+	addBtn.type = "button";
+	addBtn.className = "cmd-add-btn";
+	addBtn.textContent = "+ Add Step \u25be";
+
+	let addDropdown: HTMLDivElement | null = null;
+
+	addBtn.addEventListener("click", () => {
+		if (addDropdown) {
+			addDropdown.remove();
+			addDropdown = null;
+			return;
+		}
+
+		addDropdown = document.createElement("div");
+		addDropdown.className = "cmd-preset-list";
+
+		const transferItem = document.createElement("div");
+		transferItem.className = "cmd-preset-item";
+		transferItem.textContent = "Transfer to... \u25b8";
+		transferItem.addEventListener("click", () => {
+			if (addDropdown) {
+				addDropdown.remove();
+				addDropdown = null;
+			}
+			buildMissionTransferPicker(ship, container, addWrapper);
+		});
+		addDropdown.appendChild(transferItem);
+
+		const loadItem = document.createElement("div");
+		loadItem.className = "cmd-preset-item";
+		loadItem.textContent = "Load cargo...";
+		loadItem.addEventListener("click", () => {
+			if (addDropdown) {
+				addDropdown.remove();
+				addDropdown = null;
+			}
+			buildItemPicker(ship, container, addWrapper, "load-cargo");
+		});
+		addDropdown.appendChild(loadItem);
+
+		const unloadItem = document.createElement("div");
+		unloadItem.className = "cmd-preset-item";
+		unloadItem.textContent = "Unload cargo...";
+		unloadItem.addEventListener("click", () => {
+			if (addDropdown) {
+				addDropdown.remove();
+				addDropdown = null;
+			}
+			buildItemPicker(ship, container, addWrapper, "unload-cargo");
+		});
+		addDropdown.appendChild(unloadItem);
+
+		const repeatItem = document.createElement("div");
+		repeatItem.className = "cmd-preset-item";
+		repeatItem.textContent = "Repeat \u21ba";
+		repeatItem.addEventListener("click", () => {
+			ship.missionOrders.push({ id: missionStepId(), type: "repeat" });
+			ship.missionOrderIndex = 0;
+			if (addDropdown) {
+				addDropdown.remove();
+				addDropdown = null;
+			}
+			renderMissionOrders(ship, container);
+		});
+		addDropdown.appendChild(repeatItem);
+
+		addWrapper.appendChild(addDropdown);
+	});
+
+	addWrapper.appendChild(addBtn);
+	btnRow.appendChild(addWrapper);
+
+	if (ship.missionOrders.length > 0) {
+		const clearBtn = document.createElement("button");
+		clearBtn.type = "button";
+		clearBtn.className = "cmd-add-btn";
+		clearBtn.textContent = "Clear All";
+		clearBtn.addEventListener("click", () => {
+			ship.missionOrders = [];
+			ship.missionOrderIndex = 0;
+			renderMissionOrders(ship, container);
+		});
+		btnRow.appendChild(clearBtn);
+	}
+
+	section.appendChild(btnRow);
+
+	// Step list
+	if (ship.missionOrders.length > 0) {
+		const list = document.createElement("div");
+		list.className = "cmd-tree";
+		for (let i = 0; i < ship.missionOrders.length; i++) {
+			list.appendChild(buildMissionStepRow(ship, container, i));
+		}
+		section.appendChild(list);
+	}
+
+	// Cargo hold contents
+	const holdEntries = Object.entries(ship.cargoHold).filter(([, qty]) => qty > 0);
+	if (holdEntries.length > 0) {
+		const cargoDiv = document.createElement("div");
+		cargoDiv.style.fontSize = "10px";
+		cargoDiv.style.color = "#888";
+		cargoDiv.style.marginTop = "4px";
+		const items = holdEntries.map(([id, qty]) => `${id} \u00d7${qty}`).join(", ");
+		cargoDiv.textContent = `Cargo: ${items}`;
+		section.appendChild(cargoDiv);
+	}
+
+	container.appendChild(section);
 }

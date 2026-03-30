@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { getCargoWeightKg } from "../core/cargo";
 import { computeColonyWorkforce, getColony } from "../core/colonies";
 import { hullCeiling } from "../core/commands";
 import { findShip, findStar } from "../core/entities";
@@ -141,6 +142,14 @@ function buildPinnedBodyHTML(entry: ShipEntry): string {
 	const moraleColor = morale > 70 ? "#4a6a4a" : morale > 40 ? "#aaaa44" : "#aa4444";
 	const hullColor = hullCurrent > 70 ? "#4a6a4a" : hullCurrent > 40 ? "#aaaa44" : "#aa4444";
 	const duration = formatShipDuration(entry);
+	const holdEntries = Object.entries(entry.cargoHold).filter(([, qty]) => qty > 0);
+	let cargoRow: [string, string][] = [];
+	if (holdEntries.length > 0) {
+		const items = holdEntries.map(([id, qty]) => `${id} \u00d7${qty}`).join(", ");
+		const weightKg = getCargoWeightKg(entry);
+		cargoRow = [["Cargo", `${items} (${weightKg.toLocaleString()} kg)`]];
+	}
+
 	const rows: [string, string][] = [
 		["Action", formatShipAction(entry)],
 		...(duration ? ([["Duration", duration]] as [string, string][]) : []),
@@ -148,6 +157,7 @@ function buildPinnedBodyHTML(entry: ShipEntry): string {
 		["Hull", `<span style="color:${hullColor}">${hullText}</span>`],
 		["Morale", `<span style="color:${moraleColor}">${morale}%</span>`],
 		["Supplies", `${Math.round(entry.maintenance.supplies)}/${entry.maintenance.maxSupplies}`],
+		...cargoRow,
 	];
 	return rows
 		.map(

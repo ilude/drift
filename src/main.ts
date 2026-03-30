@@ -177,6 +177,7 @@ function seedDefaultDesigns(): void {
 		{ componentId: "bridge-standard", count: 1 },
 		{ componentId: "crew-small", count: 1 },
 		{ componentId: "fuel-standard", count: 3 },
+		{ componentId: "cargo-standard", count: 2 },
 		{ componentId: "maint-basic", count: 1 },
 	];
 	const tankerStats = computeShipStats(defaultEngine, 1, tankerComponents);

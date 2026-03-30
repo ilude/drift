@@ -57,6 +57,9 @@ function mockColony(bodyName: string, overrides: Partial<ColonyState> = {}): Col
 			academy: 0,
 			storage: 0,
 			shipyard: 0,
+			automatedMine: 0,
+			massDriver: 0,
+			fuelRefinery: 0,
 		},
 		stockpile: {
 			fuelKg: 100000,
@@ -64,6 +67,8 @@ function mockColony(bodyName: string, overrides: Partial<ColonyState> = {}): Col
 			resources: {},
 			flatPacked: {},
 		},
+		massDriverTarget: null,
+		academyProgress: 0,
 		researchPoints: 0,
 		constructionProjects: [],
 		productionProjects: [],
@@ -426,6 +431,186 @@ describe("mission order flow", () => {
 			missionOrderIndex: 0,
 		});
 		expect(hasMissionOrders(ship)).toBe(true);
+	});
+});
+
+describe("edge cases", () => {
+	beforeEach(() => {
+		state.colonies.clear();
+		state.shipDesigns.clear();
+		state.shipDesigns.set("test-design", { id: "test-design", cargoCapacityKg: 10000 } as ShipDesign);
+	});
+
+	it("load step with zero quantity loads everything available", () => {
+		const colony = mockColony("Earth", {
+			stockpile: { fuelKg: 0, supplies: 0, resources: { iron: 300 }, flatPacked: {} },
+		});
+		state.colonies.set("Earth", colony);
+
+		const ship = mockShip({
+			missionOrders: [step("load-cargo", { itemId: "iron", quantity: 0 })],
+			missionOrderIndex: 0,
+		});
+
+		tickMissionOrders(ship, 1);
+
+		// quantity=0 treated same as unset — loads all available
+		expect(ship.cargoHold.iron).toBe(300);
+	});
+
+	it("load step does nothing when colony has no stock", () => {
+		const colony = mockColony("Earth", {
+			stockpile: { fuelKg: 0, supplies: 0, resources: {}, flatPacked: {} },
+		});
+		state.colonies.set("Earth", colony);
+
+		const ship = mockShip({
+			missionOrders: [step("load-cargo", { itemId: "iron" })],
+			missionOrderIndex: 0,
+		});
+
+		tickMissionOrders(ship, 1);
+
+		// Colony has 0 iron — step advances (colony empty counts as done)
+		expect(ship.cargoHold.iron).toBeUndefined();
+		expect(ship.missionOrderIndex).toBe(1);
+	});
+
+	it("load step with no itemId advances immediately", () => {
+		state.colonies.set("Earth", mockColony("Earth"));
+
+		const ship = mockShip({
+			missionOrders: [step("load-cargo"), step("repeat")],
+			missionOrderIndex: 0,
+		});
+
+		tickMissionOrders(ship, 1);
+		expect(ship.missionOrderIndex).toBe(1);
+	});
+
+	it("unload step with no itemId advances immediately", () => {
+		state.colonies.set("Earth", mockColony("Earth"));
+
+		const ship = mockShip({
+			cargoHold: { iron: 100 },
+			missionOrders: [step("unload-cargo"), step("repeat")],
+			missionOrderIndex: 0,
+		});
+
+		tickMissionOrders(ship, 1);
+		expect(ship.missionOrderIndex).toBe(1);
+	});
+
+	it("unload step does nothing when not orbiting", () => {
+		state.colonies.set("Earth", mockColony("Earth"));
+
+		const ship = mockShip({
+			shipState: "transferring",
+			cargoHold: { iron: 500 },
+			missionOrders: [step("unload-cargo", { itemId: "iron" })],
+			missionOrderIndex: 0,
+		} as Partial<ShipEntry>);
+
+		tickMissionOrders(ship, 1);
+
+		expect(ship.cargoHold.iron).toBe(500);
+		expect(ship.missionOrderIndex).toBe(0);
+	});
+
+	it("unload step does nothing when no colony at location", () => {
+		// No colony set for Earth
+		const ship = mockShip({
+			cargoHold: { iron: 500 },
+			missionOrders: [step("unload-cargo", { itemId: "iron" })],
+			missionOrderIndex: 0,
+		});
+
+		tickMissionOrders(ship, 1);
+
+		expect(ship.cargoHold.iron).toBe(500);
+		expect(ship.missionOrderIndex).toBe(0);
+	});
+
+	it("advanceMissionTransferStep does nothing when no orders", () => {
+		const ship = mockShip();
+		advanceMissionTransferStep(ship);
+		expect(ship.missionOrderIndex).toBe(0);
+	});
+
+	it("advanceMissionTransferStep does nothing when past end", () => {
+		const ship = mockShip({
+			missionOrders: [step("transfer-to", { target: "Mars" })],
+			missionOrderIndex: 1,
+		});
+		advanceMissionTransferStep(ship);
+		expect(ship.missionOrderIndex).toBe(1);
+	});
+
+	it("getMissionTransferTarget returns null when no orders", () => {
+		const ship = mockShip();
+		expect(getMissionTransferTarget(ship)).toBeNull();
+	});
+
+	it("getMissionTransferTarget returns null when step is not transfer-to", () => {
+		const ship = mockShip({
+			missionOrders: [step("load-cargo", { itemId: "iron" })],
+			missionOrderIndex: 0,
+		});
+		expect(getMissionTransferTarget(ship)).toBeNull();
+	});
+
+	it("getMissionTransferTarget returns null when transfer-to has no target", () => {
+		const ship = mockShip({
+			missionOrders: [step("transfer-to")],
+			missionOrderIndex: 0,
+		});
+		expect(getMissionTransferTarget(ship)).toBeNull();
+	});
+
+	it("tickMissionOrders is a no-op when past end of orders", () => {
+		const ship = mockShip({
+			missionOrders: [step("transfer-to", { target: "Mars" })],
+			missionOrderIndex: 5,
+		});
+		tickMissionOrders(ship, 1);
+		expect(ship.missionOrderIndex).toBe(5);
+	});
+
+	it("unload specific quantity then advance", () => {
+		const colony = mockColony("Earth", {
+			stockpile: { fuelKg: 0, supplies: 0, resources: { iron: 0 }, flatPacked: {} },
+		});
+		state.colonies.set("Earth", colony);
+
+		const ship = mockShip({
+			cargoHold: { iron: 5000 },
+			missionOrders: [step("unload-cargo", { itemId: "iron", quantity: 200 })],
+			missionOrderIndex: 0,
+		});
+
+		tickMissionOrders(ship, 1);
+
+		// Wanted to unload 200, rate allows 1000
+		expect(ship.cargoHold.iron).toBe(4800);
+		expect(colony.stockpile.resources.iron).toBe(200);
+		expect(ship.missionOrderIndex).toBe(1);
+	});
+
+	it("small simDt transfers fewer units per rate", () => {
+		const colony = mockColony("Earth", {
+			stockpile: { fuelKg: 0, supplies: 0, resources: { iron: 5000 }, flatPacked: {} },
+		});
+		state.colonies.set("Earth", colony);
+
+		const ship = mockShip({
+			missionOrders: [step("load-cargo", { itemId: "iron" })],
+			missionOrderIndex: 0,
+		});
+
+		// 0.5 sim-day at 1000 kg/day = 500 units
+		tickMissionOrders(ship, 0.5);
+
+		expect(ship.cargoHold.iron).toBe(500);
 	});
 });
 
