@@ -301,6 +301,23 @@ describe("computeTotalFuelCost", () => {
 		// Op burn should be ~10% of capacity, not 100%
 		expect(cost.opBurnKg / 50_000).toBeCloseTo(0.1, 1);
 	});
+
+	it("high-G transfer has higher op burn per day than low-G", () => {
+		const dist = 1.0 * AU_TO_KM;
+		const highG = computeTotalFuelCost(dist, 10, 1_000_000, 5_000, 50_000);
+		const lowG = computeTotalFuelCost(dist, 0.1, 1_000_000, 5_000, 50_000);
+		// Per-day op burn rate should be higher at 10G due to acceleration stress
+		const highGPerDay = highG.opBurnKg / highG.transferDays;
+		const lowGPerDay = lowG.opBurnKg / lowG.transferDays;
+		expect(highGPerDay).toBeGreaterThan(lowGPerDay);
+	});
+
+	it("acceleration stress is 1.0 at 0.1G", () => {
+		const dist = 1.0 * AU_TO_KM;
+		const cost = computeTotalFuelCost(dist, 0.1, 1_000_000, 5_000, 50_000);
+		const expectedOp = OP_BURN_RATE * 50_000 * cost.transferDays;
+		expect(cost.opBurnKg).toBeCloseTo(expectedOp, 4);
+	});
 });
 
 describe("findAffordableAccelG", () => {

@@ -176,7 +176,9 @@ export function computeTotalFuelCost(
 	const veKmS = exhaustVelocity(ispS) / 1000;
 	const rocketFuelKg = fuelRequired(veKmS, dryMassKg, dvKmS) * fuelMod;
 	const transferDays = brachistochroneTimeKm(distKm, accelMS2);
-	const opBurnKg = (OP_BURN_RATE * fuelCapacityKg * transferDays) / Math.max(0.01, opBurnMultiplier);
+	const accelStress = 1 + Math.max(0, Math.log10(accelG)) * 0.15;
+	const opBurnKg =
+		(OP_BURN_RATE * fuelCapacityKg * transferDays * accelStress) / Math.max(0.01, opBurnMultiplier);
 	return {
 		rocketFuelKg,
 		opBurnKg,

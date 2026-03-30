@@ -2208,3 +2208,29 @@ describe("getUnsurvevedMoonsOfHost -- sensor level filtering", () => {
 		expect((moons[0] as unknown as { data: { name: string } }).data.name).toBe("Luna");
 	});
 });
+
+describe("judgment decay", () => {
+	it("judgment drifts toward 0.5 on successful action completion", () => {
+		const ship = mockShip({ commander: { judgment: 0.8, experience: 0 } });
+		for (let i = 0; i < 10; i++) incrementExperience(ship);
+		expect(ship.commander.judgment).toBeLessThan(0.8);
+		expect(ship.commander.judgment).toBeGreaterThan(0.5);
+	});
+
+	it("judgment drifts up from low values", () => {
+		const ship = mockShip({ commander: { judgment: 0.2, experience: 0 } });
+		for (let i = 0; i < 10; i++) incrementExperience(ship);
+		expect(ship.commander.judgment).toBeGreaterThan(0.2);
+		expect(ship.commander.judgment).toBeLessThan(0.5);
+	});
+
+	it("malfunction spike overrides drift", () => {
+		const ship = mockShip({ commander: { judgment: 0.5, experience: 0 } });
+		learnFromMalfunction(ship);
+		const afterSpike = ship.commander.judgment;
+		expect(afterSpike).toBeGreaterThan(0.5);
+		for (let i = 0; i < 5; i++) incrementExperience(ship);
+		expect(ship.commander.judgment).toBeLessThan(afterSpike);
+		expect(ship.commander.judgment).toBeGreaterThanOrEqual(0.5);
+	});
+});

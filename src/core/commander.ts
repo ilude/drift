@@ -292,6 +292,14 @@ export function learnFromEmergencyReturn(ship: ShipEntry): void {
 	);
 }
 
+const JUDGMENT_DRIFT_RATE = 0.002;
+
 export function incrementExperience(ship: ShipEntry): void {
 	ship.commander.experience++;
+	const j = ship.commander.judgment;
+	if (j > 0.5) {
+		ship.commander.judgment = Math.max(0.5, j - JUDGMENT_DRIFT_RATE);
+	} else if (j < 0.5) {
+		ship.commander.judgment = Math.min(0.5, j + JUDGMENT_DRIFT_RATE);
+	}
 }

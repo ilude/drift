@@ -246,6 +246,84 @@ describe("advanceSurveyPlan", () => {
 	});
 });
 
+describe("progressive intent claiming", () => {
+	beforeEach(() => {
+		state.colonies = new Map();
+		state.colonies.set("Earth", { bodyName: "Earth" } as never);
+	});
+
+	it("computeSurveyPlan claims at most 3 targets in intent", () => {
+		const earth = mockBody("Earth", 200, 0, true);
+		// Create enough nearby targets to get a plan with 4+ targets
+		const bodies = [earth];
+		for (let i = 0; i < 8; i++) {
+			bodies.push(mockBody(`T${i}`, 205 + i * 5, 0));
+		}
+		const ship = mockShip("Explorer", 200, 0, { fuelKg: 50_000 });
+		setupSystem(bodies, [ship]);
+
+		const plan = computeSurveyPlan(ship);
+		if (!plan) throw new Error("expected plan");
+		expect(plan.targets.length).toBeGreaterThan(3);
+
+		const intent = state.shipIntents.get("Explorer");
+		expect(intent).toBeDefined();
+		if (intent?.type === "survey-plan") {
+			expect(intent.targets.length).toBeLessThanOrEqual(3);
+		}
+	});
+
+	it("advanceSurveyPlan shifts claim window", () => {
+		const earth = mockBody("Earth", 200, 0, true);
+		const t1 = mockBody("A", 210, 0);
+		const t2 = mockBody("B", 215, 0);
+		const t3 = mockBody("C", 220, 0);
+		const t4 = mockBody("D", 225, 0);
+		const ship = mockShip("Explorer", 200, 0);
+		setupSystem([earth, t1, t2, t3, t4], [ship]);
+		ship.surveyPlan = { targets: ["A", "B", "C", "D"], accelG: 0.1 };
+		publishIntent("Explorer", {
+			type: "survey-plan",
+			targets: ["A", "B", "C"],
+			shipName: "Explorer",
+		});
+
+		advanceSurveyPlan(ship);
+		const intent = state.shipIntents.get("Explorer");
+		if (intent?.type === "survey-plan") {
+			expect(intent.targets).toEqual(["B", "C", "D"]);
+		}
+	});
+});
+
+describe("survey plan re-planning", () => {
+	beforeEach(() => {
+		state.colonies = new Map();
+		state.colonies.set("Earth", { bodyName: "Earth" } as never);
+	});
+
+	it("recomputes plan when all targets consumed but unsurveyed bodies remain", () => {
+		const earth = mockBody("Earth", 200, 0, true);
+		const done1 = mockBody("Done1", 210, 0, true);
+		const done2 = mockBody("Done2", 215, 0, true);
+		const fresh1 = mockBody("Fresh1", 220, 0);
+		const fresh2 = mockBody("Fresh2", 225, 0);
+		const fresh3 = mockBody("Fresh3", 230, 0);
+		const ship = mockShip("Explorer", 200, 0, { fuelKg: 50_000 });
+		setupSystem([earth, done1, done2, fresh1, fresh2, fresh3], [ship]);
+		ship.surveyPlan = { targets: ["Done1", "Done2"], accelG: 0.1 };
+
+		const target = advanceSurveyPlan(ship);
+		// Old plan's targets are all surveyed, but new targets exist
+		// Should recompute and return a fresh target
+		expect(target).not.toBeNull();
+		expect(ship.surveyPlan).not.toBeNull();
+		if (ship.surveyPlan) {
+			expect(ship.surveyPlan.targets.length).toBeGreaterThan(0);
+		}
+	});
+});
+
 describe("clearSurveyPlan", () => {
 	it("sets surveyPlan to null", () => {
 		const ship = mockShip("Explorer", 200, 0);

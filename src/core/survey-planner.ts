@@ -12,6 +12,20 @@ import { state } from "./state";
 const AVG_SURVEY_DAYS = 10;
 const THROTTLE_LEVELS = [1.0, 0.5, 0.25];
 const MIN_PLAN_TARGETS = 2;
+const CLAIM_LOOKAHEAD = 3;
+
+/** Publish intent claiming only the next CLAIM_LOOKAHEAD targets from the plan. */
+function publishPlanClaims(shipName: string, targets: string[]): void {
+	if (targets.length === 0) {
+		clearIntent(shipName);
+		return;
+	}
+	publishIntent(shipName, {
+		type: "survey-plan",
+		targets: targets.slice(0, CLAIM_LOOKAHEAD),
+		shipName,
+	});
+}
 
 /** Convert world-space position to AU distance from star. */
 function worldToAU(x: number, z: number): number {
@@ -204,12 +218,8 @@ export function computeSurveyPlan(ship: ShipEntry): SurveyPlan | null {
 
 	const plan: SurveyPlan = { targets: bestPlan.targets, accelG: bestAccelG };
 
-	// Publish flight plan intent to claim all targets
-	publishIntent(ship.data.name, {
-		type: "survey-plan",
-		targets: [...plan.targets],
-		shipName: ship.data.name,
-	});
+	// Publish flight plan intent claiming only the next CLAIM_LOOKAHEAD targets
+	publishPlanClaims(ship.data.name, plan.targets);
 
 	return plan;
 }
@@ -249,17 +259,22 @@ export function advanceSurveyPlan(ship: ShipEntry): string | null {
 		// Skip if claimed by another ship
 		if (claimed.has(target)) continue;
 
-		// Update the flight plan intent with remaining targets
-		publishIntent(ship.data.name, {
-			type: "survey-plan",
-			targets: [...ship.surveyPlan.targets],
-			shipName: ship.data.name,
-		});
+		// Update the flight plan intent with remaining targets (lookahead window)
+		publishPlanClaims(ship.data.name, ship.surveyPlan.targets);
 		return target;
 	}
 
-	// Plan exhausted
+	// Plan exhausted — try recomputing from current position
 	ship.surveyPlan = null;
+	const newPlan = computeSurveyPlan(ship);
+	if (newPlan && newPlan.targets.length > 0) {
+		ship.surveyPlan = newPlan;
+		const target = ship.surveyPlan.targets.shift();
+		if (target) {
+			publishPlanClaims(ship.data.name, ship.surveyPlan.targets);
+			return target;
+		}
+	}
 	return null;
 }
 
