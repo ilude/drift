@@ -12,6 +12,7 @@ import type {
 	CommandType,
 	Result,
 	ShipEntry,
+	SurveyCandidate,
 } from "../types";
 import { isShipEntry, isSurveyable } from "../types";
 import {
@@ -503,13 +504,6 @@ export function invalidateSurveyTargetCache(): void {
 
 export function invalidateRefuelTargetCache(): void {
 	_refuelTargetCache.clear();
-}
-
-export interface SurveyCandidate {
-	name: string;
-	distSq: number;
-	x: number;
-	z: number;
 }
 
 export function collectBodyCandidates(

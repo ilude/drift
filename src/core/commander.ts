@@ -14,6 +14,7 @@ import { isTankerInboundFor } from "./intents";
 import { err, ok } from "./result";
 import { resolveShipPhysics } from "./ship-utils";
 import { state } from "./state";
+import { computeSurveyPlan } from "./survey-planner";
 
 export function isAtColony(ship: ShipEntry): boolean {
 	return ship.shipState === "orbiting" && hasColony(ship.hostPlanetName);
@@ -262,6 +263,12 @@ export function commanderDecide(ship: ShipEntry): Result<CommandResult> {
 		checkDeferRefuel(ship, result) ??
 		checkDeferMaintenance(ship, result) ??
 		result;
+
+	// Side-effect: create survey plan when departing colony for survey work
+	if (decided.action === "survey" && isAtColony(ship) && !ship.surveyPlan) {
+		ship.surveyPlan = computeSurveyPlan(ship);
+	}
+
 	return ok(decided);
 }
 

@@ -184,6 +184,13 @@ export interface SurveyPlan {
 	accelG: number;
 }
 
+export interface SurveyCandidate {
+	name: string;
+	distSq: number;
+	x: number;
+	z: number;
+}
+
 // --- Ship sub-interfaces ---
 
 export interface ShipCrew {

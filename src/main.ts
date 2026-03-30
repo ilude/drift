@@ -7,7 +7,12 @@ import {
 	seedStartingColonies,
 	tickColonies,
 } from "./core/colonies";
-import { commanderDecide, incrementExperience, learnFromEmergencyReturn } from "./core/commander";
+import {
+	commanderDecide,
+	incrementExperience,
+	isAtColony,
+	learnFromEmergencyReturn,
+} from "./core/commander";
 import {
 	getUnsurvevedMoonsOfHost,
 	HULL_REPAIR_PER_DAY,
@@ -37,6 +42,7 @@ import { publishIntent } from "./core/intents";
 import { addCoalescedNotification, addNotification } from "./core/notifications";
 import { resolveShipPhysics } from "./core/ship-utils";
 import { gameLog, gameWarn, MASTER_SEED, state } from "./core/state";
+import { advanceSurveyPlan, clearSurveyPlan } from "./core/survey-planner";
 import { setTransferHooks } from "./core/transfers";
 import { seededRandom } from "./core/utils";
 import { findEngineTier } from "./data/components";
@@ -637,7 +643,11 @@ function handleSurveyTransfer(ship: ShipEntry, target: string, targetBody: BodyE
 function handleSurveyCommand(ship: ShipEntry): void {
 	if (handleSurveyMoonFirst(ship)) return;
 
-	const [target, hasTarget] = selectNextSurveyTarget(ship);
+	// Use planned target if available, fall back to greedy nearest-neighbor
+	const plannedTarget = advanceSurveyPlan(ship);
+	const [target, hasTarget] = plannedTarget
+		? ([plannedTarget, true] as const)
+		: selectNextSurveyTarget(ship);
 	if (!hasTarget) {
 		addCoalescedNotification("mission-complete", "System survey complete -- all bodies surveyed");
 		ship.action = mkAction("idle", "idle");
@@ -848,6 +858,11 @@ function dispatchCommand(ship: ShipEntry, result: CommandResult): void {
 	// Clear one-shot immediate command on ANY dispatch (not just transfer)
 	ship.immediateCommand = null;
 
+	// Invalidate survey plan when dispatching a non-survey action
+	if (result.action !== "survey" && ship.surveyPlan) {
+		clearSurveyPlan(ship);
+	}
+
 	switch (result.action) {
 		case "survey":
 			handleSurveyCommand(ship);
@@ -1042,19 +1057,7 @@ function startSurveyOnArrival(ship: ShipEntry): void {
 }
 
 /** Called when a ship arrives at a planet after transfer. */
-export function onTransferComplete(ship: ShipEntry): void {
-	_lastCommandEval.delete(ship.data.name);
-	invalidateSurveyTargetCache();
-	invalidateRefuelTargetCache();
-	gameLog(
-		`[transferComplete] ${ship.data.name}: arrived at ${ship.hostPlanetName}`,
-		`action=${ship.action.type} target=${ship.action.target}`,
-	);
-	addCoalescedNotification(
-		"transfer-complete",
-		`${ship.data.name} arrived at ${ship.hostPlanetName}`,
-		ship.data.name,
-	);
+function startArrivalAction(ship: ShipEntry): void {
 	const actionType = ship.action.type;
 	if (actionType === "survey-nearest") {
 		startSurveyOnArrival(ship);
@@ -1076,10 +1079,31 @@ export function onTransferComplete(ship: ShipEntry): void {
 			if (hasDecision) dispatchCommand(ship, decision);
 		}
 	} else {
-		// No pending action -- commander decides
 		const [decision, hasDecision] = commanderDecide(ship);
 		if (hasDecision) dispatchCommand(ship, decision);
 	}
+}
+
+export function onTransferComplete(ship: ShipEntry): void {
+	_lastCommandEval.delete(ship.data.name);
+	invalidateSurveyTargetCache();
+	invalidateRefuelTargetCache();
+	gameLog(
+		`[transferComplete] ${ship.data.name}: arrived at ${ship.hostPlanetName}`,
+		`action=${ship.action.type} target=${ship.action.target}`,
+	);
+	addCoalescedNotification(
+		"transfer-complete",
+		`${ship.data.name} arrived at ${ship.hostPlanetName}`,
+		ship.data.name,
+	);
+
+	// Clear survey plan when arriving at a colony (plan was for the previous sortie)
+	if (isAtColony(ship) && ship.action.type !== "survey-nearest") {
+		clearSurveyPlan(ship);
+	}
+
+	startArrivalAction(ship);
 }
 
 // ---------------------------------------------------------------------------
