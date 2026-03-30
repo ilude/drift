@@ -6,7 +6,7 @@
 import type { CommandCondition, CommandResult, Result, ShipEntry } from "../types";
 import { isSurveyable } from "../types";
 import { hasColony } from "./colonies";
-import { checkCondition, evaluateCommandTree } from "./commands";
+import { checkCondition, evaluateCommandTree, hullCeiling } from "./commands";
 import { findBody } from "./entities";
 import { isTankerInboundFor } from "./intents";
 import { err, ok } from "./result";
@@ -97,7 +97,12 @@ export function checkPreemptiveService(
 		if (cond.type === "always") continue;
 
 		// Raise threshold based on commander judgment
-		const effective = cond.threshold + (100 - cond.threshold) * j * PREEMPTIVE_BUFFER;
+		let effective = cond.threshold + (100 - cond.threshold) * j * PREEMPTIVE_BUFFER;
+		// Cap hull threshold at hull ceiling — can't demand more than the ship can achieve
+		if (cond.type === "hull-below") {
+			const ceiling = hullCeiling(ship.maintenance.totalAge, ship.maintenance.lastRefitAge);
+			effective = Math.min(effective, ceiling);
+		}
 		if (checkConditionWithThreshold(cond.type, effective, ship)) {
 			return commandToResult(entry.command, entry.target);
 		}

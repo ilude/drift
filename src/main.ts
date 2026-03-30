@@ -14,6 +14,7 @@ import {
 	hullCeiling,
 	invalidateRefuelTargetCache,
 	invalidateSurveyTargetCache,
+	OVERHAUL_CEILING_RECOVERY,
 	REFIT_BASE_DAYS,
 	SUPPLY_RESTOCK_PER_DAY,
 	selectNextRefuelTarget,
@@ -891,6 +892,10 @@ function completeAction(ship: ShipEntry): void {
 		);
 	} else if (actionType === "overhaul") {
 		ship.maintenance.age = 0;
+		// Partial ceiling recovery: close 40% of the gap, scaled by depot quality
+		const dq = getServiceQualityForShip(ship);
+		const gap = ship.maintenance.totalAge - ship.maintenance.lastRefitAge;
+		ship.maintenance.lastRefitAge += gap * OVERHAUL_CEILING_RECOVERY * dq;
 		ship.action = noAction();
 		addCoalescedNotification(
 			"action-complete",
@@ -983,10 +988,13 @@ function startActionTimer(ship: ShipEntry, duration: number): void {
 }
 
 function computeOverhaulDuration(ship: ShipEntry): number {
-	const ceiling = hullCeiling(ship.maintenance.totalAge, ship.maintenance.lastRefitAge);
+	const dq = getServiceQualityForShip(ship);
+	// Project the post-overhaul ceiling (overhaul recovers 40% of refit gap)
+	const gap = ship.maintenance.totalAge - ship.maintenance.lastRefitAge;
+	const projectedRefitAge = ship.maintenance.lastRefitAge + gap * OVERHAUL_CEILING_RECOVERY * dq;
+	const ceiling = hullCeiling(ship.maintenance.totalAge, projectedRefitAge);
 	const hullDeficit = Math.max(0, ceiling - ship.maintenance.hullIntegrity);
 	const supplyDeficit = ship.maintenance.maxSupplies - ship.maintenance.supplies;
-	const dq = getServiceQualityForShip(ship);
 	const hullDays = hullDeficit / ((HULL_REPAIR_PER_DAY * dq) / state.repairMultiplier);
 	const supplyDays = supplyDeficit / ((SUPPLY_RESTOCK_PER_DAY * dq) / state.supplyMultiplier);
 	return Math.max(1, Math.ceil(Math.max(hullDays, supplyDays)));

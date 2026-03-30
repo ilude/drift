@@ -13,7 +13,7 @@ import type {
 	Result,
 	ShipEntry,
 } from "../types";
-import { isCometEntry, isShipEntry, isSurveyable } from "../types";
+import { isShipEntry, isSurveyable } from "../types";
 import {
 	consumeColonyFuel,
 	consumeColonySupplies,
@@ -109,8 +109,10 @@ const SHORE_LEAVE_REPAIR_PER_DAY = 0.25; // +0.25% hull/day from repair crew dur
 const OVERHAUL_MORALE_PER_DAY = 0.5; // +0.5 morale/day during overhaul ("working from home", ~140 days from 30% to full)
 
 // --- Hull ceiling: lifetime degradation ---
-// Overhauls can only restore hull to this ceiling. Major refit resets lastRefitAge.
+// Overhauls restore hull to ceiling and partially recover the ceiling itself.
+// Major refit fully resets lastRefitAge (ceiling → 100%).
 // 0 years since refit: 100%, 10y: 85%, 20y: 70%, 30y: 55%, floor: 30%
+export const OVERHAUL_CEILING_RECOVERY = 0.4; // overhaul recovers 40% of the gap between lastRefitAge and totalAge
 export function hullCeiling(totalAge: number, lastRefitAge: number): number {
 	const yearsSinceRefit = (totalAge - lastRefitAge) / 365;
 	return Math.max(30, 100 - yearsSinceRefit * 1.5);
@@ -225,11 +227,16 @@ function tickActionRecovery(
 	}
 
 	if (isOrbiting && (ship.action.type === "overhaul" || ship.action.type === "major-refit")) {
-		// Major refit targets 100% (ceiling resets on completion); overhaul targets current ceiling
-		const ceiling =
-			ship.action.type === "major-refit"
-				? 100
-				: hullCeiling(ship.maintenance.totalAge, ship.maintenance.lastRefitAge);
+		// Major refit targets 100%; overhaul targets projected ceiling (after 40% gap recovery)
+		let ceiling: number;
+		if (ship.action.type === "major-refit") {
+			ceiling = 100;
+		} else {
+			const gap = ship.maintenance.totalAge - ship.maintenance.lastRefitAge;
+			const dq = getServiceQualityForShip(ship);
+			const projectedRefitAge = ship.maintenance.lastRefitAge + gap * OVERHAUL_CEILING_RECOVERY * dq;
+			ceiling = hullCeiling(ship.maintenance.totalAge, projectedRefitAge);
+		}
 		ship.maintenance.hullIntegrity = Math.min(
 			ceiling,
 			ship.maintenance.hullIntegrity + rates.repairRate * simDt,
@@ -505,7 +512,6 @@ function collectBodyCandidates(
 	const out: { name: string; distSq: number }[] = [];
 	for (const body of state.bodyMeshes) {
 		if (isShipEntry(body)) continue;
-		if (isCometEntry(body)) continue;
 		if (!isSurveyable(body)) continue;
 		if (body.survey.surveyLevel !== 0) continue;
 		if (body.data.type === "Star") continue;

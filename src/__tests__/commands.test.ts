@@ -25,27 +25,36 @@ import { invalidateIntentsCache } from "../core/intents";
 import { state } from "../core/state";
 import type { BodyEntry, ColonyState, CommandEntry, ShipEntry } from "../types";
 
-function mockShip(overrides: Partial<ShipEntry> = {}): ShipEntry {
+const DEFAULT_MAINTENANCE = {
+	age: 0,
+	totalAge: 0,
+	lastRefitAge: 0,
+	supplies: 100,
+	maxSupplies: 100,
+	hullIntegrity: 100,
+	overhaulsSinceRefit: 0,
+	overhaulsUntilRefit: 3,
+};
+
+type MockShipOverrides = Omit<Partial<ShipEntry>, "maintenance"> & {
+	maintenance?: Partial<ShipEntry["maintenance"]>;
+};
+
+function mockShip(overrides: MockShipOverrides = {}): ShipEntry {
+	const { maintenance, ...rest } = overrides;
 	return {
 		data: { name: "Ship" },
 		fuelKg: 50000,
 		fuelCapacityKg: 50000,
 		crew: { count: 50, morale: 100, lastShoreLeave: 0, deploymentLimit: 180 },
 		commander: { judgment: 0.3, experience: 0 },
-		maintenance: {
-			age: 0,
-			totalAge: 0,
-			lastRefitAge: 0,
-			supplies: 100,
-			maxSupplies: 100,
-			hullIntegrity: 100,
-		},
+		maintenance: { ...DEFAULT_MAINTENANCE, ...maintenance },
 		action: { type: null, commandId: null, startTime: 0, duration: 0, progress: 0 },
 		commandTree: { entries: [] },
 		immediateCommand: null,
 		hostPlanetName: "Mars",
 		shipState: "orbiting" as const,
-		...overrides,
+		...rest,
 	} as unknown as ShipEntry;
 }
 
@@ -969,6 +978,35 @@ describe("checkPreemptiveService", () => {
 		expect(result).toEqual({ action: "overhaul" });
 	});
 
+	it("does not preempt overhaul when hull is at ceiling (prevents infinite loop)", () => {
+		// Hull 44% at ceiling 44% (37.39 years old, no refit), threshold 30%, judgment 0.8
+		// Without ceiling cap: effective = 30 + 70 * 0.8 * 0.3 = 46.8 → 44 < 46.8 → would trigger
+		// With ceiling cap: effective = min(46.8, 44) = 44 → 44 is NOT < 44 → no trigger
+		const totalAge = 37.39 * 365; // ~13,637 days
+		const ship = mockShip({
+			hostPlanetName: "Earth",
+			commander: { judgment: 0.8, experience: 10 },
+			maintenance: {
+				age: 0,
+				totalAge,
+				lastRefitAge: 0,
+				supplies: 50,
+				maxSupplies: 50,
+				hullIntegrity: 44,
+			},
+			commandTree: {
+				entries: [
+					mockEntry("hull-check", "overhaul", {
+						condition: { type: "hull-below", threshold: 30 },
+					}),
+					mockEntry("survey", "survey-nearest"),
+				],
+			},
+		});
+		const result = checkPreemptiveService(ship, { action: "survey" });
+		expect(result).toBeNull();
+	});
+
 	it("skips disabled command tree entries", () => {
 		const ship = mockShip({
 			hostPlanetName: "Earth",
@@ -1744,7 +1782,9 @@ describe("totalAge tracking", () => {
 // --- Overhaul respects hull ceiling ---
 
 describe("overhaul hull ceiling", () => {
-	it("overhaul repair caps at ceiling, not 100%", () => {
+	it("overhaul repair caps at projected ceiling, not 100%", () => {
+		// 20-year-old ship: old ceiling = 70%, projected ceiling after 40% gap recovery = 82%
+		// gap = 7300, projectedRefitAge = 7300 * 0.4 = 2920, yearsSinceRefit = 12 → ceiling = 82
 		const ship = mockShip({
 			shipState: "orbiting" as const,
 			hostPlanetName: "Earth",
@@ -1757,7 +1797,7 @@ describe("overhaul hull ceiling", () => {
 			},
 			maintenance: {
 				age: 0,
-				totalAge: 7300, // 20 years → ceiling = 70
+				totalAge: 7300, // 20 years
 				lastRefitAge: 0,
 				supplies: 100,
 				maxSupplies: 100,
@@ -1766,7 +1806,8 @@ describe("overhaul hull ceiling", () => {
 		});
 		// Simulate enough days for full repair
 		tickShipSimulation(ship, 50, 100);
-		expect(ship.maintenance.hullIntegrity).toBeLessThanOrEqual(70);
+		expect(ship.maintenance.hullIntegrity).toBeLessThanOrEqual(82);
+		expect(ship.maintenance.hullIntegrity).toBeGreaterThan(70); // above old ceiling
 	});
 
 	it("major-refit repair can reach 100%", () => {
