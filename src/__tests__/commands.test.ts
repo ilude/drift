@@ -22,8 +22,9 @@ import {
 } from "../core/commands";
 import { rebuildEntityMaps } from "../core/entities";
 import { invalidateIntentsCache } from "../core/intents";
+import { resolveShipSensorLevel } from "../core/ship-utils";
 import { state } from "../core/state";
-import type { BodyEntry, ColonyState, CommandEntry, ShipEntry } from "../types";
+import type { BodyEntry, ColonyState, CommandEntry, ShipDesign, ShipEntry } from "../types";
 
 const DEFAULT_MAINTENANCE = {
 	age: 0,
@@ -2003,5 +2004,141 @@ describe("cache invalidation exports", () => {
 
 	it("invalidateRefuelTargetCache does not throw", () => {
 		expect(() => invalidateRefuelTargetCache()).not.toThrow();
+	});
+});
+
+// --- resolveShipSensorLevel ---
+
+function mockShipDesign(id: string, sensorMultiplier: number): ShipDesign {
+	return {
+		id,
+		name: `Design ${id}`,
+		engineDesignId: "eng1",
+		engineCount: 1,
+		components: [],
+		dryMassKg: 10000,
+		fuelCapacityKg: 50000,
+		cargoCapacityKg: 0,
+		crewCapacity: 50,
+		maxSupplies: 100,
+		sensorMultiplier,
+		accelG: 0.1,
+		ispS: 10000,
+		armorHp: 0,
+	};
+}
+
+describe("resolveShipSensorLevel", () => {
+	beforeEach(() => {
+		state.shipDesigns = new Map();
+	});
+
+	it("ship with no designId returns 1", () => {
+		const ship = mockShip();
+		expect(resolveShipSensorLevel(ship)).toBe(1);
+	});
+
+	it("ship with design sensorMultiplier 1.0 returns 1", () => {
+		state.shipDesigns.set("design-1.0", mockShipDesign("design-1.0", 1.0));
+		const ship = mockShip({ designId: "design-1.0" } as Partial<ShipEntry>);
+		expect(resolveShipSensorLevel(ship)).toBe(1);
+	});
+
+	it("ship with design sensorMultiplier 1.5 returns 2", () => {
+		state.shipDesigns.set("design-1.5", mockShipDesign("design-1.5", 1.5));
+		const ship = mockShip({ designId: "design-1.5" } as Partial<ShipEntry>);
+		expect(resolveShipSensorLevel(ship)).toBe(2);
+	});
+
+	it("ship with design sensorMultiplier 2.0 returns 3", () => {
+		state.shipDesigns.set("design-2.0", mockShipDesign("design-2.0", 2.0));
+		const ship = mockShip({ designId: "design-2.0" } as Partial<ShipEntry>);
+		expect(resolveShipSensorLevel(ship)).toBe(3);
+	});
+});
+
+// --- selectNextSurveyTarget: sensor-awareness ---
+
+describe("selectNextSurveyTarget -- sensor level filtering", () => {
+	beforeEach(() => {
+		state.bodyMeshes = [];
+		state.asteroidBelts = [];
+		state.shipDesigns = new Map();
+		invalidateSurveyTargetCache();
+	});
+
+	function shipWithSensor(sensorMultiplier: number): ShipEntry {
+		const designId = `sensor-design-${sensorMultiplier}`;
+		state.shipDesigns.set(designId, mockShipDesign(designId, sensorMultiplier));
+		return mockShip({
+			designId,
+			mesh: { position: { x: 0, z: 0, distanceToSquared: () => 1 } } as unknown as ShipEntry["mesh"],
+		} as Partial<ShipEntry>);
+	}
+
+	it("sensor level 1 ship skips bodies at surveyLevel 1 (already fully surveyed)", () => {
+		const body = mockBodyEntry("Venus", { survey: { surveyLevel: 1, deposits: [] } });
+		state.bodyMeshes = [body] as BodyEntry[];
+		const [, found] = selectNextSurveyTarget(shipWithSensor(1.0));
+		expect(found).toBe(false);
+	});
+
+	it("sensor level 2 ship includes bodies at surveyLevel 1 (can survey deeper)", () => {
+		const body = mockBodyEntry("Venus", { survey: { surveyLevel: 1, deposits: [] } });
+		state.bodyMeshes = [body] as BodyEntry[];
+		const [target, found] = selectNextSurveyTarget(shipWithSensor(1.5));
+		expect(found).toBe(true);
+		expect(target).toBe("Venus");
+	});
+
+	it("sensor level 2 ship skips bodies at surveyLevel 2", () => {
+		const body = mockBodyEntry("Venus", { survey: { surveyLevel: 2, deposits: [] } });
+		state.bodyMeshes = [body] as BodyEntry[];
+		const [, found] = selectNextSurveyTarget(shipWithSensor(1.5));
+		expect(found).toBe(false);
+	});
+
+	it("sensor level 1 ship targets body at surveyLevel 0 (normal unsurveyed case)", () => {
+		const body = mockBodyEntry("Mars", { survey: { surveyLevel: 0, deposits: [] } });
+		state.bodyMeshes = [body] as BodyEntry[];
+		const [target, found] = selectNextSurveyTarget(shipWithSensor(1.0));
+		expect(found).toBe(true);
+		expect(target).toBe("Mars");
+	});
+});
+
+// --- getUnsurvevedMoonsOfHost: sensor-awareness ---
+
+describe("getUnsurvevedMoonsOfHost -- sensor level filtering", () => {
+	beforeEach(() => {
+		state.bodyMeshes = [];
+		state.shipDesigns = new Map();
+	});
+
+	it("sensor level 1 ship at planet with surveyLevel 1 moon sees no unsurveyed moons", () => {
+		const moon = mockBodyEntry("Luna", { isMoon: true, survey: { surveyLevel: 1, deposits: [] } });
+		const planet = mockBodyEntry("Earth", { moons: [moon] });
+		state.bodyMeshes = [planet] as BodyEntry[];
+		rebuildEntityMaps();
+		// No designId → sensor level 1; moon at level 1 >= maxLevel 1 → filtered out
+		const ship = mockShip({ hostPlanetName: "Earth" });
+		expect(getUnsurvevedMoonsOfHost(ship)).toHaveLength(0);
+	});
+
+	it("sensor level 2 ship at planet with surveyLevel 1 moon sees it as unsurveyed", () => {
+		const designId = "sensor-level-2";
+		state.shipDesigns.set(designId, mockShipDesign(designId, 1.5));
+		const moon = mockBodyEntry("Luna", { isMoon: true, survey: { surveyLevel: 1, deposits: [] } });
+		const planet = mockBodyEntry("Earth", { moons: [moon] });
+		state.bodyMeshes = [planet] as BodyEntry[];
+		rebuildEntityMaps();
+		// sensorMultiplier 1.5 → level 2; moon at level 1 < maxLevel 2 → included
+		const ship = mockShip({
+			hostPlanetName: "Earth",
+			designId,
+		} as Partial<ShipEntry>);
+		const moons = getUnsurvevedMoonsOfHost(ship);
+		expect(moons).toHaveLength(1);
+		expect((moons[0] as unknown as { data: { name: string } }).data.name).toBe("Luna");
 	});
 });

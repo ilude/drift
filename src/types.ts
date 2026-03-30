@@ -557,6 +557,7 @@ export interface EngineDesign {
 	accelG: number;
 	ispS: number;
 	massKg: number;
+	isCommercial: boolean;
 }
 
 export interface MissileDesign {

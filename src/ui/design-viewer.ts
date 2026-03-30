@@ -748,6 +748,7 @@ input[type=range].form-range {
         <div class="stat-row"><span class="stat-label">Specific Impulse</span><span class="stat-val" id="est-isp">—</span></div>
         <div class="stat-row"><span class="stat-label">Engine Mass</span><span class="stat-val" id="est-mass">—</span></div>
         <div class="stat-row"><span class="stat-label">Fuel Modifier</span><span class="stat-val" id="est-fuel">—</span></div>
+        <div class="stat-row"><span class="stat-label">Classification</span><span class="stat-val" id="est-class">—</span></div>
       </div>
 
       <div class="create-row" style="display:block;border-top:1px solid #1e2e1e;padding-top:12px;margin-top:4px;">
@@ -1106,7 +1107,7 @@ function updateEnginePreview() {
   const sizeSel = document.getElementById('eng-size');
   const tier = snap.unlockedTiers.find(t => t.id === tierSel.value);
   if (!tier || !powerSel.value || !sizeSel.value) {
-    ['est-accel','est-isp','est-mass','est-fuel'].forEach(id => { document.getElementById(id).textContent = '—'; });
+    ['est-accel','est-isp','est-mass','est-fuel','est-class'].forEach(id => { document.getElementById(id).textContent = '—'; });
     return;
   }
   const powerPct = Number(powerSel.value);
@@ -1114,11 +1115,16 @@ function updateEnginePreview() {
   const accelG = tier.baseAccelG * (powerPct / 100);
   const ispS = tier.baseIspS;
   const massKg = sizeHS * tier.baseMassPerHS;
-  const fuelMod = Math.max(0.01, Math.pow(powerPct / 100, 2.5) * (1 - sizeHS / 100));
+  const baseFuelMod = Math.max(0.01, Math.pow(powerPct / 100, 2.5) * (1 - sizeHS / 100));
+  const isCommercial = sizeHS >= 25 && powerPct <= 50;
+  const fuelMod = isCommercial ? baseFuelMod * 0.1 : baseFuelMod;
   document.getElementById('est-accel').textContent = accelG < 1 ? fmt(accelG, 3) + ' G' : fmt(accelG, 1) + ' G';
   document.getElementById('est-isp').textContent = ispS.toLocaleString() + ' s';
   document.getElementById('est-mass').textContent = fmtMass(massKg);
   document.getElementById('est-fuel').textContent = fuelMod.toFixed(3);
+  const classEl = document.getElementById('est-class');
+  classEl.textContent = isCommercial ? 'Commercial' : 'Military';
+  classEl.style.color = isCommercial ? '#88aaff' : '#ffaa88';
 }
 
 document.getElementById('eng-tier').addEventListener('change', populateEngineDropdowns);

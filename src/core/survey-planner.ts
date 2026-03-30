@@ -6,7 +6,7 @@ import { getNearestColonyForShip } from "./colonies";
 import { collectAsteroidCandidates, collectBodyCandidates } from "./commands";
 import { findBody } from "./entities";
 import { getClaimedTargets, publishIntent } from "./intents";
-import { resolveShipPhysics } from "./ship-utils";
+import { resolveShipPhysics, resolveShipSensorLevel } from "./ship-utils";
 import { state } from "./state";
 
 const AVG_SURVEY_DAYS = 10;
@@ -32,12 +32,16 @@ function candidateDistKm(ax: number, az: number, bx: number, bz: number): number
 	return Math.hypot(bxAU - axAU, bzAU - azAU) * AU_TO_KM;
 }
 
-/** Collect all unsurveyed candidates with world positions. */
+/** Collect all candidates reachable by this ship's sensor level with world positions. */
 function collectPlanCandidates(ship: ShipEntry): SurveyCandidate[] {
 	const sx = ship.mesh.position.x;
 	const sz = ship.mesh.position.z;
 	const claimed = getClaimedTargets(ship.data.name);
-	return [...collectBodyCandidates(sx, sz, claimed), ...collectAsteroidCandidates(sx, sz, claimed)];
+	const maxLevel = resolveShipSensorLevel(ship);
+	return [
+		...collectBodyCandidates(sx, sz, claimed, maxLevel),
+		...collectAsteroidCandidates(sx, sz, claimed, maxLevel),
+	];
 }
 
 /** Get the morale threshold from the ship's command tree (or default 30). */

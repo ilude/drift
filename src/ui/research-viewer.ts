@@ -682,6 +682,7 @@ input[type=checkbox] { accent-color: #88cc88; color-scheme: dark; }
           <option value="logistics">Logistics</option>
           <option value="research">Research</option>
           <option value="biology">Biology / Genetics</option>
+          <option value="propulsion">Propulsion</option>
         </select>
         <label class="match-label">
           <input type="checkbox" id="show-completed"> Completed

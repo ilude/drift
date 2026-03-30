@@ -40,7 +40,7 @@ import {
 import { GameClock } from "./core/game-clock";
 import { publishIntent } from "./core/intents";
 import { addCoalescedNotification, addNotification } from "./core/notifications";
-import { resolveShipPhysics } from "./core/ship-utils";
+import { resolveShipPhysics, resolveShipSensorLevel } from "./core/ship-utils";
 import { gameLog, gameWarn, MASTER_SEED, state } from "./core/state";
 import { advanceSurveyPlan, clearSurveyPlan } from "./core/survey-planner";
 import { setTransferHooks } from "./core/transfers";
@@ -81,7 +81,7 @@ import type {
 	ShipEntry,
 	SystemData,
 } from "./types";
-import { isCometEntry, isShipEntry, isSurveyable } from "./types";
+import { isCometEntry, isShipEntry, isSurveyable, type Surveyable } from "./types";
 import { pushResourceUpdate } from "./ui/resource-viewer";
 import {
 	selectBody,
@@ -427,16 +427,21 @@ const EARTH_MASS_KG = 5.972e24;
  * Log scale gives 1 day (small asteroid) to ~40 days (Jupiter).
  * Adjusted by crew morale and hull condition.
  */
-function getSurveyDuration(mass: number, ship: ShipEntry): number {
+function getSurveyDuration(mass: number, ship: ShipEntry, targetLevel: number): number {
 	const minMass = 1e10; // small asteroid floor
 	const logRatio = Math.log10(Math.max(mass, minMass) / minMass);
 	const maxLog = Math.log10(EARTH_MASS_KG / minMass); // ~14.8
 	const base = Math.max(1, Math.round(1 + (logRatio / maxLog) * 39)); // 1–40 days
 	const morale = Math.max(10, ship.crew.morale) / 100;
 	const hull = Math.max(10, ship.maintenance.hullIntegrity) / 100;
+	const levelMultiplier = 3 ** (targetLevel - 1); // level 1=1x, level 2=3x, level 3=9x
 	return Math.max(
 		1,
-		Math.ceil((base / (morale * hull)) * state.surveyMultiplier * getSurveySpeedMultiplier()),
+		Math.ceil(
+			((base * levelMultiplier) / (morale * hull)) *
+				state.surveyMultiplier *
+				getSurveySpeedMultiplier(),
+		),
 	);
 }
 
@@ -459,13 +464,9 @@ function mkAction(
 	return { type, commandId, target, startTime, duration, progress: 0 };
 }
 
-function completeSurvey(ship: ShipEntry): void {
-	invalidateSurveyTargetCache();
-	const bodyName = ship.action.target ?? ship.hostPlanetName;
-
-	// Try body first, then asteroid
-	const [body, bodyFound] = findBody(bodyName);
-	if (bodyFound && isSurveyable(body)) {
+function completeSurveyBody(body: BodyEntry & Surveyable): void {
+	const currentLevel = body.survey.surveyLevel;
+	if (currentLevel === 0) {
 		const deposits = generateDeposits(
 			getSystemSeed(),
 			body.data.name,
@@ -490,41 +491,88 @@ function completeSurvey(ship: ShipEntry): void {
 			body.data.name,
 		);
 	} else {
-		const [hit, hitFound] = findAsteroidEntity(bodyName);
-		if (hitFound) {
-			const deposits = generateDeposits(
-				getSystemSeed(),
-				hit.asteroid.designation,
-				"Asteroid",
-				hit.asteroid.diameter / 2,
-				{
-					distanceAU: hit.asteroid.au,
-					beltMinAU: hit.beltEntry.belt.minAU,
-					beltMaxAU: hit.beltEntry.belt.maxAU,
-				},
-			);
-			hit.asteroid.survey = { surveyLevel: 1, deposits };
-			state.surveyedCount++;
-
-			const idx = hit.asteroid.beltIndex ?? 0;
-			const c = hit.beltEntry.colors;
-			c[idx * 3] = SURVEYED_ASTEROID_COLOR[0];
-			c[idx * 3 + 1] = SURVEYED_ASTEROID_COLOR[1];
-			c[idx * 3 + 2] = SURVEYED_ASTEROID_COLOR[2];
-			hit.beltEntry.points.geometry.attributes.color.needsUpdate = true;
-
-			const names = deposits
-				.map((d) => d.resourceId)
-				.slice(0, 3)
-				.join(", ");
-			const summary = deposits.length > 0 ? `${deposits.length} deposits (${names})` : "no deposits";
-			addCoalescedNotification(
-				"survey-complete",
-				`Surveyed ${hit.asteroid.designation} -- ${summary}`,
-				hit.asteroid.designation,
-			);
-		}
+		const newLevel = currentLevel + 1;
+		body.survey = { ...body.survey, surveyLevel: newLevel };
+		const deeper = body.survey.deposits.filter((d) => d.minSurveyLevel === newLevel);
+		const summary =
+			deeper.length > 0
+				? `${deeper.length} deeper deposit${deeper.length > 1 ? "s" : ""} revealed`
+				: "no new deposits at this depth";
+		addCoalescedNotification(
+			"survey-complete",
+			`Level ${newLevel} survey of ${body.data.name} -- ${summary}`,
+			body.data.name,
+		);
 	}
+}
+
+function completeSurveyAsteroid(bodyName: string): void {
+	const [hit, hitFound] = findAsteroidEntity(bodyName);
+	if (!hitFound) return;
+
+	const currentLevel = hit.asteroid.survey.surveyLevel;
+	if (currentLevel === 0) {
+		const deposits = generateDeposits(
+			getSystemSeed(),
+			hit.asteroid.designation,
+			"Asteroid",
+			hit.asteroid.diameter / 2,
+			{
+				distanceAU: hit.asteroid.au,
+				beltMinAU: hit.beltEntry.belt.minAU,
+				beltMaxAU: hit.beltEntry.belt.maxAU,
+			},
+		);
+		hit.asteroid.survey = { surveyLevel: 1, deposits };
+		state.surveyedCount++;
+
+		const idx = hit.asteroid.beltIndex ?? 0;
+		const c = hit.beltEntry.colors;
+		c[idx * 3] = SURVEYED_ASTEROID_COLOR[0];
+		c[idx * 3 + 1] = SURVEYED_ASTEROID_COLOR[1];
+		c[idx * 3 + 2] = SURVEYED_ASTEROID_COLOR[2];
+		hit.beltEntry.points.geometry.attributes.color.needsUpdate = true;
+
+		const names = hit.asteroid.survey.deposits
+			.map((d) => d.resourceId)
+			.slice(0, 3)
+			.join(", ");
+		const summary =
+			hit.asteroid.survey.deposits.length > 0
+				? `${hit.asteroid.survey.deposits.length} deposits (${names})`
+				: "no deposits";
+		addCoalescedNotification(
+			"survey-complete",
+			`Surveyed ${hit.asteroid.designation} -- ${summary}`,
+			hit.asteroid.designation,
+		);
+	} else {
+		const newLevel = currentLevel + 1;
+		hit.asteroid.survey = { ...hit.asteroid.survey, surveyLevel: newLevel };
+		const deeper = hit.asteroid.survey.deposits.filter((d) => d.minSurveyLevel === newLevel);
+		const summary =
+			deeper.length > 0
+				? `${deeper.length} deeper deposit${deeper.length > 1 ? "s" : ""} revealed`
+				: "no new deposits at this depth";
+		addCoalescedNotification(
+			"survey-complete",
+			`Level ${newLevel} survey of ${hit.asteroid.designation} -- ${summary}`,
+			hit.asteroid.designation,
+		);
+	}
+}
+
+function completeSurvey(ship: ShipEntry): void {
+	invalidateSurveyTargetCache();
+	const bodyName = ship.action.target ?? ship.hostPlanetName;
+
+	const [body, bodyFound] = findBody(bodyName);
+	if (bodyFound && isSurveyable(body)) {
+		completeSurveyBody(body);
+	} else {
+		completeSurveyAsteroid(bodyName);
+	}
+
 	ship.action = noAction();
 	ship.stationTarget = null;
 	pushResourceUpdate();
@@ -589,12 +637,15 @@ function routeToColony(
 
 function handleSurveyMoonFirst(ship: ShipEntry): boolean {
 	const [hostEntry, hostFound] = findBody(ship.hostPlanetName);
-	const hostSurveyed = hostFound && isSurveyable(hostEntry) && hostEntry.survey.surveyLevel > 0;
+	const maxLevel = resolveShipSensorLevel(ship);
+	const hostSurveyed =
+		hostFound && isSurveyable(hostEntry) && hostEntry.survey.surveyLevel >= maxLevel;
 	if (!hostSurveyed) return false;
 	const unsurvevedMoons = getUnsurvevedMoonsOfHost(ship);
 	if (unsurvevedMoons.length === 0) return false;
 	const moon = unsurvevedMoons[0];
-	const dur = getSurveyDuration((moon.data as { mass: number }).mass, ship);
+	const moonCurrentLevel = isSurveyable(moon) ? moon.survey.surveyLevel : 0;
+	const dur = getSurveyDuration((moon.data as { mass: number }).mass, ship, moonCurrentLevel + 1);
 	ship.action = mkAction("survey-nearest", "survey", state.simTime.days, dur, moon.data.name);
 	publishIntent(ship.data.name, {
 		type: "surveying",
@@ -605,7 +656,10 @@ function handleSurveyMoonFirst(ship: ShipEntry): boolean {
 }
 
 function handleSurveyAtLocation(ship: ShipEntry, target: string, targetMass: number): void {
-	const dur = getSurveyDuration(targetMass, ship);
+	const [targetBody, targetBodyFound] = findBody(target);
+	const currentLevel =
+		targetBodyFound && isSurveyable(targetBody) ? targetBody.survey.surveyLevel : 0;
+	const dur = getSurveyDuration(targetMass, ship, currentLevel + 1);
 	ship.action = mkAction("survey-nearest", "survey", state.simTime.days, dur, target);
 	ship.stationTarget = null;
 	publishIntent(ship.data.name, { type: "surveying", target, shipName: ship.data.name });
@@ -1032,19 +1086,24 @@ function startSurveyOnArrival(ship: ShipEntry): void {
 	const resolved = resolvedFound ? resolvedVal : null;
 	const targetBody = resolved?.bodyEntry ?? null;
 
-	// Guard: skip survey if target was already surveyed (e.g., by another ship mid-transfer)
-	const alreadySurveyed =
-		(targetBody && isSurveyable(targetBody) && targetBody.survey.surveyLevel > 0) ||
-		(resolved?.asteroidHit && resolved.asteroidHit.asteroid.survey.surveyLevel > 0);
-	if (alreadySurveyed) {
+	// Determine current survey level and ship's max sensor level
+	const bodyCurrentLevel =
+		targetBody && isSurveyable(targetBody) ? targetBody.survey.surveyLevel : 0;
+	const asteroidCurrentLevel = resolved?.asteroidHit?.asteroid.survey.surveyLevel ?? 0;
+	const currentLevel = Math.max(bodyCurrentLevel, asteroidCurrentLevel);
+	const maxLevel = resolveShipSensorLevel(ship);
+
+	// Guard: skip if target is already surveyed to the ship's sensor capability
+	if (currentLevel >= maxLevel) {
 		ship.action = noAction();
 		const [decision, hasDecision] = commanderDecide(ship);
 		if (hasDecision) dispatchCommand(ship, decision);
 		return;
 	}
 
+	const targetLevel = currentLevel + 1;
 	const mass = resolved?.mass ?? EARTH_MASS_KG;
-	startActionTimer(ship, getSurveyDuration(mass, ship));
+	startActionTimer(ship, getSurveyDuration(mass, ship, targetLevel));
 	publishIntent(ship.data.name, {
 		type: "surveying",
 		target: surveyTarget ?? ship.hostPlanetName,

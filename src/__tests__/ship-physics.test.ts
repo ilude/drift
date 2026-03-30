@@ -189,12 +189,13 @@ describe("brachistochroneDeltaV", () => {
 // --- TN Engine presets ---
 
 describe("ENGINE_TYPES", () => {
-	it("has conventional, improved, advanced, extreme entries", () => {
+	it("has conventional and propulsion ladder entries", () => {
 		const ids = ENGINE_TYPES.map((e) => e.id);
 		expect(ids).toContain("conventional");
-		expect(ids).toContain("improved");
-		expect(ids).toContain("advanced");
-		expect(ids).toContain("extreme");
+		expect(ids).toContain("nuclear-pulse");
+		expect(ids).toContain("ion-drive");
+		expect(ids).toContain("am-plasma");
+		expect(ids).toContain("photonic-drive");
 	});
 
 	it("each engine has required fields", () => {
@@ -207,9 +208,11 @@ describe("ENGINE_TYPES", () => {
 		});
 	});
 
-	it("accelG values are 0.1, 10, 50, 200", () => {
-		const accels = ENGINE_TYPES.map((e) => e.accelG);
-		expect(accels).toEqual([0.1, 10, 50, 200]);
+	it("conventional has 0.1g accelG and am-plasma has highest thrust", () => {
+		const conventional = ENGINE_TYPES.find((e) => e.id === "conventional");
+		const amPlasma = ENGINE_TYPES.find((e) => e.id === "am-plasma");
+		expect(conventional?.accelG).toBe(0.1);
+		expect(amPlasma?.accelG).toBe(40.0);
 	});
 });
 
@@ -231,8 +234,8 @@ describe("checkTransfer", () => {
 		expect(result.deltaVRequired).toBeCloseTo(555, -2);
 	});
 
-	it("Earth to Neptune with extreme TN: feasible, under 5 days", () => {
-		const ship = shipFromEngine("extreme", 500_000, 5_000);
+	it("Earth to Neptune with am-plasma (40g): feasible, under 5 days", () => {
+		const ship = shipFromEngine("am-plasma", 500_000, 5_000);
 		const result = checkTransfer(1.0, 30.07, 1.0, ship);
 		expect(result.feasible).toBe(true);
 		expect(result.transferDays).toBeLessThan(5);
@@ -254,8 +257,8 @@ describe("checkTransfer", () => {
 		expect(result.fuelUsedKg).toBeCloseTo(expectedFuel, 6);
 	});
 
-	it("TN engines have low fuel fraction (high Isp)", () => {
-		const ship = shipFromEngine("extreme", 500_000, 5_000);
+	it("high-Isp engines have low fuel fraction", () => {
+		const ship = shipFromEngine("am-plasma", 500_000, 5_000);
 		const result = checkTransfer(1.0, 30.07, 1.0, ship);
 		expect(result.feasible).toBe(true);
 		// High Isp means fuel usage is a small fraction of total

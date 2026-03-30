@@ -25,7 +25,7 @@ import { isAtColony, learnFromMalfunction } from "./commander";
 import { findBody, findShip } from "./entities";
 import { getClaimedTargets, onIntentChange } from "./intents";
 import { err, ok } from "./result";
-import { resolveShipPhysics } from "./ship-utils";
+import { resolveShipPhysics, resolveShipSensorLevel } from "./ship-utils";
 import { state } from "./state";
 import { seededRandom } from "./utils";
 
@@ -510,12 +510,13 @@ export function collectBodyCandidates(
 	sx: number,
 	sz: number,
 	claimed: Set<string>,
+	maxSurveyLevel: number,
 ): SurveyCandidate[] {
 	const out: SurveyCandidate[] = [];
 	for (const body of state.bodyMeshes) {
 		if (isShipEntry(body)) continue;
 		if (!isSurveyable(body)) continue;
-		if (body.survey.surveyLevel !== 0) continue;
+		if (body.survey.surveyLevel >= maxSurveyLevel) continue;
 		if (claimed.has(body.data.name)) continue;
 		const bx = body.mesh.position.x;
 		const bz = body.mesh.position.z;
@@ -530,11 +531,12 @@ export function collectAsteroidCandidates(
 	sx: number,
 	sz: number,
 	claimed: Set<string>,
+	maxSurveyLevel: number,
 ): SurveyCandidate[] {
 	const out: SurveyCandidate[] = [];
 	for (const beltEntry of state.asteroidBelts) {
 		for (const asteroid of beltEntry.asteroids) {
-			if (asteroid.survey.surveyLevel !== 0) continue;
+			if (asteroid.survey.surveyLevel >= maxSurveyLevel) continue;
 			if (claimed.has(asteroid.designation)) continue;
 			const idx = asteroid.beltIndex ?? 0;
 			const bx = beltEntry.positions[idx * 3];
@@ -549,28 +551,31 @@ export function collectAsteroidCandidates(
 
 export function selectNextSurveyTarget(ship: ShipEntry): Result<string> {
 	const shipName = ship.data.name;
-	if (_surveyTargetCache.has(shipName)) return _surveyTargetCache.get(shipName) as Result<string>;
+	const maxLevel = resolveShipSensorLevel(ship);
+	const cacheKey = `${shipName}:${maxLevel}`;
+	if (_surveyTargetCache.has(cacheKey)) return _surveyTargetCache.get(cacheKey) as Result<string>;
 
 	const sx = ship.mesh.position.x;
 	const sz = ship.mesh.position.z;
 	const claimed = getClaimedTargets(shipName);
 	const candidates = [
-		...collectBodyCandidates(sx, sz, claimed),
-		...collectAsteroidCandidates(sx, sz, claimed),
+		...collectBodyCandidates(sx, sz, claimed, maxLevel),
+		...collectAsteroidCandidates(sx, sz, claimed, maxLevel),
 	];
 
 	const result =
 		candidates.length === 0
 			? err<string>()
 			: ok(candidates.sort((a, b) => a.distSq - b.distSq)[0].name);
-	_surveyTargetCache.set(shipName, result);
+	_surveyTargetCache.set(cacheKey, result);
 	return result;
 }
 
 export function getUnsurvevedMoonsOfHost(ship: ShipEntry): BodyEntry[] {
+	const maxLevel = resolveShipSensorLevel(ship);
 	const [host, found] = findBody(ship.hostPlanetName);
 	if (!found) return [];
-	return host.moons.filter((moon) => isSurveyable(moon) && moon.survey.surveyLevel === 0);
+	return host.moons.filter((moon) => isSurveyable(moon) && moon.survey.surveyLevel < maxLevel);
 }
 
 // --- Command tree mutation helpers (called by UI layer) ---

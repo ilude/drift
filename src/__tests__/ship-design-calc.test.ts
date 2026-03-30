@@ -37,6 +37,7 @@ function makeEngineDesign(overrides: Partial<EngineDesign> = {}): EngineDesign {
 		ispS: stats.ispS,
 		massKg: stats.massKg,
 		fuelMod: stats.fuelMod,
+		isCommercial: stats.isCommercial,
 		...overrides,
 	};
 }
@@ -278,19 +279,32 @@ describe("getUnlockedEngineTiers", () => {
 		expect(tiers[0].id).toBe("conventional");
 	});
 
-	it("with fleet-logistics unlocked, returns conventional + improved", () => {
-		const tiers = getUnlockedEngineTiers(new Set(["fleet-logistics"]));
+	it("with nuclear-pulse-engine unlocked, returns conventional + nuclear-pulse", () => {
+		const tiers = getUnlockedEngineTiers(new Set(["nuclear-pulse-engine"]));
 		const ids = tiers.map((t) => t.id);
 		expect(ids).toContain("conventional");
-		expect(ids).toContain("improved");
+		expect(ids).toContain("nuclear-pulse");
 		expect(ids).toHaveLength(2);
 	});
 
-	it("all prereqs unlocked returns all four tiers", () => {
+	it("all prereqs unlocked returns all tiers", () => {
 		const tiers = getUnlockedEngineTiers(
-			new Set(["fleet-logistics", "applied-physics", "unified-field-theory"]),
+			new Set([
+				"nuclear-pulse-engine",
+				"ion-drive",
+				"magneto-drive",
+				"icf-drive",
+				"mcf-drive",
+				"plasma-drive",
+				"am-solid-drive",
+				"am-gas-drive",
+				"am-plasma-drive",
+				"am-beam-drive",
+				"gravity-drive",
+				"photonic-drive",
+			]),
 		);
-		expect(tiers).toHaveLength(4);
+		expect(tiers.length).toBeGreaterThan(4);
 	});
 });
 

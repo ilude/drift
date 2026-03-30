@@ -16,13 +16,15 @@ export function computeEngineStats(
 	tier: EngineTierDef,
 	powerPct: number,
 	sizeHS: number,
-): { accelG: number; ispS: number; massKg: number; fuelMod: number } {
-	const fuelMod = Math.max(0.01, (powerPct / 100) ** 2.5 * (1 - sizeHS / 100));
+): { accelG: number; ispS: number; massKg: number; fuelMod: number; isCommercial: boolean } {
+	const baseFuelMod = Math.max(0.01, (powerPct / 100) ** 2.5 * (1 - sizeHS / 100));
+	const isCommercial = sizeHS >= 25 && powerPct <= 50;
 	return {
 		accelG: tier.baseAccelG * (powerPct / 100),
 		ispS: tier.baseIspS,
 		massKg: sizeHS * tier.baseMassPerHS,
-		fuelMod,
+		fuelMod: isCommercial ? baseFuelMod * 0.1 : baseFuelMod,
+		isCommercial,
 	};
 }
 

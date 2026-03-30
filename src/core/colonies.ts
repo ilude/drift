@@ -59,7 +59,7 @@ export function getProjectsForColony(bodyName: string): Set<ColonyResearchProjec
 	return _projectsByColony.get(bodyName) ?? new Set();
 }
 
-type ResearchCategory = "industry" | "survey" | "logistics" | "research" | "biology";
+type ResearchCategory = "industry" | "survey" | "logistics" | "research" | "biology" | "propulsion";
 
 const RESEARCH_CATEGORIES: ResearchCategory[] = [
 	"industry",
@@ -67,6 +67,7 @@ const RESEARCH_CATEGORIES: ResearchCategory[] = [
 	"logistics",
 	"research",
 	"biology",
+	"propulsion",
 ];
 
 const SCIENTIST_NAMES = [
@@ -278,7 +279,7 @@ export const RESEARCH_DEFS: ResearchDefinition[] = [
 		rpCost: 500,
 		difficulty: 1.4,
 		description: "Multi-ship resupply coordination and underway replenishment protocols.",
-		effectText: "Unlocks improved propulsion engine tier. +15% overhaul quality.",
+		effectText: "+15% overhaul quality.",
 		prerequisites: ["supply-optimization"],
 	},
 	{
@@ -320,7 +321,7 @@ export const RESEARCH_DEFS: ResearchDefinition[] = [
 		difficulty: 1.45,
 		description:
 			"Practical derivations from theoretical physics yield breakthroughs in materials and propulsion.",
-		effectText: "+20% research output. Unlocks advanced engine tier.",
+		effectText: "+20% research output.",
 		prerequisites: ["sensor-theory"],
 	},
 	{
@@ -331,7 +332,7 @@ export const RESEARCH_DEFS: ResearchDefinition[] = [
 		difficulty: 1.6,
 		description:
 			"A coherent model of fundamental forces enables a new generation of energy and propulsion systems.",
-		effectText: "+30% research output. Unlocks extreme engine tier.",
+		effectText: "+30% research output.",
 		prerequisites: ["applied-physics"],
 	},
 	// --- Biology ---
@@ -388,6 +389,133 @@ export const RESEARCH_DEFS: ResearchDefinition[] = [
 			"Long-duration atmospheric seeding, ice delivery, and microorganism introduction can transform a hostile world over decades.",
 		effectText: "Unlocks terraforming colony projects. Habitability modification rate: +0.001/year.",
 		prerequisites: ["xenobiology"],
+	},
+	// --- Propulsion ---
+	{
+		id: "nuclear-pulse-engine",
+		name: "Nuclear Pulse Engine",
+		category: "propulsion",
+		rpCost: 200,
+		difficulty: 1.2,
+		description:
+			"Directional nuclear detonations against a pusher plate. Extreme thrust, very poor efficiency.",
+		effectText: "Unlocks Nuclear Pulse engine tier.",
+		prerequisites: [],
+	},
+	{
+		id: "ion-drive",
+		name: "Ion Drive",
+		category: "propulsion",
+		rpCost: 300,
+		difficulty: 1.3,
+		description: "Electrostatic ion acceleration. Extremely fuel-efficient but very low thrust.",
+		effectText: "Unlocks Ion Drive engine tier.",
+		prerequisites: [],
+	},
+	{
+		id: "magneto-drive",
+		name: "Magnetospheric Drive",
+		category: "propulsion",
+		rpCost: 500,
+		difficulty: 1.4,
+		description:
+			"Uses fusion reactor magnetic field to accelerate solar wind plasma. Near-zero fuel in inner system.",
+		effectText: "Unlocks Magnetospheric Drive engine tier.",
+		prerequisites: ["ion-drive"],
+	},
+	{
+		id: "icf-drive",
+		name: "ICF Drive",
+		category: "propulsion",
+		rpCost: 500,
+		difficulty: 1.4,
+		description:
+			"Fusion pellet detonations for thrust. First engine competitive on both thrust and efficiency.",
+		effectText: "Unlocks ICF Drive engine tier.",
+		prerequisites: ["nuclear-pulse-engine"],
+	},
+	{
+		id: "mcf-drive",
+		name: "MCF Drive",
+		category: "propulsion",
+		rpCost: 800,
+		difficulty: 1.5,
+		description: "Sustained fusion exhaust via magnetic nozzle. Best all-rounder in fusion era.",
+		effectText: "Unlocks MCF Drive engine tier.",
+		prerequisites: ["icf-drive"],
+	},
+	{
+		id: "plasma-drive",
+		name: "Plasma Drive",
+		category: "propulsion",
+		rpCost: 1200,
+		difficulty: 1.6,
+		description:
+			"TN field-shaped plasma exhaust. Step change in efficiency over conventional drives.",
+		effectText: "Unlocks Plasma Drive engine tier.",
+		prerequisites: ["mcf-drive"],
+	},
+	{
+		id: "am-solid-drive",
+		name: "AM Solid-Core Drive",
+		category: "propulsion",
+		rpCost: 2000,
+		difficulty: 1.7,
+		description: "Antimatter heats solid-core heat exchanger. Reliable antimatter propulsion.",
+		effectText: "Unlocks AM Solid-Core Drive engine tier.",
+		prerequisites: ["plasma-drive"],
+	},
+	{
+		id: "am-gas-drive",
+		name: "AM Gas-Core Drive",
+		category: "propulsion",
+		rpCost: 3000,
+		difficulty: 1.8,
+		description:
+			"Antihydrogen annihilates in gaseous uranium core. Very hot, high thermal signature.",
+		effectText: "Unlocks AM Gas-Core Drive engine tier.",
+		prerequisites: ["am-solid-drive"],
+	},
+	{
+		id: "am-plasma-drive",
+		name: "AM Plasma-Core Drive",
+		category: "propulsion",
+		rpCost: 4000,
+		difficulty: 1.9,
+		description:
+			"Direct plasma exhaust from matter-antimatter annihilation. Fastest engine in the game.",
+		effectText: "Unlocks AM Plasma-Core Drive engine tier.",
+		prerequisites: ["am-gas-drive"],
+	},
+	{
+		id: "am-beam-drive",
+		name: "AM Beam-Core Drive",
+		category: "propulsion",
+		rpCost: 3500,
+		difficulty: 1.85,
+		description: "Charged pion beam exhaust. Maximum propulsive efficiency, moderate thrust.",
+		effectText: "Unlocks AM Beam-Core Drive engine tier.",
+		prerequisites: ["am-plasma-drive"],
+	},
+	{
+		id: "gravity-drive",
+		name: "Gravity Drive",
+		category: "propulsion",
+		rpCost: 5000,
+		difficulty: 2.0,
+		description: "TN field spacetime gradient manipulation. No propellant, no exhaust signature.",
+		effectText: "Unlocks Gravity Drive engine tier.",
+		prerequisites: ["plasma-drive"],
+	},
+	{
+		id: "photonic-drive",
+		name: "Photonic Drive",
+		category: "propulsion",
+		rpCost: 8000,
+		difficulty: 2.2,
+		description: "Pure photon exhaust powered by vacuum energy. No fuel, infinite endurance.",
+		effectText: "Unlocks Photonic Drive engine tier. Capstone propulsion.",
+		prerequisites: ["am-beam-drive", "gravity-drive"],
 	},
 ];
 
@@ -934,7 +1062,10 @@ function getEmpireTechBonuses(): {
 	construction: number;
 } {
 	return {
-		survey: state.researchedTechs.has("survey-automation") ? 1.15 : 1,
+		survey:
+			(state.researchedTechs.has("survey-automation") ? 1.15 : 1) *
+			(state.researchedTechs.has("advanced-telemetry") ? 1.2 : 1) *
+			(state.researchedTechs.has("deep-scan-array") ? 1.25 : 1),
 		mining: state.researchedTechs.has("mining-drills") ? 1.25 : 1,
 		repair: state.researchedTechs.has("maintenance-doctrine") ? 1.15 : 1,
 		refuel: state.researchedTechs.has("maintenance-doctrine") ? 1.15 : 1,

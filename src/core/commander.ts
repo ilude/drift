@@ -12,7 +12,7 @@ import { checkCondition, evaluateCommandTree, hullCeiling } from "./commands";
 import { findBody } from "./entities";
 import { isTankerInboundFor } from "./intents";
 import { err, ok } from "./result";
-import { resolveShipPhysics } from "./ship-utils";
+import { resolveShipPhysics, resolveShipSensorLevel } from "./ship-utils";
 import { state } from "./state";
 import { computeSurveyPlan } from "./survey-planner";
 
@@ -153,11 +153,11 @@ export function checkHoldForTanker(ship: ShipEntry, result: CommandResult): Comm
 	return null;
 }
 
-function hasUnsurvedWorkAtHost(hostName: string): boolean {
+function hasUnsurvedWorkAtHost(hostName: string, maxSurveyLevel: number): boolean {
 	const [host, hostFound] = findBody(hostName);
 	if (!hostFound) return false;
-	if (isSurveyable(host) && host.survey.surveyLevel === 0) return true;
-	return host.moons?.some((m) => isSurveyable(m) && m.survey.surveyLevel === 0) ?? false;
+	if (isSurveyable(host) && host.survey.surveyLevel < maxSurveyLevel) return true;
+	return host.moons?.some((m) => isSurveyable(m) && m.survey.surveyLevel < maxSurveyLevel) ?? false;
 }
 
 // "Finish the job before heading home" — defer maintenance when already at an unsurveyed
@@ -172,7 +172,8 @@ function checkDeferMaintenance(
 	if (ship.shipState !== "orbiting") return null;
 	// Only applies at non-colony locations (at a colony, just do the maintenance)
 	if (hasColony(ship.hostPlanetName)) return null;
-	if (!hasUnsurvedWorkAtHost(ship.hostPlanetName)) return null;
+	const maxLevel = resolveShipSensorLevel(ship);
+	if (!hasUnsurvedWorkAtHost(ship.hostPlanetName, maxLevel)) return null;
 
 	const j = ship.commander.judgment;
 	// Low-judgment commanders don't defer -- they follow orders literally
@@ -240,6 +241,9 @@ function checkDeferRefuel(ship: ShipEntry, pendingResult: CommandResult): Comman
 	const fuelNeeded = returnCost * margin;
 
 	if (ship.fuelKg <= fuelNeeded) return null; // genuinely need to head home
+
+	const maxLevel = resolveShipSensorLevel(ship);
+	if (!hasUnsurvedWorkAtHost(ship.hostPlanetName, maxLevel)) return null;
 
 	return { action: "survey" };
 }
