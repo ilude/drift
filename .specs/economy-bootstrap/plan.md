@@ -17,7 +17,7 @@ This plan implements the Aurora 4X economic loop: **factories build flat-packed 
 - Platform: Windows 11, bash shell, Bun + Vite + TypeScript
 - Shell: bash
 - Biome lint: zero warnings, cognitive complexity max 15
-- 717+ tests must pass
+- 773+ tests must pass
 - Import hierarchy: math/ → core/ → rendering/ → ui/ → main.ts
 - Aurora 4X is the baseline behavior — customize later
 - Existing construction system pattern (BP + resource cost + allocation %) is the template for both factory production and ship building
@@ -218,7 +218,7 @@ Wave 4: T7, T8 (parallel) → V4
 2. [ ] Ship building works end-to-end: design ship → queue at shipyard → resources consumed → ship appears
    - Verify: manual test
    - Pass: new ship orbits colony on completion
-3. [ ] All 717+ tests pass, zero lint warnings
+3. [ ] All 773+ tests pass, zero lint warnings
    - Verify: `bun run test && bun run lint && bun run typecheck`
    - Pass: all green
 

@@ -30,6 +30,7 @@ function resetState() {
 		"colony-understaffed": false,
 		"colony-idle": false,
 		"colony-blocked": false,
+		"ship-built": false,
 	};
 	clearNotifications();
 }
