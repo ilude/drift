@@ -31,6 +31,24 @@ const BASE_MINING_RATE = 10;
 const BASE_RESEARCH_RATE = 5;
 const BASE_CONSTRUCTION_BP_RATE = 2;
 const CATEGORY_GROWTH_RATE = 0.0015;
+const _ACADEMY_BASE_RATE = 0.001; // ~1000 days per scientist at quality 1.0 with 1 academy
+const SUPPLY_CONSUMPTION_RATE = 0.001; // 1 supply per 1000 pop per day
+
+export function computeSupplyDrain(
+	population: number,
+	supplyMultiplier: number,
+	simDtDays: number,
+): number {
+	return population * SUPPLY_CONSUMPTION_RATE * supplyMultiplier * simDtDays;
+}
+
+export function computeSupplyPenalty(supplies: number, dailyDrain: number): number {
+	if (dailyDrain <= 0) return 1.0;
+	const daysRemaining = supplies / dailyDrain;
+	if (daysRemaining >= 90) return 1.0;
+	if (daysRemaining <= 0) return 0.5;
+	return 0.5 + 0.5 * (daysRemaining / 90);
+}
 
 let projectCounter = 0;
 let scientistCounter = 0;
@@ -178,6 +196,13 @@ export const CONSTRUCTION_DEFS: ConstructionDefinition[] = [
 		bpCost: 200,
 		description: "Electromagnetic launcher for shipping resources to other colonies.",
 		resourceCost: { iron: 800, copper: 300, aluminum: 200, silicon: 150 },
+	},
+	{
+		id: "fuel-refinery",
+		name: "Fuel Refinery",
+		bpCost: 100,
+		description: "Converts methane from stockpile into ship fuel.",
+		resourceCost: { iron: 400, copper: 150, methane: 200 },
 	},
 ];
 
@@ -579,6 +604,7 @@ const INSTALLATION_WORKERS: Record<keyof ColonyInstallations, number> = {
 	shipyard: 250_000,
 	automatedMine: 0,
 	massDriver: 10_000,
+	fuelRefinery: 50_000,
 };
 
 function rand(): number {
@@ -687,6 +713,7 @@ function createColony(
 		shipbuildProjects: [],
 		transferQueue: [],
 		massDriverTarget: null,
+		academyProgress: 0,
 	};
 }
 
@@ -743,15 +770,17 @@ export function seedStartingColonies(): void {
 					shipyard: 1,
 					automatedMine: 0,
 					massDriver: 0,
+					fuelRefinery: 1,
 				},
 				{
 					fuelKg: 2_000_000,
-					supplies: 20_000,
+					supplies: 500_000_000,
 					resources: {
 						iron: 15_000,
 						aluminum: 8_000,
 						copper: 4_000,
 						silicon: 3_000,
+						methane: 10_000,
 					},
 				},
 			),
@@ -786,6 +815,7 @@ export function seedStartingColonies(): void {
 				shipyard: 0,
 				automatedMine: 0,
 				massDriver: 0,
+				fuelRefinery: 0,
 			},
 			{ fuelKg: 100_000, supplies: 2_000 },
 		),
@@ -1094,7 +1124,8 @@ export function computeColonyWorkforce(colony: ColonyState): ColonyWorkforce {
 		colony.installations.lab * INSTALLATION_WORKERS.lab +
 		colony.installations.academy * INSTALLATION_WORKERS.academy +
 		colony.installations.storage * INSTALLATION_WORKERS.storage +
-		colony.installations.shipyard * INSTALLATION_WORKERS.shipyard;
+		colony.installations.shipyard * INSTALLATION_WORKERS.shipyard +
+		(colony.installations.fuelRefinery ?? 0) * INSTALLATION_WORKERS.fuelRefinery;
 	const staffingRatio =
 		usedWorkers <= 0 ? 1 : Math.max(0, Math.min(1, availableWorkers / usedWorkers));
 	return {
@@ -1111,20 +1142,38 @@ export function computeColonyQualities(colony: ColonyState): ColonyQualities {
 	const workforce = computeColonyWorkforce(colony);
 	const staffingRatio = workforce.staffingRatio;
 	const bonuses = getEmpireTechBonuses();
+	const dailyDrain = computeSupplyDrain(colony.population, state.supplyMultiplier, 1);
+	const supplyPenalty = computeSupplyPenalty(colony.stockpile.supplies, dailyDrain);
 	return {
 		construction:
 			(BASE_SERVICE_QUALITY + colony.installations.constructionFactory * 0.2) *
 			staffingRatio *
-			bonuses.construction,
+			bonuses.construction *
+			supplyPenalty,
 		repair:
-			(BASE_SERVICE_QUALITY + colony.installations.repairYard * 0.25) * staffingRatio * bonuses.repair,
+			(BASE_SERVICE_QUALITY + colony.installations.repairYard * 0.25) *
+			staffingRatio *
+			bonuses.repair *
+			supplyPenalty,
 		refuel:
-			(BASE_SERVICE_QUALITY + colony.installations.fuelDepot * 0.25) * staffingRatio * bonuses.refuel,
+			(BASE_SERVICE_QUALITY + colony.installations.fuelDepot * 0.25) *
+			staffingRatio *
+			bonuses.refuel *
+			supplyPenalty,
 		research:
-			(BASE_SERVICE_QUALITY + colony.installations.lab * 0.2) * staffingRatio * bonuses.research,
-		training: (BASE_SERVICE_QUALITY + colony.installations.academy * 0.2) * staffingRatio,
-		mining: (BASE_SERVICE_QUALITY + colony.installations.mine * 0.2) * staffingRatio * bonuses.mining,
-		shipbuilding: (BASE_SERVICE_QUALITY + colony.installations.shipyard * 0.2) * staffingRatio,
+			(BASE_SERVICE_QUALITY + colony.installations.lab * 0.2) *
+			staffingRatio *
+			bonuses.research *
+			supplyPenalty,
+		training:
+			(BASE_SERVICE_QUALITY + colony.installations.academy * 0.2) * staffingRatio * supplyPenalty,
+		mining:
+			(BASE_SERVICE_QUALITY + colony.installations.mine * 0.2) *
+			staffingRatio *
+			bonuses.mining *
+			supplyPenalty,
+		shipbuilding:
+			(BASE_SERVICE_QUALITY + colony.installations.shipyard * 0.2) * staffingRatio * supplyPenalty,
 		storageCapacity:
 			BASE_STORAGE_CAPACITY + colony.installations.storage * STORAGE_CAPACITY_PER_INSTALLATION,
 		staffingRatio,
@@ -1570,6 +1619,61 @@ function tickResearch(colony: ColonyState, simDtDays: number): void {
 	}
 }
 
+export function computeAcademyProgress(
+	academyCount: number,
+	trainingQuality: number,
+	simDtDays: number,
+): number {
+	return _ACADEMY_BASE_RATE * academyCount * trainingQuality * simDtDays;
+}
+
+function createScientistFromAcademy(colony: ColonyState): ScientistState {
+	const index = state.scientists.size;
+	const name = makeScientistName();
+	const id = `sci-${colony.bodyName}-${index}`;
+	const primary = RESEARCH_CATEGORIES[index % RESEARCH_CATEGORIES.length];
+	const secondary = RESEARCH_CATEGORIES[(index + 1) % RESEARCH_CATEGORIES.length];
+	return {
+		id,
+		name,
+		colonyBodyName: colony.bodyName,
+		primaryCategory: primary,
+		secondaryCategory: secondary,
+		activeProjectTechId: null,
+		projectQueue: [],
+		assignedLabs: 0,
+		adminCap: 1,
+		categoryBonuses: { [primary]: 0.1 },
+		completedProjects: [],
+		experienceByCategory: {},
+	};
+}
+
+function tickAcademyTraining(
+	colony: ColonyState,
+	simDtDays: number,
+	qualities: ColonyQualities,
+): void {
+	if (colony.installations.academy <= 0) return;
+	colony.academyProgress += computeAcademyProgress(
+		colony.installations.academy,
+		qualities.training,
+		simDtDays,
+	);
+	while (colony.academyProgress >= 1.0) {
+		colony.academyProgress -= 1.0;
+		const scientist = createScientistFromAcademy(colony);
+		state.scientists.set(scientist.id, scientist);
+		scientistCounter++;
+		addCoalescedNotification(
+			"scientist-graduated",
+			`New scientist graduated at ${colony.name}`,
+			colony.bodyName,
+			60_000,
+		);
+	}
+}
+
 function tickConstruction(
 	colony: ColonyState,
 	simDtDays: number,
@@ -1626,6 +1730,9 @@ function tickConstruction(
 					break;
 				case "mass-driver":
 					colony.installations.massDriver++;
+					break;
+				case "fuel-refinery":
+					colony.installations.fuelRefinery++;
 					break;
 			}
 		}
@@ -1712,6 +1819,19 @@ function checkColonyWarnings(colony: ColonyState, qualities: ColonyQualities): v
 			5000,
 		);
 	}
+
+	const dailyDrain = computeSupplyDrain(colony.population, state.supplyMultiplier, 1);
+	if (dailyDrain > 0 && colony.stockpile.supplies / dailyDrain < 90) {
+		if (shouldWarn(`${colony.bodyName}:low-supplies`)) {
+			const daysLeft = Math.floor(colony.stockpile.supplies / dailyDrain);
+			addCoalescedNotification(
+				"colony-low-supplies",
+				`${colony.name}: low supplies (${daysLeft} days remaining)`,
+				colony.bodyName,
+				5000,
+			);
+		}
+	}
 }
 
 // --- Automated mining (no workforce) ---
@@ -1773,13 +1893,52 @@ export function assembleFlatPack(colony: ColonyState, flatPackId: string): boole
 	return true;
 }
 
-const EARTH_FUEL_RESTOCK_PER_DAY = 5_000; // kg/day placeholder until production chains
+const EARTH_FUEL_RESTOCK_PER_DAY = 1_000; // kg/day safety net during transition to refinery production
+
+const BASE_REFINERY_RATE = 500; // kg fuel per refinery per day at quality 1.0
+const METHANE_TO_FUEL_RATIO = 200; // 1 unit methane → 200 kg fuel
+
+export function computeFuelRefineryOutput(
+	refineryCount: number,
+	constructionQuality: number,
+	fuelBurnMultiplier: number,
+	simDtDays: number,
+): number {
+	return (BASE_REFINERY_RATE * refineryCount * constructionQuality * simDtDays) / fuelBurnMultiplier;
+}
+
+function tickFuelRefinery(
+	colony: ColonyState,
+	simDtDays: number,
+	qualities: ColonyQualities,
+): void {
+	if (colony.installations.fuelRefinery <= 0) return;
+	const fuelOutput = computeFuelRefineryOutput(
+		colony.installations.fuelRefinery,
+		qualities.construction,
+		state.fuelBurnMultiplier,
+		simDtDays,
+	);
+	const methaneNeeded = fuelOutput / METHANE_TO_FUEL_RATIO;
+	const methaneAvailable = colony.stockpile.resources.methane ?? 0;
+	const methaneUsed = Math.min(methaneNeeded, methaneAvailable);
+	const actualFuel = methaneUsed * METHANE_TO_FUEL_RATIO;
+
+	colony.stockpile.resources.methane = methaneAvailable - methaneUsed;
+	colony.stockpile.fuelKg += actualFuel;
+}
+
+function tickSupplyConsumption(colony: ColonyState, simDtDays: number): void {
+	const drain = computeSupplyDrain(colony.population, state.supplyMultiplier, simDtDays);
+	colony.stockpile.supplies = Math.max(0, colony.stockpile.supplies - drain);
+}
 
 export function tickColony(colony: ColonyState, simDtDays: number): void {
-	// Placeholder: Earth has unlimited fuel production for early-game debugging
+	// Safety net: Earth gets a small baseline fuel trickle until refinery chains are established
 	if (colony.bodyName === "Earth") {
 		colony.stockpile.fuelKg += EARTH_FUEL_RESTOCK_PER_DAY * simDtDays;
 	}
+	tickSupplyConsumption(colony, simDtDays);
 	const qualities = computeColonyQualities(colony);
 	tickConstruction(colony, simDtDays, qualities);
 	tickProduction(colony, simDtDays, qualities);
@@ -1787,7 +1946,9 @@ export function tickColony(colony: ColonyState, simDtDays: number): void {
 	tickMining(colony, simDtDays, qualities);
 	tickAutomatedMining(colony, simDtDays);
 	tickMassDriver(colony, simDtDays);
+	tickFuelRefinery(colony, simDtDays, qualities);
 	tickResearch(colony, simDtDays);
+	tickAcademyTraining(colony, simDtDays, qualities);
 	routeTransferQueue(colony);
 	settleTransfers(colony);
 	checkColonyWarnings(colony, qualities);

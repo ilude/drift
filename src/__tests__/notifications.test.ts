@@ -30,7 +30,9 @@ function resetState() {
 		"colony-understaffed": false,
 		"colony-idle": false,
 		"colony-blocked": false,
+		"colony-low-supplies": false,
 		"ship-built": false,
+		"scientist-graduated": false,
 	};
 	clearNotifications();
 }

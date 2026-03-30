@@ -548,6 +548,9 @@ describe("transfer state persistence", () => {
 						academy: 2,
 						storage: 6,
 						shipyard: 1,
+						automatedMine: 0,
+						massDriver: 0,
+						fuelRefinery: 0,
 					},
 					stockpile: {
 						fuelKg: 12345,
@@ -560,6 +563,8 @@ describe("transfer state persistence", () => {
 					productionProjects: [],
 					shipbuildProjects: [],
 					transferQueue: [],
+					massDriverTarget: null,
+					academyProgress: 0,
 				},
 			],
 		]) as typeof state.colonies;

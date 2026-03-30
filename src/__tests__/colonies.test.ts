@@ -12,6 +12,8 @@ import {
 	computeColonyWorkforce,
 	computeResearchProgress,
 	computeShipResourceCost,
+	computeSupplyDrain,
+	computeSupplyPenalty,
 	consumeColonyFuel,
 	consumeColonySupplies,
 	drainCompletedShipbuilds,
@@ -102,6 +104,7 @@ function makeColony(bodyName: string, overrides: Partial<ColonyState> = {}): Col
 			shipyard: 0,
 			automatedMine: 0,
 			massDriver: 0,
+			fuelRefinery: 0,
 		},
 		stockpile: { fuelKg: 1000, supplies: 100, resources: {}, flatPacked: {} },
 		massDriverTarget: null,
@@ -110,6 +113,7 @@ function makeColony(bodyName: string, overrides: Partial<ColonyState> = {}): Col
 		productionProjects: [],
 		shipbuildProjects: [],
 		transferQueue: [],
+		academyProgress: 0,
 		...overrides,
 	};
 }
@@ -151,6 +155,9 @@ describe("colonies", () => {
 					academy: 2,
 					storage: 2,
 					shipyard: 0,
+					automatedMine: 0,
+					massDriver: 0,
+					fuelRefinery: 0,
 				},
 			}),
 		);
@@ -173,6 +180,9 @@ describe("colonies", () => {
 					academy: 3,
 					storage: 3,
 					shipyard: 0,
+					automatedMine: 0,
+					massDriver: 0,
+					fuelRefinery: 0,
 				},
 			}),
 		);
@@ -265,8 +275,16 @@ describe("colonies", () => {
 				academy: 0,
 				storage: 1,
 				shipyard: 0,
+				automatedMine: 0,
+				massDriver: 0,
+				fuelRefinery: 0,
 			},
-			stockpile: { fuelKg: 1000, supplies: 100, resources: { iron: 5000, copper: 2000 } },
+			stockpile: {
+				fuelKg: 1000,
+				supplies: 100,
+				resources: { iron: 5000, copper: 2000 },
+				flatPacked: {},
+			},
 		});
 		state.colonies.set("Earth", colony);
 		addConstructionProject("Earth", "mine", 1, 100);
@@ -289,8 +307,11 @@ describe("colonies", () => {
 				academy: 0,
 				storage: 0,
 				shipyard: 0,
+				automatedMine: 0,
+				massDriver: 0,
+				fuelRefinery: 0,
 			},
-			stockpile: { fuelKg: 0, supplies: 0, resources: { iron: 500, copper: 100 } },
+			stockpile: { fuelKg: 0, supplies: 0, resources: { iron: 500, copper: 100 }, flatPacked: {} },
 		});
 		state.colonies.set("Earth", colony);
 		addConstructionProject("Earth", "mine", 1, 100);
@@ -314,8 +335,11 @@ describe("colonies", () => {
 				academy: 0,
 				storage: 0,
 				shipyard: 0,
+				automatedMine: 0,
+				massDriver: 0,
+				fuelRefinery: 0,
 			},
-			stockpile: { fuelKg: 0, supplies: 0, resources: { iron: 10 } },
+			stockpile: { fuelKg: 0, supplies: 0, resources: { iron: 10 }, flatPacked: {} },
 		});
 		state.colonies.set("Earth", colony);
 		addConstructionProject("Earth", "mine", 1, 100);
@@ -330,7 +354,7 @@ describe("colonies", () => {
 
 	it("canAffordConstruction returns false when resources insufficient", () => {
 		const colony = makeColony("Earth", {
-			stockpile: { fuelKg: 0, supplies: 0, resources: { iron: 100 } },
+			stockpile: { fuelKg: 0, supplies: 0, resources: { iron: 100 }, flatPacked: {} },
 		});
 		expect(canAffordConstruction(colony, "mine")).toBe(false);
 		expect(canAffordConstruction(colony, "storage")).toBe(false);
@@ -338,7 +362,12 @@ describe("colonies", () => {
 
 	it("canAffordConstruction returns true when resources sufficient", () => {
 		const colony = makeColony("Earth", {
-			stockpile: { fuelKg: 0, supplies: 0, resources: { iron: 5000, copper: 2000, aluminum: 1000 } },
+			stockpile: {
+				fuelKg: 0,
+				supplies: 0,
+				resources: { iron: 5000, copper: 2000, aluminum: 1000 },
+				flatPacked: {},
+			},
 		});
 		expect(canAffordConstruction(colony, "mine")).toBe(true);
 		expect(canAffordConstruction(colony, "construction-factory")).toBe(true);
@@ -357,6 +386,9 @@ describe("colonies", () => {
 				academy: 10,
 				storage: 10,
 				shipyard: 10,
+				automatedMine: 0,
+				massDriver: 0,
+				fuelRefinery: 0,
 			},
 		});
 		state.colonies.set("Earth", colony);
@@ -589,6 +621,9 @@ describe("shipbuilding", () => {
 				academy: 0,
 				storage: 0,
 				shipyard: 1,
+				automatedMine: 0,
+				massDriver: 0,
+				fuelRefinery: 0,
 			},
 		});
 		expect(getShipbuildBpPerDay(colony)).toBeGreaterThan(0);
@@ -609,6 +644,9 @@ describe("shipbuilding", () => {
 				academy: 0,
 				storage: 0,
 				shipyard: 1,
+				automatedMine: 0,
+				massDriver: 0,
+				fuelRefinery: 0,
 			},
 			stockpile: {
 				fuelKg: 0,
@@ -642,6 +680,9 @@ describe("shipbuilding", () => {
 				academy: 0,
 				storage: 0,
 				shipyard: 1,
+				automatedMine: 0,
+				massDriver: 0,
+				fuelRefinery: 0,
 			},
 			stockpile: {
 				fuelKg: 0,
@@ -674,6 +715,9 @@ describe("shipbuilding", () => {
 				academy: 0,
 				storage: 0,
 				shipyard: 1,
+				automatedMine: 0,
+				massDriver: 0,
+				fuelRefinery: 0,
 			},
 			stockpile: {
 				fuelKg: 0,
@@ -706,6 +750,9 @@ describe("shipbuilding", () => {
 				academy: 0,
 				storage: 0,
 				shipyard: 1,
+				automatedMine: 0,
+				massDriver: 0,
+				fuelRefinery: 0,
 			},
 			stockpile: {
 				fuelKg: 0,
@@ -765,6 +812,7 @@ describe("automated mining + mass driver", () => {
 				shipyard: 0,
 				automatedMine: 2,
 				massDriver: 0,
+				fuelRefinery: 0,
 			},
 		});
 		state.colonies.set("Asteroid-1", colony);
@@ -792,6 +840,7 @@ describe("automated mining + mass driver", () => {
 				shipyard: 0,
 				automatedMine: 0,
 				massDriver: 1,
+				fuelRefinery: 0,
 			},
 			stockpile: { fuelKg: 0, supplies: 0, resources: { iron: 1000 }, flatPacked: {} },
 			massDriverTarget: "Earth",
@@ -808,6 +857,7 @@ describe("automated mining + mass driver", () => {
 				shipyard: 0,
 				automatedMine: 0,
 				massDriver: 1,
+				fuelRefinery: 0,
 			},
 		});
 		state.colonies.set("Outpost", outpost);
@@ -837,6 +887,7 @@ describe("automated mining + mass driver", () => {
 				shipyard: 0,
 				automatedMine: 0,
 				massDriver: 1,
+				fuelRefinery: 0,
 			},
 			stockpile: { fuelKg: 0, supplies: 0, resources: { iron: 1000 }, flatPacked: {} },
 			massDriverTarget: "Earth",
@@ -862,5 +913,123 @@ describe("automated mining + mass driver", () => {
 		const colony = makeColony("Earth");
 		expect(assembleFlatPack(colony, "flat-mine")).toBe(false);
 		expect(colony.installations.automatedMine).toBe(0);
+	});
+});
+
+describe("computeSupplyDrain", () => {
+	it("is proportional to population", () => {
+		const a = computeSupplyDrain(1_000_000, 1, 1);
+		const b = computeSupplyDrain(2_000_000, 1, 1);
+		expect(b).toBeCloseTo(a * 2);
+	});
+
+	it("scales with supplyMultiplier", () => {
+		const a = computeSupplyDrain(1_000_000, 1, 1);
+		const b = computeSupplyDrain(1_000_000, 2, 1);
+		expect(b).toBeCloseTo(a * 2);
+	});
+
+	it("scales with simDtDays", () => {
+		const a = computeSupplyDrain(1_000_000, 1, 1);
+		const b = computeSupplyDrain(1_000_000, 1, 10);
+		expect(b).toBeCloseTo(a * 10);
+	});
+
+	it("matches formula: pop * 0.001 * multiplier * dt", () => {
+		expect(computeSupplyDrain(500_000, 2, 3)).toBeCloseTo(500_000 * 0.001 * 2 * 3);
+	});
+});
+
+describe("computeSupplyPenalty", () => {
+	it("returns 1.0 when supplies cover 90+ days", () => {
+		const drain = 10;
+		expect(computeSupplyPenalty(900, drain)).toBe(1.0);
+		expect(computeSupplyPenalty(1800, drain)).toBe(1.0);
+	});
+
+	it("returns 0.5 when supplies are zero", () => {
+		expect(computeSupplyPenalty(0, 10)).toBe(0.5);
+	});
+
+	it("returns 1.0 when daily drain is zero", () => {
+		expect(computeSupplyPenalty(0, 0)).toBe(1.0);
+	});
+
+	it("lerps between 0.5 and 1.0 based on days remaining", () => {
+		const drain = 10;
+		// 45 days = halfway between 0 and 90 → 0.75
+		expect(computeSupplyPenalty(450, drain)).toBeCloseTo(0.75);
+	});
+});
+
+describe("supply consumption integration", () => {
+	beforeEach(() => {
+		state.colonies.clear();
+		state.bodyMeshes = [mockPlanet("Earth")];
+		rebuildEntityMaps();
+		state.notifications = [];
+		resetColonyWarningState();
+		state.supplyMultiplier = 1;
+	});
+
+	it("supplies decrease after tickColony", () => {
+		const colony = makeColony("Earth", {
+			population: 1_000_000,
+			stockpile: { fuelKg: 0, supplies: 10_000, resources: {}, flatPacked: {} },
+		});
+		state.colonies.set("Earth", colony);
+		tickColony(colony, 1);
+		expect(colony.stockpile.supplies).toBeLessThan(10_000);
+	});
+
+	it("supplies floor at zero and do not go negative", () => {
+		const colony = makeColony("Earth", {
+			population: 1_000_000,
+			stockpile: { fuelKg: 0, supplies: 0, resources: {}, flatPacked: {} },
+		});
+		state.colonies.set("Earth", colony);
+		tickColony(colony, 10);
+		expect(colony.stockpile.supplies).toBe(0);
+	});
+
+	it("colony with zero supplies has reduced quality vs well-supplied colony", () => {
+		const depleted = makeColony("Earth", {
+			population: 1_000_000,
+			stockpile: { fuelKg: 0, supplies: 0, resources: {}, flatPacked: {} },
+		});
+		const stocked = makeColony("Earth", {
+			population: 1_000_000,
+			stockpile: { fuelKg: 0, supplies: 1_000_000, resources: {}, flatPacked: {} },
+		});
+		const depletedQ = computeColonyQualities(depleted);
+		const stockedQ = computeColonyQualities(stocked);
+		expect(depletedQ.mining).toBeLessThan(stockedQ.mining);
+		expect(depletedQ.research).toBeLessThan(stockedQ.research);
+		expect(depletedQ.construction).toBeLessThan(stockedQ.construction);
+	});
+
+	it("warns when supplies drop below 90 days remaining", () => {
+		// 1M pop, drain = 1000/day; 80 days of supplies = 80_000
+		const colony = makeColony("Earth", {
+			population: 1_000_000,
+			stockpile: { fuelKg: 0, supplies: 80_000, resources: {}, flatPacked: {} },
+		});
+		state.colonies.set("Earth", colony);
+		tickColony(colony, 1);
+		const warning = state.notifications.find((n) => n.type === "colony-low-supplies");
+		expect(warning).toBeDefined();
+		expect(warning?.message).toContain("low supplies");
+	});
+
+	it("does not warn when supplies are above 90 days", () => {
+		// 1M pop, drain = 1000/day; 100 days = 100_000 supplies
+		const colony = makeColony("Earth", {
+			population: 1_000_000,
+			stockpile: { fuelKg: 0, supplies: 100_000, resources: {}, flatPacked: {} },
+		});
+		state.colonies.set("Earth", colony);
+		tickColony(colony, 1);
+		const warning = state.notifications.find((n) => n.type === "colony-low-supplies");
+		expect(warning).toBeUndefined();
 	});
 });

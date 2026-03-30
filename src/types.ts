@@ -233,7 +233,8 @@ export type ColonyInstallationId =
 	| "storage"
 	| "shipyard"
 	| "automated-mine"
-	| "mass-driver";
+	| "mass-driver"
+	| "fuel-refinery";
 
 export interface ColonyInstallations {
 	constructionFactory: number;
@@ -246,6 +247,7 @@ export interface ColonyInstallations {
 	shipyard: number;
 	automatedMine: number;
 	massDriver: number;
+	fuelRefinery: number;
 }
 
 export interface ColonyStockpile {
@@ -288,6 +290,7 @@ export interface ColonyState {
 	shipbuildProjects: ColonyShipbuildProject[];
 	transferQueue: ScientistTransferRequest[];
 	massDriverTarget: string | null;
+	academyProgress: number;
 }
 
 export interface ColonyWorkforce {
@@ -405,7 +408,9 @@ export type NotificationType =
 	| "colony-understaffed"
 	| "colony-idle"
 	| "colony-blocked"
-	| "ship-built";
+	| "colony-low-supplies"
+	| "ship-built"
+	| "scientist-graduated";
 
 export interface GameNotification {
 	id: number;
@@ -768,7 +773,9 @@ export interface NotificationPauseConfig {
 	"colony-understaffed": boolean;
 	"colony-idle": boolean;
 	"colony-blocked": boolean;
+	"colony-low-supplies": boolean;
 	"ship-built": boolean;
+	"scientist-graduated": boolean;
 }
 
 export interface AppState {

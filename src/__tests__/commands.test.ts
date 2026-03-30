@@ -1929,8 +1929,11 @@ function makeColony(bodyName: string, overrides: Partial<ColonyState> = {}): Col
 			academy: 0,
 			storage: 0,
 			shipyard: 0,
+			automatedMine: 0,
+			massDriver: 0,
+			fuelRefinery: 0,
 		},
-		stockpile: { fuelKg: 2_000_000, supplies: 100_000, resources: {} },
+		stockpile: { fuelKg: 2_000_000, supplies: 100_000, resources: {}, flatPacked: {} },
 		researchPoints: 0,
 		constructionProjects: [],
 		currentResearch: null,
@@ -1954,7 +1957,7 @@ describe("deliverColonyShuttle (via tickShipSimulation)", () => {
 		state.colonies.set(
 			"Earth",
 			makeColony("Earth", {
-				stockpile: { fuelKg: 50_000, supplies: 100_000, resources: {} },
+				stockpile: { fuelKg: 50_000, supplies: 100_000, resources: {}, flatPacked: {} },
 			}),
 		);
 		const ship = mockShip({ hostPlanetName: "Earth", fuelKg: 40_000, fuelCapacityKg: 50_000 });
@@ -1970,7 +1973,7 @@ describe("deliverColonyShuttle (via tickShipSimulation)", () => {
 		state.colonies.set(
 			"Earth",
 			makeColony("Earth", {
-				stockpile: { fuelKg: 100_000, supplies: 100_000, resources: {} },
+				stockpile: { fuelKg: 100_000, supplies: 100_000, resources: {}, flatPacked: {} },
 			}),
 		);
 		const ship = mockShip({ hostPlanetName: "Earth", fuelKg: 0, fuelCapacityKg: 50_000 });
@@ -1987,7 +1990,7 @@ describe("deliverColonyShuttle (via tickShipSimulation)", () => {
 		state.colonies.set(
 			"Earth",
 			makeColony("Earth", {
-				stockpile: { fuelKg: 50_000, supplies: 100_000, resources: {} },
+				stockpile: { fuelKg: 50_000, supplies: 100_000, resources: {}, flatPacked: {} },
 			}),
 		);
 		const ship = mockShip({ hostPlanetName: "Earth", fuelKg: 50_000, fuelCapacityKg: 50_000 });
@@ -2003,7 +2006,7 @@ describe("deliverColonyShuttle (via tickShipSimulation)", () => {
 		state.colonies.set(
 			"Earth",
 			makeColony("Earth", {
-				stockpile: { fuelKg: 3_000, supplies: 100_000, resources: {} },
+				stockpile: { fuelKg: 3_000, supplies: 100_000, resources: {}, flatPacked: {} },
 			}),
 		);
 		const ship = mockShip({ hostPlanetName: "Earth", fuelKg: 40_000, fuelCapacityKg: 50_000 });
@@ -2021,7 +2024,7 @@ describe("deliverColonyShuttle (via tickShipSimulation)", () => {
 		state.colonies.set(
 			"Earth",
 			makeColony("Earth", {
-				stockpile: { fuelKg: 50_000, supplies: 100_000, resources: {} },
+				stockpile: { fuelKg: 50_000, supplies: 100_000, resources: {}, flatPacked: {} },
 			}),
 		);
 		const ship = mockShip({
@@ -2042,7 +2045,7 @@ describe("deliverColonyShuttle (via tickShipSimulation)", () => {
 		state.colonies.set(
 			"Earth",
 			makeColony("Earth", {
-				stockpile: { fuelKg: 50_000, supplies: 50_000, resources: {} },
+				stockpile: { fuelKg: 50_000, supplies: 50_000, resources: {}, flatPacked: {} },
 			}),
 		);
 		const ship = mockShip({
