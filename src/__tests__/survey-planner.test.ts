@@ -12,6 +12,7 @@ vi.mock("../rendering/scene", () => ({
 }));
 
 import { rebuildEntityMaps } from "../core/entities";
+import { GameClock } from "../core/game-clock";
 import { invalidateIntentsCache, publishIntent } from "../core/intents";
 import { state } from "../core/state";
 import { advanceSurveyPlan, clearSurveyPlan, computeSurveyPlan } from "../core/survey-planner";
@@ -92,7 +93,7 @@ function setupSystem(bodies: BodyEntry[], ships: ShipEntry[]): void {
 	state.bodyMeshes = [...bodies, ...ships] as BodyEntry[];
 	state.asteroidBelts = [];
 	state.shipIntents = new Map();
-	state.simTime = { days: 100 };
+	state.simTime = new GameClock(100);
 	state.fuelBurnMultiplier = 1;
 	state.surveyMultiplier = 0.1;
 	state.colonies = new Map();
@@ -197,7 +198,7 @@ describe("advanceSurveyPlan", () => {
 		const t2 = mockBody("Beta", 220, 0);
 		const ship = mockShip("Explorer", 200, 0);
 		setupSystem([earth, t1, t2], [ship]);
-		ship.surveyPlan = { targets: ["Alpha", "Beta"], accelG: 0.1 };
+		ship.surveyPlan = { targets: ["Alpha", "Beta"], accelG: 0.1, returnFuelKg: 0 };
 		publishIntent("Explorer", {
 			type: "survey-plan",
 			targets: ["Alpha", "Beta"],
@@ -215,7 +216,7 @@ describe("advanceSurveyPlan", () => {
 		const unsurveyed = mockBody("Todo", 220, 0);
 		const ship = mockShip("Explorer", 200, 0);
 		setupSystem([earth, surveyed, unsurveyed], [ship]);
-		ship.surveyPlan = { targets: ["Done", "Todo"], accelG: 0.1 };
+		ship.surveyPlan = { targets: ["Done", "Todo"], accelG: 0.1, returnFuelKg: 0 };
 
 		const target = advanceSurveyPlan(ship);
 		expect(target).toBe("Todo");
@@ -226,7 +227,7 @@ describe("advanceSurveyPlan", () => {
 		const surveyed = mockBody("Done", 210, 0, true);
 		const ship = mockShip("Explorer", 200, 0);
 		setupSystem([earth, surveyed], [ship]);
-		ship.surveyPlan = { targets: ["Done"], accelG: 0.1 };
+		ship.surveyPlan = { targets: ["Done"], accelG: 0.1, returnFuelKg: 0 };
 
 		const target = advanceSurveyPlan(ship);
 		expect(target).toBeNull();
@@ -240,7 +241,7 @@ describe("advanceSurveyPlan", () => {
 		const ship = mockShip("Explorer", 200, 0);
 		const other = mockShip("Other", 210, 0);
 		setupSystem([earth, claimed, free], [ship, other]);
-		ship.surveyPlan = { targets: ["Taken", "Free"], accelG: 0.1 };
+		ship.surveyPlan = { targets: ["Taken", "Free"], accelG: 0.1, returnFuelKg: 0 };
 		publishIntent("Other", { type: "surveying", target: "Taken", shipName: "Other" });
 
 		const target = advanceSurveyPlan(ship);
@@ -283,7 +284,7 @@ describe("progressive intent claiming", () => {
 		const t4 = mockBody("D", 225, 0);
 		const ship = mockShip("Explorer", 200, 0);
 		setupSystem([earth, t1, t2, t3, t4], [ship]);
-		ship.surveyPlan = { targets: ["A", "B", "C", "D"], accelG: 0.1 };
+		ship.surveyPlan = { targets: ["A", "B", "C", "D"], accelG: 0.1, returnFuelKg: 0 };
 		publishIntent("Explorer", {
 			type: "survey-plan",
 			targets: ["A", "B", "C"],
@@ -313,7 +314,7 @@ describe("survey plan re-planning", () => {
 		const fresh3 = mockBody("Fresh3", 230, 0);
 		const ship = mockShip("Explorer", 200, 0, { fuelKg: 50_000 });
 		setupSystem([earth, done1, done2, fresh1, fresh2, fresh3], [ship]);
-		ship.surveyPlan = { targets: ["Done1", "Done2"], accelG: 0.1 };
+		ship.surveyPlan = { targets: ["Done1", "Done2"], accelG: 0.1, returnFuelKg: 0 };
 
 		const target = advanceSurveyPlan(ship);
 		// Old plan's targets are all surveyed, but new targets exist
@@ -329,7 +330,7 @@ describe("survey plan re-planning", () => {
 describe("clearSurveyPlan", () => {
 	it("sets surveyPlan to null", () => {
 		const ship = mockShip("Explorer", 200, 0);
-		ship.surveyPlan = { targets: ["A", "B"], accelG: 0.1 };
+		ship.surveyPlan = { targets: ["A", "B"], accelG: 0.1, returnFuelKg: 0 };
 		clearSurveyPlan(ship);
 		expect(ship.surveyPlan).toBeNull();
 	});
@@ -347,7 +348,7 @@ describe("clearSurveyPlan", () => {
 		const t2 = mockBody("Y", 220, 0);
 		const ship = mockShip("Explorer", 200, 0);
 		setupSystem([earth, t1, t2], [ship]);
-		ship.surveyPlan = { targets: ["X", "Y"], accelG: 0.1 };
+		ship.surveyPlan = { targets: ["X", "Y"], accelG: 0.1, returnFuelKg: 0 };
 		publishIntent("Explorer", { type: "survey-plan", targets: ["X", "Y"], shipName: "Explorer" });
 
 		clearSurveyPlan(ship);
