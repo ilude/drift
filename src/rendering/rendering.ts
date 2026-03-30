@@ -9,7 +9,12 @@ import {
 	meanToTrue,
 	scaleDist,
 } from "../math/orbit";
-import { isTransferComplete } from "../math/transfer";
+import {
+	captureBlendPosition,
+	checkTransferArrival,
+	computeResplineKnots,
+	shouldRespline as shouldResplineCheck,
+} from "../math/transfer";
 import { moonOrbitScale } from "../math/visual";
 import type { CategoryKey, PlanetEntry, ShipEntry } from "../types";
 import { isCometEntry, isShipEntry } from "../types";
@@ -153,9 +158,7 @@ function maybeResplineTransfer(
 		(newP1y - entry.mesh.position.y) ** 2 +
 		(newP1z - entry.mesh.position.z) ** 2;
 
-	const shouldRespline = endpointDeltaSq > Math.max(0.25, remainingDistSq * 0.01);
-
-	if (shouldRespline) {
+	if (shouldResplineCheck(endpointDeltaSq, remainingDistSq)) {
 		gameLog(
 			`[re-spline] ${entry.data.name}: deltaSq=${endpointDeltaSq.toFixed(3)} t=${t.toFixed(4)} remaining=${(entry.transferTimeDays - elapsed).toFixed(1)}d fuel=${entry.fuelKg.toFixed(0)}kg fuelBudget=${entry.transferFuelTotal.toFixed(0)}kg`,
 		);
@@ -176,26 +179,27 @@ function maybeResplineTransfer(
 			tEased,
 		);
 		const remainingDays = Math.max(entry.transferTimeDays - elapsed, 0.01);
-		const dx = newP1x - curPos.x;
-		const dy = newP1y - curPos.y;
-		const dz = newP1z - curPos.z;
-		const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
-		const invDist = dist > 0 ? 1 / dist : 0;
-		const tangentMag = dist * 0.4;
-		const scale = remainingDays / Math.max(entry.transferTimeDays, 0.01);
+		const newTarget = { x: newP1x, y: newP1y, z: newP1z };
+		const knots = computeResplineKnots(
+			curPos,
+			curDeriv,
+			newTarget,
+			remainingDays,
+			entry.transferTimeDays,
+		);
 
-		entry.p0x = curPos.x;
-		entry.p0y = curPos.y;
-		entry.p0z = curPos.z;
-		entry.t0x = curDeriv.x * scale;
-		entry.t0y = curDeriv.y * scale;
-		entry.t0z = curDeriv.z * scale;
-		entry.p1x = newP1x;
-		entry.p1y = newP1y;
-		entry.p1z = newP1z;
-		entry.t1x = dx * invDist * tangentMag;
-		entry.t1y = dy * invDist * tangentMag;
-		entry.t1z = dz * invDist * tangentMag;
+		entry.p0x = knots.p0x;
+		entry.p0y = knots.p0y;
+		entry.p0z = knots.p0z;
+		entry.t0x = knots.t0x;
+		entry.t0y = knots.t0y;
+		entry.t0z = knots.t0z;
+		entry.p1x = knots.p1x;
+		entry.p1y = knots.p1y;
+		entry.p1z = knots.p1z;
+		entry.t1x = knots.t1x;
+		entry.t1y = knots.t1y;
+		entry.t1z = knots.t1z;
 		adjustTransferBudget(entry, remainingDays);
 	} else {
 		// Light endpoint update: just track the target position
@@ -211,19 +215,13 @@ function captureBlend(
 	p: { x: number; y: number; z: number },
 	tNow: number,
 ): { x: number; y: number; z: number } {
-	if (tNow <= 0.85) return p;
-	const blendRaw = (tNow - 0.85) / 0.15;
-	const blend = blendRaw * blendRaw * (3 - 2 * blendRaw);
-	const capOffset = stationKeepingOffset(tgt);
-	const capAngle = Math.atan2(p.z - tgt.mesh.position.z, p.x - tgt.mesh.position.x);
-	const capX = tgt.mesh.position.x + Math.cos(capAngle) * capOffset;
-	const capY = tgt.mesh.position.y ?? 0;
-	const capZ = tgt.mesh.position.z + Math.sin(capAngle) * capOffset;
-	return {
-		x: p.x + blend * (capX - p.x),
-		y: p.y + blend * (capY - p.y),
-		z: p.z + blend * (capZ - p.z),
+	const offset = stationKeepingOffset(tgt);
+	const targetPos = {
+		x: tgt.mesh.position.x,
+		y: tgt.mesh.position.y ?? 0,
+		z: tgt.mesh.position.z,
 	};
+	return captureBlendPosition(p, targetPos, offset, tNow);
 }
 
 /** Inject sub-step trail points for high-warp transfers to avoid gaps.
@@ -277,10 +275,15 @@ function checkTransferCompletion(
 		);
 	}
 
-	if (isTransferComplete(elapsedNow, entry.transferTimeDays) || distToTarget <= SHIP_LOCAL_ORBIT) {
-		const reason = isTransferComplete(elapsedNow, entry.transferTimeDays) ? "time" : "distance";
+	const arrival = checkTransferArrival(
+		elapsedNow,
+		entry.transferTimeDays,
+		distToTarget,
+		SHIP_LOCAL_ORBIT,
+	);
+	if (arrival.arrived) {
 		gameLog(
-			`[transfer-complete] ${entry.data.name}: reason=${reason} dist=${distToTarget.toFixed(3)} t=${tNow.toFixed(4)} fuel=${entry.fuelKg.toFixed(0)}kg`,
+			`[transfer-complete] ${entry.data.name}: reason=${arrival.reason} dist=${distToTarget.toFixed(3)} t=${tNow.toFixed(4)} fuel=${entry.fuelKg.toFixed(0)}kg`,
 		);
 		const entryAngle = tgt
 			? Math.atan2(

@@ -3,8 +3,9 @@ import { findAsteroidEntity, findBody, findByMesh, rebuildEntityMaps } from "../
 import { gameWarn, state } from "../core/state";
 import { commitTransferSim, completeTransferSim } from "../core/transfers";
 import { rngInt, seededRandom } from "../core/utils";
-import { keplerRadius, MOON_DIST_SCALE, meanToTrue, orbitSpeed, scaleDist } from "../math/orbit";
+import { orbitSpeed } from "../math/orbit";
 import { ENGINE_TYPES } from "../math/ship-physics";
+import { computeTransferKnots, predictOrbitalPosition } from "../math/transfer";
 import type {
 	AsteroidBeltEntry,
 	AsteroidInfo,
@@ -17,7 +18,6 @@ import { isCometEntry, isShipEntry } from "../types";
 import {
 	createLabel,
 	createTrail,
-	orbitToWorld,
 	SEL_RING_INNER,
 	SEL_RING_OUTER,
 	SEL_RING_SEGS,
@@ -161,17 +161,17 @@ export function predictTargetWorld(
 	// Comets: full 3D inclined Kepler orbit
 	if (isCometEntry(targetEntry)) {
 		const { a, e, incRad, nodeRad, periRad } = targetEntry.data;
-		const futureM = targetEntry.angle + targetEntry.speed * daysFromNow;
-		const theta = meanToTrue(futureM, e);
-		const r = keplerRadius(a, e, theta);
-		const rScaled = scaleDist(r);
-		const w = orbitToWorld(
-			rScaled * Math.cos(theta),
-			rScaled * Math.sin(theta),
-			incRad,
-			nodeRad,
-			periRad,
-		);
+		const w = predictOrbitalPosition({
+			x: px,
+			y: py,
+			z: pz,
+			speed: targetEntry.speed,
+			angle: targetEntry.angle,
+			daysFromNow,
+			e,
+			distance: targetEntry.data.distance,
+			comet: { a, e, incRad, nodeRad, periRad },
+		});
 		_targetWorldOut.x = w.x;
 		_targetWorldOut.y = w.y;
 		_targetWorldOut.z = w.z;
@@ -181,41 +181,54 @@ export function predictTargetWorld(
 	// Moons: propagate parent orbit then add moon offset
 	if (targetEntry.isMoon && targetEntry.parentMesh) {
 		const parentEntry = findByMesh(targetEntry.parentMesh);
-		let parentFutureX: number;
-		let parentFutureZ: number;
 		if (parentEntry && !isShipEntry(parentEntry) && !isCometEntry(parentEntry)) {
 			const pEcc = parentEntry.data.e || 0;
-			const futureParentM = parentEntry.angle + parentEntry.speed * daysFromNow;
-			const parentTheta = meanToTrue(futureParentM, pEcc);
-			const parentKr = keplerRadius(parentEntry.data.distance, pEcc, parentTheta);
-			const parentR = scaleDist(parentKr);
-			parentFutureX = Math.cos(parentTheta) * parentR;
-			parentFutureZ = Math.sin(parentTheta) * parentR;
-		} else {
-			// Parent position unknown -- use current
-			parentFutureX = targetEntry.parentMesh.position.x;
-			parentFutureZ = targetEntry.parentMesh.position.z;
+			const moonE = targetEntry.data.e || 0;
+			const w = predictOrbitalPosition({
+				x: px,
+				y: py,
+				z: pz,
+				speed: targetEntry.speed,
+				angle: targetEntry.angle,
+				daysFromNow,
+				e: moonE,
+				distance: targetEntry.data.distance,
+				moon: {
+					parentX: parentEntry.mesh.position.x,
+					parentZ: parentEntry.mesh.position.z,
+					parentAngle: parentEntry.angle,
+					parentSpeed: parentEntry.speed,
+					parentDistance: parentEntry.data.distance,
+					parentE: pEcc,
+				},
+			});
+			_targetWorldOut.x = w.x;
+			_targetWorldOut.y = w.y;
+			_targetWorldOut.z = w.z;
+			return _targetWorldOut;
 		}
-		const moonE = targetEntry.data.e || 0;
-		const futureMoonM = targetEntry.angle + targetEntry.speed * daysFromNow;
-		const moonTheta = meanToTrue(futureMoonM, moonE);
-		const moonKr = keplerRadius(targetEntry.data.distance, moonE, moonTheta);
-		const moonR = moonKr * MOON_DIST_SCALE;
-		_targetWorldOut.x = parentFutureX + Math.cos(moonTheta) * moonR;
+		// Parent position unknown -- fall through to planet path using current parent pos
+		_targetWorldOut.x = targetEntry.parentMesh.position.x;
 		_targetWorldOut.y = 0;
-		_targetWorldOut.z = parentFutureZ + Math.sin(moonTheta) * moonR;
+		_targetWorldOut.z = targetEntry.parentMesh.position.z;
 		return _targetWorldOut;
 	}
 
 	// Regular planets: Kepler propagation in the ecliptic plane
 	const ecc = targetEntry.data.e || 0;
-	const futureM = targetEntry.angle + targetEntry.speed * daysFromNow;
-	const theta = meanToTrue(futureM, ecc);
-	const kr = keplerRadius(targetEntry.data.distance, ecc, theta);
-	const r = scaleDist(kr);
-	_targetWorldOut.x = Math.cos(theta) * r;
-	_targetWorldOut.y = 0;
-	_targetWorldOut.z = Math.sin(theta) * r;
+	const w = predictOrbitalPosition({
+		x: px,
+		y: py,
+		z: pz,
+		speed: targetEntry.speed,
+		angle: targetEntry.angle,
+		daysFromNow,
+		e: ecc,
+		distance: targetEntry.data.distance,
+	});
+	_targetWorldOut.x = w.x;
+	_targetWorldOut.y = w.y;
+	_targetWorldOut.z = w.z;
 	return _targetWorldOut;
 }
 
@@ -240,30 +253,7 @@ export function computeHermiteKnots(
 	t1z: number;
 } {
 	const targetWorld = predictTargetWorld(targetEntry, gameDays);
-	const dx = targetWorld.x - departX;
-	const dy = targetWorld.y - departY;
-	const dz = targetWorld.z - departZ;
-	const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
-	// Tangent direction: unit vector from departure to arrival, scaled by 0.4 * dist
-	const invDist = dist > 0 ? 1 / dist : 0;
-	const ux = dx * invDist;
-	const uy = dy * invDist;
-	const uz = dz * invDist;
-	const tangentMag = dist * 0.4;
-	return {
-		p0x: departX,
-		p0y: departY,
-		p0z: departZ,
-		t0x: ux * tangentMag,
-		t0y: uy * tangentMag,
-		t0z: uz * tangentMag,
-		p1x: targetWorld.x,
-		p1y: targetWorld.y,
-		p1z: targetWorld.z,
-		t1x: ux * tangentMag,
-		t1y: uy * tangentMag,
-		t1z: uz * tangentMag,
-	};
+	return computeTransferKnots({ x: departX, y: departY, z: departZ }, targetWorld);
 }
 
 interface ShipConfig {

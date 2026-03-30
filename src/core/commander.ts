@@ -237,6 +237,27 @@ function estimateReturnFuelKg(ship: ShipEntry): number | null {
 	return cost.totalFuelKg;
 }
 
+/** Pure decision: should this ship defer refueling based on fuel margin? */
+export function shouldDeferRefueling(
+	currentFuel: number,
+	returnCostEstimate: number,
+	caution: number,
+): boolean {
+	const margin = computeSafetyMargin(caution);
+	return currentFuel > returnCostEstimate * margin;
+}
+
+/** Pure scoring: compute how confident we are about deferring refueling. */
+export function computeRefuelDeferralScore(
+	fuelAvailable: number,
+	returnCostEstimate: number,
+	safetyMargin: number,
+): number {
+	if (returnCostEstimate === 0) return 0.6;
+	const fuelMargin = fuelAvailable / (returnCostEstimate * safetyMargin);
+	return 0.5 + 0.35 * Math.min(1, fuelMargin - 1);
+}
+
 function checkDeferRefuel(ship: ShipEntry, pendingResult: CommandResult): CommandResult | null {
 	if (pendingResult.action !== "refuel") return null;
 	if (ship.shipState !== "orbiting") return null;
@@ -247,11 +268,7 @@ function checkDeferRefuel(ship: ShipEntry, pendingResult: CommandResult): Comman
 	const returnCost = estimateReturnFuelKg(ship);
 	if (returnCost == null) return null;
 
-	// Safety margin: low-caution commanders cut it close, high-caution want more buffer
-	const margin = computeSafetyMargin(ship.commander.caution);
-	const fuelNeeded = returnCost * margin;
-
-	if (ship.fuelKg <= fuelNeeded) return null; // genuinely need to head home
+	if (!shouldDeferRefueling(ship.fuelKg, returnCost, ship.commander.caution)) return null;
 
 	const maxLevel = resolveShipSensorLevel(ship);
 	if (!hasUnsurvedWorkAtHost(ship.hostPlanetName, maxLevel)) return null;
@@ -277,10 +294,9 @@ function scoreDeferRefuel(ship: ShipEntry, base: CommandResult): ScoredAction | 
 	const action = checkDeferRefuel(ship, base);
 	if (!action) return null;
 	const returnCost = estimateReturnFuelKg(ship);
-	if (returnCost == null || returnCost === 0) return { action, score: 0.6 };
+	if (returnCost == null) return { action, score: 0.6 };
 	const margin = computeSafetyMargin(ship.commander.caution);
-	const fuelMargin = ship.fuelKg / (returnCost * margin);
-	const score = 0.5 + 0.35 * Math.min(1, fuelMargin - 1);
+	const score = computeRefuelDeferralScore(ship.fuelKg, returnCost, margin);
 	return { action, score };
 }
 

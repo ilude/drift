@@ -39,6 +39,36 @@ export function meanToTrue(M: number, e: number): number {
 	return 2 * Math.atan2(Math.sqrt(1 + e) * Math.sin(halfE), Math.sqrt(1 - e) * Math.cos(halfE));
 }
 
+// Transform orbital plane coordinates to 3D world space using Ω, i, ω
+const _orbitOut: Vector3Like = { x: 0, y: 0, z: 0 };
+
+export function orbitToWorld(
+	x: number,
+	z: number,
+	incRad: number,
+	nodeRad: number,
+	periRad: number,
+): Vector3Like {
+	const cosW = Math.cos(periRad),
+		sinW = Math.sin(periRad);
+	const x1 = x * cosW - z * sinW;
+	const z1 = x * sinW + z * cosW;
+
+	const cosI = Math.cos(incRad),
+		sinI = Math.sin(incRad);
+	const x2 = x1;
+	const y2 = z1 * sinI;
+	const z2 = z1 * cosI;
+
+	const cosN = Math.cos(nodeRad),
+		sinN = Math.sin(nodeRad);
+	_orbitOut.x = x2 * cosN - z2 * sinN;
+	_orbitOut.y = y2;
+	_orbitOut.z = x2 * sinN + z2 * cosN;
+
+	return _orbitOut;
+}
+
 const _incOut: Vector3Like = { x: 0, y: 0, z: 0 };
 
 export function inclinedPosition(
@@ -83,4 +113,34 @@ export function categorizePlanet(radiusEarths: number): PlanetCategory {
 	if (radiusEarths < 4) return "subNeptune";
 	if (radiusEarths < 8) return "iceGiant";
 	return "gasGiant";
+}
+
+/**
+ * Generate trail positions by computing orbital positions backwards through time.
+ * Returns flat Float32Array of [x,y,z, x,y,z, ...] positions in world space.
+ * All positions are planar (y=0) — inclination is not applied here.
+ */
+export function generateTrailPositions(
+	baseAngle: number,
+	angularSpeed: number,
+	eccentricity: number,
+	distance: number,
+	maxPoints: number,
+): Float32Array {
+	const positions = new Float32Array(maxPoints * 3);
+	const stepAngle = Math.abs(angularSpeed) * 0.02;
+	if (stepAngle === 0) return positions;
+
+	for (let i = 0; i < maxPoints; i++) {
+		const pastAngle = baseAngle - stepAngle * (maxPoints - i);
+		const theta = meanToTrue(pastAngle, eccentricity);
+		const kr = keplerRadius(distance, eccentricity, theta);
+		const r = scaleDist(kr);
+		const i3 = i * 3;
+		positions[i3] = Math.cos(theta) * r;
+		positions[i3 + 1] = 0;
+		positions[i3 + 2] = Math.sin(theta) * r;
+	}
+
+	return positions;
 }

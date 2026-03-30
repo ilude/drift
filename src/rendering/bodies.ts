@@ -4,11 +4,13 @@ import { state } from "../core/state";
 import { seededRandom } from "../core/utils";
 import { estimateMass } from "../data/system-generator";
 import {
+	generateTrailPositions,
 	inclinedPosition,
 	keplerRadius,
 	MOON_DIST_SCALE,
 	meanToTrue,
 	orbitSpeed,
+	orbitToWorld,
 	scaleDist,
 } from "../math/orbit";
 import { BODY_MIN_SIZE, bodySize, realisticSize } from "../math/visual";
@@ -22,10 +24,11 @@ import type {
 	MoonData,
 	PlanetEntry,
 	TrailState,
-	Vector3Like,
 } from "../types";
 import { cometGroup, labelContainer, scene, trailGroups } from "./scene";
 import { createStarMaterial, generateBodyTexture, generateCloudTextureForBody } from "./textures";
+
+export { orbitToWorld } from "../math/orbit";
 
 export function nameHash(str: string): number {
 	let h = 5381;
@@ -47,36 +50,6 @@ export function isInKirkwoodGap(
 
 export function orbitSegmentCount(approxRadius: number): number {
 	return Math.min(512, Math.max(128, Math.round(approxRadius * 4)));
-}
-
-// Transform orbital plane coordinates to 3D world space using Ω, i, ω
-const _orbitOut: Vector3Like = { x: 0, y: 0, z: 0 };
-
-export function orbitToWorld(
-	x: number,
-	z: number,
-	incRad: number,
-	nodeRad: number,
-	periRad: number,
-): Vector3Like {
-	const cosW = Math.cos(periRad),
-		sinW = Math.sin(periRad);
-	const x1 = x * cosW - z * sinW;
-	const z1 = x * sinW + z * cosW;
-
-	const cosI = Math.cos(incRad),
-		sinI = Math.sin(incRad);
-	const x2 = x1;
-	const y2 = z1 * sinI;
-	const z2 = z1 * cosI;
-
-	const cosN = Math.cos(nodeRad),
-		sinN = Math.sin(nodeRad);
-	_orbitOut.x = x2 * cosN - z2 * sinN;
-	_orbitOut.y = y2;
-	_orbitOut.z = x2 * sinN + z2 * cosN;
-
-	return _orbitOut;
 }
 
 // Shared geometry/materials for identical bodies
@@ -219,18 +192,21 @@ export function createTrail(color: string, maxPoints: number): TrailState {
 function prefillBodyTrail(entry: PlanetEntry): void {
 	const t = entry.trail;
 	const ecc = entry.data.e || 0;
-	const stepAngle = Math.abs(entry.speed) * 0.02; // same sampling density as comets
+	const stepAngle = Math.abs(entry.speed) * 0.02;
 	if (stepAngle === 0) return;
 
+	const positions = generateTrailPositions(
+		entry.angle,
+		entry.speed,
+		ecc,
+		entry.data.distance,
+		t.maxPoints,
+	);
 	for (let i = 0; i < t.maxPoints; i++) {
-		const pastAngle = entry.angle - stepAngle * (t.maxPoints - i);
-		const theta = meanToTrue(pastAngle, ecc);
-		const kr = keplerRadius(entry.data.distance, ecc, theta);
-		const r = scaleDist(kr);
 		const i3 = i * 3;
-		t.positions[i3] = Math.cos(theta) * r;
-		t.positions[i3 + 1] = 0;
-		t.positions[i3 + 2] = Math.sin(theta) * r;
+		t.positions[i3] = positions[i3];
+		t.positions[i3 + 1] = positions[i3 + 1];
+		t.positions[i3 + 2] = positions[i3 + 2];
 		const fade = i / t.maxPoints;
 		t.colors[i3] = t.baseColor.r * fade;
 		t.colors[i3 + 1] = t.baseColor.g * fade;

@@ -131,14 +131,26 @@ export function completeTransferSim(entry: ShipEntry): void {
 	}
 }
 
+/** Pure calculation: proportionally adjust fuel budget for remaining transfer time. */
+export function computeAdjustedFuelBudget(
+	currentBudget: number,
+	totalDays: number,
+	remainingDays: number,
+): number {
+	if (totalDays <= 0) return 0;
+	return currentBudget * (remainingDays / totalDays);
+}
+
 /**
  * Adjust transfer fuel budget and timing after a mid-transfer re-spline.
  * Proportionally reduces fuel budget for the remaining portion of the transfer.
  */
 export function adjustTransferBudget(entry: ShipEntry, remainingDays: number): void {
-	if (entry.transferTimeDays > 0) {
-		entry.transferFuelTotal *= remainingDays / entry.transferTimeDays;
-	}
+	entry.transferFuelTotal = computeAdjustedFuelBudget(
+		entry.transferFuelTotal,
+		entry.transferTimeDays,
+		remainingDays,
+	);
 	entry.transferStartTime = state.simTime.days;
 	entry.transferTimeDays = remainingDays;
 }

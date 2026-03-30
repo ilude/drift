@@ -1,6 +1,241 @@
-import type { BodyData, BodyEntry, HohmannResult } from "../types";
-import { DAYS_PER_YEAR, DIST_SCALE, keplerPeriod, orbitSpeed } from "./orbit";
+import type { BodyData, BodyEntry, HohmannResult, Vector3Like } from "../types";
+import {
+	DAYS_PER_YEAR,
+	DIST_SCALE,
+	keplerPeriod,
+	keplerRadius,
+	MOON_DIST_SCALE,
+	meanToTrue,
+	orbitSpeed,
+	orbitToWorld,
+	scaleDist,
+} from "./orbit";
 import { AU_TO_KM } from "./ship-physics";
+
+// --- Orbital position prediction ---
+
+/** Parameters for predicting an orbital body's future position in world space. */
+export interface OrbitalPredictionParams {
+	/** Current world-space position */
+	x: number;
+	y: number;
+	z: number;
+	/** Angular speed (rad/day) */
+	speed: number;
+	/** Current mean anomaly */
+	angle: number;
+	/** Days to propagate forward */
+	daysFromNow: number;
+	/** Eccentricity */
+	e: number;
+	/** Semi-major axis (AU) */
+	distance: number;
+	/** Comet 3D orbital elements, if applicable */
+	comet?: { a: number; e: number; incRad: number; nodeRad: number; periRad: number };
+	/** Moon orbital data, if applicable */
+	moon?: {
+		parentX: number;
+		parentZ: number;
+		parentAngle: number;
+		parentSpeed: number;
+		parentDistance: number;
+		parentE: number;
+	};
+}
+
+const _predictOut: Vector3Like = { x: 0, y: 0, z: 0 };
+
+/**
+ * Predict an orbital body's world-space position after daysFromNow.
+ * Pure math -- no rendering dependencies.
+ * Handles three orbit types: comet (3D inclined), moon (parent+child), planet (2D ecliptic).
+ */
+export function predictOrbitalPosition(p: OrbitalPredictionParams): Vector3Like {
+	if (p.comet) {
+		const { a, e, incRad, nodeRad, periRad } = p.comet;
+		const futureM = p.angle + p.speed * p.daysFromNow;
+		const theta = meanToTrue(futureM, e);
+		const r = keplerRadius(a, e, theta);
+		const rScaled = scaleDist(r);
+		const w = orbitToWorld(
+			rScaled * Math.cos(theta),
+			rScaled * Math.sin(theta),
+			incRad,
+			nodeRad,
+			periRad,
+		);
+		_predictOut.x = w.x;
+		_predictOut.y = w.y;
+		_predictOut.z = w.z;
+		return _predictOut;
+	}
+
+	if (p.moon) {
+		const futureParentM = p.moon.parentAngle + p.moon.parentSpeed * p.daysFromNow;
+		const parentTheta = meanToTrue(futureParentM, p.moon.parentE);
+		const parentKr = keplerRadius(p.moon.parentDistance, p.moon.parentE, parentTheta);
+		const parentR = scaleDist(parentKr);
+		const parentFutureX = Math.cos(parentTheta) * parentR;
+		const parentFutureZ = Math.sin(parentTheta) * parentR;
+
+		const futureMoonM = p.angle + p.speed * p.daysFromNow;
+		const moonTheta = meanToTrue(futureMoonM, p.e);
+		const moonKr = keplerRadius(p.distance, p.e, moonTheta);
+		const moonR = moonKr * MOON_DIST_SCALE;
+		_predictOut.x = parentFutureX + Math.cos(moonTheta) * moonR;
+		_predictOut.y = 0;
+		_predictOut.z = parentFutureZ + Math.sin(moonTheta) * moonR;
+		return _predictOut;
+	}
+
+	// Regular planet: Kepler propagation in the ecliptic plane
+	const futureM = p.angle + p.speed * p.daysFromNow;
+	const theta = meanToTrue(futureM, p.e);
+	const kr = keplerRadius(p.distance, p.e, theta);
+	const r = scaleDist(kr);
+	_predictOut.x = Math.cos(theta) * r;
+	_predictOut.y = 0;
+	_predictOut.z = Math.sin(theta) * r;
+	return _predictOut;
+}
+
+// --- Hermite transfer knots ---
+
+/** Hermite spline control points for a ship transfer arc. */
+export interface HermiteKnots {
+	p0x: number;
+	p0y: number;
+	p0z: number;
+	t0x: number;
+	t0y: number;
+	t0z: number;
+	p1x: number;
+	p1y: number;
+	p1z: number;
+	t1x: number;
+	t1y: number;
+	t1z: number;
+}
+
+/**
+ * Compute Hermite spline knots for a transfer between two positions.
+ * Tangent direction: unit vector from departure to arrival, scaled by 0.4 * distance.
+ */
+export function computeTransferKnots(depart: Vector3Like, target: Vector3Like): HermiteKnots {
+	const dx = target.x - depart.x;
+	const dy = target.y - depart.y;
+	const dz = target.z - depart.z;
+	const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+	const invDist = dist > 0 ? 1 / dist : 0;
+	const ux = dx * invDist;
+	const uy = dy * invDist;
+	const uz = dz * invDist;
+	const tangentMag = dist * 0.4;
+	return {
+		p0x: depart.x,
+		p0y: depart.y,
+		p0z: depart.z,
+		t0x: ux * tangentMag,
+		t0y: uy * tangentMag,
+		t0z: uz * tangentMag,
+		p1x: target.x,
+		p1y: target.y,
+		p1z: target.z,
+		t1x: ux * tangentMag,
+		t1y: uy * tangentMag,
+		t1z: uz * tangentMag,
+	};
+}
+
+// --- Respline decision ---
+
+/**
+ * Determine if a transfer arc needs re-splining based on endpoint drift.
+ * Returns true when drift exceeds 1% of remaining distance or absolute threshold.
+ */
+export function shouldRespline(endpointDeltaSq: number, remainingDistSq: number): boolean {
+	return endpointDeltaSq > Math.max(0.25, remainingDistSq * 0.01);
+}
+
+/**
+ * Compute new Hermite knots for a mid-transfer re-spline.
+ * Preserves current velocity direction (from derivative), adjusts tangent scale.
+ */
+export function computeResplineKnots(
+	curPos: Vector3Like,
+	curDeriv: Vector3Like,
+	newTarget: Vector3Like,
+	remainingDays: number,
+	totalDays: number,
+): HermiteKnots {
+	const dx = newTarget.x - curPos.x;
+	const dy = newTarget.y - curPos.y;
+	const dz = newTarget.z - curPos.z;
+	const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+	const invDist = dist > 0 ? 1 / dist : 0;
+	const tangentMag = dist * 0.4;
+	const scale = remainingDays / Math.max(totalDays, 0.01);
+	return {
+		p0x: curPos.x,
+		p0y: curPos.y,
+		p0z: curPos.z,
+		t0x: curDeriv.x * scale,
+		t0y: curDeriv.y * scale,
+		t0z: curDeriv.z * scale,
+		p1x: newTarget.x,
+		p1y: newTarget.y,
+		p1z: newTarget.z,
+		t1x: dx * invDist * tangentMag,
+		t1y: dy * invDist * tangentMag,
+		t1z: dz * invDist * tangentMag,
+	};
+}
+
+// --- Capture blend ---
+
+/**
+ * Apply capture-blend smoothing in the final 15% of a transfer.
+ * Returns blended position between spline point and station-keeping orbit around target.
+ */
+export function captureBlendPosition(
+	p: Vector3Like,
+	targetPos: Vector3Like,
+	stationOffset: number,
+	tNow: number,
+): Vector3Like {
+	if (tNow <= 0.85) return p;
+	const blendRaw = (tNow - 0.85) / 0.15;
+	const blend = blendRaw * blendRaw * (3 - 2 * blendRaw); // smoothstep
+	const capAngle = Math.atan2(p.z - targetPos.z, p.x - targetPos.x);
+	const capX = targetPos.x + Math.cos(capAngle) * stationOffset;
+	const capZ = targetPos.z + Math.sin(capAngle) * stationOffset;
+	return {
+		x: p.x + blend * (capX - p.x),
+		y: p.y + blend * (targetPos.y - p.y),
+		z: p.z + blend * (capZ - p.z),
+	};
+}
+
+// --- Transfer arrival check ---
+
+/**
+ * Check if a transfer has arrived at its destination.
+ * Arrival occurs when elapsed time exceeds transfer duration OR distance is within station orbit.
+ */
+export function checkTransferArrival(
+	elapsedDays: number,
+	transferTimeDays: number,
+	distToTarget: number,
+	stationOrbit: number,
+): { arrived: boolean; reason: "time" | "distance" | "none" } {
+	if (isTransferComplete(elapsedDays, transferTimeDays)) {
+		return { arrived: true, reason: "time" };
+	}
+	if (distToTarget <= stationOrbit) {
+		return { arrived: true, reason: "distance" };
+	}
+	return { arrived: false, reason: "none" };
+}
 
 // --- Gravitational parameter ---
 

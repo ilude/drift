@@ -929,6 +929,21 @@ function completeProject(project: ColonyResearchProject, scientist: ScientistSta
 	}
 }
 
+/** Pure calculation: compute research progress for one tick. */
+export function computeResearchProgress(
+	effectiveLabs: number,
+	researchQuality: number,
+	categoryMultiplier: number,
+	difficulty: number,
+	simDtDays: number,
+): { rpGain: number; experienceGain: number; bonusGrowth: number } {
+	const rpGain =
+		BASE_RESEARCH_RATE * effectiveLabs * researchQuality * categoryMultiplier * simDtDays;
+	const experienceGain = simDtDays * difficulty;
+	const bonusGrowth = simDtDays * difficulty * CATEGORY_GROWTH_RATE;
+	return { rpGain, experienceGain, bonusGrowth };
+}
+
 function tickResearchProject(project: ColonyResearchProject, simDtDays: number): void {
 	if (project.paused || !project.leadScientistId) return;
 	const [def, defFound] = getResearchDef(project.techId);
@@ -946,15 +961,19 @@ function tickResearchProject(project: ColonyResearchProject, simDtDays: number):
 	project.assignedLabs = effectiveLabs;
 	if (effectiveLabs <= 0) return;
 	const categoryMultiplier = getScientistMultiplier(scientist, def.category);
-	const rpGain =
-		BASE_RESEARCH_RATE * effectiveLabs * qualities.research * categoryMultiplier * simDtDays;
-	project.progressRp += rpGain;
-	colony.researchPoints += rpGain;
+	const progress = computeResearchProgress(
+		effectiveLabs,
+		qualities.research,
+		categoryMultiplier,
+		def.difficulty,
+		simDtDays,
+	);
+	project.progressRp += progress.rpGain;
+	colony.researchPoints += progress.rpGain;
 
 	ensureExperienceKey(scientist, def.category);
-	scientist.experienceByCategory[def.category] += simDtDays * def.difficulty;
-	const grown =
-		scientist.categoryBonuses[def.category] + simDtDays * def.difficulty * CATEGORY_GROWTH_RATE;
+	scientist.experienceByCategory[def.category] += progress.experienceGain;
+	const grown = scientist.categoryBonuses[def.category] + progress.bonusGrowth;
 	scientist.categoryBonuses[def.category] = clampBonus(grown);
 
 	if (project.progressRp >= def.rpCost) {

@@ -395,7 +395,7 @@ const TANKER_RESERVE_FLOOR = 0.15; // keep 15% for return trip
 const _refuelTargetCache = new Map<string, Result<string>>();
 
 /** Estimate round-trip fuel cost for tanker to reach a target ship and return. */
-function tankerRoundTripFuel(
+export function tankerRoundTripFuel(
 	tanker: ShipEntry,
 	tankerHost: BodyEntry,
 	targetHost: BodyEntry,
@@ -416,7 +416,7 @@ function tankerRoundTripFuel(
 }
 
 /** Check if a tanker can afford the round trip to a candidate's host body. */
-function canAffordRoundTrip(
+export function canAffordRoundTrip(
 	tanker: ShipEntry,
 	tankerHost: BodyEntry | undefined | null,
 	targetHost: BodyEntry | undefined | null,
@@ -428,7 +428,7 @@ function canAffordRoundTrip(
 }
 
 /** Check if a ship is a valid refuel candidate for the given tanker. */
-function isRefuelCandidate(
+export function isRefuelCandidate(
 	entry: BodyEntry,
 	tankerName: string,
 	claimed: Set<string>,
