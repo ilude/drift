@@ -150,7 +150,7 @@ pub fn find_ship<'a>(name: Option<&str>, state: &'a State) -> (Option<&'a BodyEn
 }
 
 /// Find the first star body.
-pub fn find_star<'a>(state: &'a State) -> (Option<&'a BodyEntry>, bool) {
+pub fn find_star(state: &State) -> (Option<&BodyEntry>, bool) {
     let star = state
         .body_meshes
         .iter()
