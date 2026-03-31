@@ -11,10 +11,29 @@ use serde_json::Value;
 
 use crate::entities::EntityMaps;
 
+// Re-export drift_types colony/state types so downstream callers can import via drift_sim::state.
+pub use drift_types::{
+    ColonyConstructionProject, ColonyInstallationId, ColonyInstallations, ColonyProductionProject,
+    ColonyResearchProject, ColonyShipbuildProject, ColonyState, ColonyStockpile, DiscoveredSystem,
+    ScientistState, ScientistTransferRequest, SurveyState, TransferStatus,
+};
+
 // ---------------------------------------------------------------------------
 // Types referenced by State but not defined elsewhere in this module.
-// Minimal stubs — will be fleshed out as sim modules are implemented.
 // ---------------------------------------------------------------------------
+
+/// Minimal runtime body data descriptor stored inside a BodyEntry.
+/// Uses body_type as a plain string ("Planet", "Star", "Ship", "Comet", etc.)
+/// to match the runtime mesh representation from the TypeScript frontend.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct BodyEntryData {
+    pub name: String,
+    pub body_type: String,
+    pub distance: f64,
+    pub mass: f64,
+    pub radius: f64,
+    pub color: String,
+}
 
 /// Runtime body entry for the simulation (planet, moon, ship, comet).
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -26,7 +45,10 @@ pub struct BodyEntry {
     pub is_moon: bool,
     pub is_ship: bool,
     pub is_comet: bool,
+    pub moons: Vec<String>,
+    pub survey: SurveyState,
     // Ship-specific fields
+    pub name: String,
     pub ship_state: Option<String>,
     pub host_planet_name: Option<String>,
     pub fuel_kg: f64,
@@ -60,65 +82,138 @@ pub struct BodyEntry {
     pub keel_date: Option<f64>,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct BodyEntryData {
-    pub name: String,
-    pub body_type: String,
-    pub distance: f64,
-    pub mass: f64,
-    pub radius: f64,
-    pub color: String,
+impl BodyEntry {
+    /// Convert a ShipEntry into a BodyEntry for use in body_meshes.
+    pub fn from_ship(ship: ShipEntry) -> Self {
+        BodyEntry {
+            data: BodyEntryData {
+                name: ship.name.clone(),
+                body_type: "Ship".to_string(),
+                distance: 0.0,
+                mass: ship.dry_mass_kg,
+                radius: 0.0,
+                color: "#fff".to_string(),
+            },
+            position: ship.position,
+            is_ship: true,
+            name: ship.name,
+            fuel_kg: ship.fuel_kg,
+            fuel_capacity_kg: ship.fuel_capacity_kg,
+            dry_mass_kg: ship.dry_mass_kg,
+            engine_id: ship.engine_id,
+            design_id: ship.design_id,
+            ship_state: Some(ship.ship_state),
+            host_planet_name: Some(ship.host_planet_name),
+            commander: ship.commander,
+            survey_plan: ship.survey_plan,
+            cargo_hold: ship.cargo_hold,
+            mission_orders: ship.mission_orders,
+            mission_order_index: ship.mission_order_index,
+            ..Default::default()
+        }
+    }
 }
 
-/// Asteroid belt runtime entry.
+/// Belt definition for asteroid belts.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct AsteroidBeltEntry {
+pub struct BeltDef {
     pub name: String,
     pub min_au: f64,
     pub max_au: f64,
-    pub positions: Vec<f32>,
-    pub asteroids: Vec<AsteroidEntry>,
+    pub count: usize,
+    pub color: String,
+    pub size: f64,
+    pub max_inc: f64,
 }
 
+/// A single asteroid within a belt.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct AsteroidEntry {
     pub designation: String,
     pub au: f64,
+    pub period: f64,
     pub diameter: f64,
     pub mass: f64,
+    pub belt_index: usize,
+    pub survey: SurveyState,
 }
 
-/// Colony state (used in State.colonies map).
+/// Asteroid belt runtime entry: belt descriptor + flat position buffer + asteroid list.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct ColonyState {
-    pub body_name: String,
+pub struct AsteroidBeltEntry {
+    pub belt: BeltDef,
+    /// Flat [x, y, z, x, y, z, …] position buffer (f32).
+    pub positions: Vec<f32>,
+    pub count: usize,
+    pub asteroids: Vec<AsteroidEntry>,
+}
+
+/// Cargo hold: maps item_id → quantity (resources in kg, flat-packed as count f64).
+pub type CargoHold = HashMap<String, f64>;
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct MissionStep {
+    pub id: String,
+    pub step_type: String,
+    pub item_id: Option<String>,
+    pub quantity: Option<f64>,
+    pub target: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct Commander {
+    pub caution: f64,
+    pub initiative: f64,
+    pub experience: f64,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct SurveyPlan {
+    pub targets: Vec<String>,
+    pub accel_g: f64,
+    pub return_fuel_kg: f64,
+}
+
+/// Ship entry as used by cargo / survey planner modules.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ShipEntry {
     pub name: String,
-    pub population: f64,
-    pub habitability: f64,
-    pub installations: ColonyInstallations,
-    pub stockpile: ColonyStockpile,
-    pub research_points: f64,
-    pub construction_projects: Vec<ColonyConstructionProject>,
-    pub production_projects: Vec<ColonyProductionProject>,
-    pub shipbuild_projects: Vec<ColonyShipbuildProject>,
-    pub transfer_queue: Vec<ScientistTransferRequest>,
-    pub mass_driver_target: Option<String>,
-    pub academy_progress: f64,
+    pub position: [f32; 3],
+    pub is_ship: bool,
+    pub ship_state: String,
+    pub host_planet_name: String,
+    pub fuel_kg: f64,
+    pub fuel_capacity_kg: f64,
+    pub dry_mass_kg: f64,
+    pub engine_id: Option<String>,
+    pub design_id: Option<String>,
+    pub commander: Commander,
+    pub survey_plan: Option<SurveyPlan>,
+    pub cargo_hold: CargoHold,
+    pub mission_orders: Vec<MissionStep>,
+    pub mission_order_index: usize,
 }
 
-/// Scientist state entry.
-pub type ScientistEntry = ScientistState;
-
-/// Research project entry.
-pub type ResearchProjectEntry = ColonyResearchProject;
-
-/// Game log entry.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct GameLogEntry {
-    pub id: u64,
-    pub category: String,
-    pub sim_time: f64,
-    pub message: String,
+impl Default for ShipEntry {
+    fn default() -> Self {
+        ShipEntry {
+            name: String::new(),
+            position: [0.0, 0.0, 0.0],
+            is_ship: true,
+            ship_state: "orbiting".to_string(),
+            host_planet_name: String::new(),
+            fuel_kg: 0.0,
+            fuel_capacity_kg: 0.0,
+            dry_mass_kg: 0.0,
+            engine_id: None,
+            design_id: None,
+            commander: Commander::default(),
+            survey_plan: None,
+            cargo_hold: CargoHold::new(),
+            mission_orders: vec![],
+            mission_order_index: 0,
+        }
+    }
 }
 
 /// Ship intent — what a ship is currently doing.
@@ -180,43 +275,66 @@ pub struct NotificationPauseConfig {
     pub info: bool,
     pub survey_complete: bool,
     pub low_fuel: bool,
+    pub low_morale: bool,
+    pub maintenance_needed: bool,
+    pub mission_complete: bool,
     pub malfunction: bool,
+    pub ship_destroyed: bool,
+    pub transfer_complete: bool,
+    pub action_complete: bool,
+    pub colony_understaffed: bool,
+    pub colony_idle: bool,
+    pub colony_blocked: bool,
+    pub colony_low_supplies: bool,
     pub ship_built: bool,
+    pub scientist_graduated: bool,
 }
 
-/// Discovered system.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct DiscoveredSystem {
-    pub name: String,
-    pub seed: Option<u64>,
-}
+// DiscoveredSystem is re-exported from drift_types above.
 
 /// Saved state data (for save/load).
+/// Uses drift_types::ScientistEntry and ResearchProjectEntry for the serializable save formats.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SavedStateData {
+    #[serde(default)]
     pub version: u32,
+    #[serde(default)]
     pub sim_time: f64,
+    #[serde(default)]
     pub current_system_key: String,
+    #[serde(default)]
     pub random_click_count: u32,
+    #[serde(default)]
     pub ships: Vec<SavedShip>,
+    #[serde(default)]
     pub colonies: Vec<ColonyState>,
+    #[serde(default)]
     pub discovered_systems: Vec<DiscoveredSystemEntry>,
-    pub scientists: Vec<ScientistState>,
-    pub research_projects: Vec<ColonyResearchProject>,
+    #[serde(default)]
+    pub scientists: Vec<drift_types::ScientistEntry>,
+    #[serde(default)]
+    pub research_projects: Vec<drift_types::ResearchProjectEntry>,
+    #[serde(default)]
     pub game_log: Vec<GameLogEntry>,
+    #[serde(default)]
     pub researched_techs: Vec<String>,
+    #[serde(default)]
     pub engine_designs: Vec<serde_json::Value>,
+    #[serde(default)]
     pub ship_designs: Vec<serde_json::Value>,
+    #[serde(default)]
     pub design_counter: u32,
 }
 
 /// Saved ship data.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SavedShip {
     pub name: String,
     pub host_planet_name: String,
     pub fuel_kg: f64,
-    pub engine_id: String,
+    pub engine_id: Option<String>,
     pub design_id: Option<String>,
     pub ship_state: Option<String>,
     pub transfer_target: Option<String>,
@@ -243,153 +361,27 @@ pub struct SavedShip {
     pub t1z: Option<f64>,
 }
 
-// ---------------------------------------------------------------------------
-// Sim-local types not in drift-types (needed by colonies, cargo, commands)
-// ---------------------------------------------------------------------------
-
+/// Game log entry.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct SurveyPlan {
-    pub targets: Vec<String>,
-    pub accel_g: f64,
-    pub return_fuel_kg: f64,
-}
-
-/// Cargo hold: maps item_id → quantity (resources: kg, flat-packed: count).
-pub type CargoHold = HashMap<String, f64>;
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct MissionStep {
-    pub id: String,
-    pub step_type: String,
-    pub item_id: Option<String>,
-    pub quantity: Option<f64>,
-    pub target: Option<String>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct Commander {
-    pub caution: f64,
-    pub initiative: f64,
-    pub experience: f64,
+#[serde(rename_all = "camelCase")]
+pub struct GameLogEntry {
+    pub id: u64,
+    pub category: String,
+    pub sim_time: f64,
+    pub message: String,
 }
 
 // ---------------------------------------------------------------------------
-// Colony types (sim-local, flat_packed uses u32 counts in cargo tests)
+// Type aliases for drift_types types used by State
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct ColonyInstallations {
-    pub construction_factory: u32,
-    pub repair_yard: u32,
-    pub fuel_depot: u32,
-    pub mine: u32,
-    pub lab: u32,
-    pub academy: u32,
-    pub storage: u32,
-    pub shipyard: u32,
-    pub automated_mine: u32,
-    pub mass_driver: u32,
-    pub fuel_refinery: u32,
-}
+// Save-data scientist and research-project types (serializable forms from drift_types).
+pub use drift_types::ResearchProjectEntry;
+pub use drift_types::ScientistEntry;
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct ColonyStockpile {
-    pub fuel_kg: f64,
-    pub supplies: f64,
-    pub resources: HashMap<String, f64>,
-    pub flat_packed: HashMap<String, u32>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct ColonyConstructionProject {
-    pub id: String,
-    pub installation_id: ColonyInstallationId,
-    pub quantity_remaining: f64,
-    pub total_quantity: f64,
-    pub allocation_pct: f64,
-    pub progress_bp: f64,
-    pub paused: bool,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct ColonyProductionProject {
-    pub id: String,
-    pub item_id: String,
-    pub quantity_remaining: f64,
-    pub total_quantity: f64,
-    pub allocation_pct: f64,
-    pub progress_bp: f64,
-    pub paused: bool,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct ColonyShipbuildProject {
-    pub id: String,
-    pub design_id: String,
-    pub ship_name: String,
-    pub total_bp: f64,
-    pub progress_bp: f64,
-    pub paused: bool,
-    pub resource_cost: HashMap<String, f64>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum ColonyInstallationId {
-    #[default]
-    Mine,
-    ConstructionFactory,
-    RepairYard,
-    FuelDepot,
-    Lab,
-    Academy,
-    Storage,
-    Shipyard,
-    AutomatedMine,
-    MassDriver,
-    FuelRefinery,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct ScientistTransferRequest {
-    pub id: String,
-    pub scientist_id: String,
-    pub origin_body_name: String,
-    pub destination_body_name: String,
-    pub requested_at: f64,
-    pub status: String,
-    pub estimated_arrival_day: Option<f64>,
-    pub assigned_ship_name: Option<String>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct ScientistState {
-    pub id: String,
-    pub name: String,
-    pub colony_body_name: String,
-    pub primary_category: String,
-    pub secondary_category: String,
-    pub active_project_tech_id: Option<String>,
-    pub project_queue: Vec<String>,
-    pub assigned_labs: u32,
-    pub admin_cap: f64,
-    pub category_bonuses: HashMap<String, f64>,
-    pub completed_projects: Vec<String>,
-    pub experience_by_category: HashMap<String, f64>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct ColonyResearchProject {
-    pub tech_id: String,
-    pub colony_body_name: String,
-    pub lead_scientist_id: Option<String>,
-    pub assigned_labs: u32,
-    pub progress_rp: f64,
-    pub paused: bool,
-    pub queued_at: f64,
-    pub started_at: Option<f64>,
-    pub difficulty: f64,
-}
+// ---------------------------------------------------------------------------
+// Sim-internal types
+// ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct CompletedShipbuild {
@@ -406,6 +398,7 @@ pub struct ColonyWarningState {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct DiscoveredSystemEntry {
+    pub key: String,
     pub name: String,
     pub seed: u64,
 }
@@ -423,51 +416,6 @@ pub struct SimDateTime {
     pub hour: u32,
     pub minute: u32,
     pub second: u32,
-}
-
-// ---------------------------------------------------------------------------
-// ShipEntry (used by cargo/commands tests)
-// ---------------------------------------------------------------------------
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ShipEntry {
-    pub name: String,
-    pub position: [f32; 3],
-    pub is_ship: bool,
-    pub ship_state: String,
-    pub host_planet_name: String,
-    pub fuel_kg: f64,
-    pub fuel_capacity_kg: f64,
-    pub dry_mass_kg: f64,
-    pub engine_id: Option<String>,
-    pub design_id: Option<String>,
-    pub commander: Commander,
-    pub survey_plan: Option<SurveyPlan>,
-    pub cargo_hold: CargoHold,
-    pub mission_orders: Vec<MissionStep>,
-    pub mission_order_index: usize,
-}
-
-impl Default for ShipEntry {
-    fn default() -> Self {
-        ShipEntry {
-            name: String::new(),
-            position: [0.0, 0.0, 0.0],
-            is_ship: true,
-            ship_state: "orbiting".to_string(),
-            host_planet_name: String::new(),
-            fuel_kg: 0.0,
-            fuel_capacity_kg: 0.0,
-            dry_mass_kg: 0.0,
-            engine_id: None,
-            design_id: None,
-            commander: Commander::default(),
-            survey_plan: None,
-            cargo_hold: CargoHold::new(),
-            mission_orders: vec![],
-            mission_order_index: 0,
-        }
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -495,35 +443,27 @@ pub struct SimShipDesign {
 // Main simulation state
 // ---------------------------------------------------------------------------
 
-/// Central game state. Uses drift-types for body/belt/notification types so
-/// that test helpers constructing `drift_types::BodyEntry` etc. work directly.
+/// Central game state.
 #[derive(Debug, Default)]
 pub struct State {
-    // Bodies (planets, moons, ships, comets) — uses drift_types::BodyEntry
     pub body_meshes: Vec<BodyEntry>,
     pub asteroid_belts: Vec<AsteroidBeltEntry>,
 
-    // Entity lookup maps (rebuilt via rebuild_entity_maps)
     pub(crate) entity_maps: EntityMaps,
 
-    // Colony data (uses drift_types::ColonyState for save/restore round-trips)
     pub colonies: HashMap<String, ColonyState>,
     pub scientists: HashMap<String, ScientistEntry>,
     pub research_projects: HashMap<String, ResearchProjectEntry>,
     pub researched_techs: HashSet<String>,
     pub game_log: Vec<GameLogEntry>,
 
-    // Ship / engine designs
-    pub ship_designs: HashMap<String, SimShipDesign>,
+    pub ship_designs: HashMap<String, drift_types::ShipDesign>,
     pub engine_designs: HashMap<String, EngineDesign>,
 
-    // Intents — uses drift_types::ShipIntent
     pub ship_intents: HashMap<String, ShipIntent>,
 
-    // Time
     pub sim_time: GameClock,
 
-    // Game settings
     pub time_speed: f64,
     pub survey_multiplier: f64,
     pub repair_multiplier: f64,
@@ -532,17 +472,14 @@ pub struct State {
     pub supply_multiplier: f64,
     pub fuel_burn_multiplier: f64,
 
-    // System
     pub current_system_key: String,
     pub random_click_count: u32,
     pub discovered_systems: HashMap<String, DiscoveredSystem>,
 
-    // Notifications — uses drift_types::Notification and NotificationPauseConfig
     pub notifications: Vec<Notification>,
     pub notification_pause_config: NotificationPauseConfig,
     pub next_notification_id: u64,
 
-    // Warning state (per-colony rate-limiting)
     #[allow(dead_code)]
     pub(crate) warning_state: ColonyWarningState,
 }
@@ -621,19 +558,15 @@ pub fn truncate_date(d: &mut SimDateTime, speed_days_per_second: f64) {
         d.minute = 0;
         d.second = 0;
     } else if speed >= 8.0 / 24.0 {
-        // >= 8 hours/sec → day level: zero h/m/s
         d.hour = 0;
         d.minute = 0;
         d.second = 0;
     } else if speed >= 1.0 / 24.0 {
-        // >= 1 hour/sec → hour level: zero m/s
         d.minute = 0;
         d.second = 0;
     } else if speed >= 1.0 / 1440.0 {
-        // >= 1 minute/sec → minute level: zero seconds
         d.second = 0;
     }
-    // else: full precision
 }
 
 // ---------------------------------------------------------------------------
@@ -686,11 +619,17 @@ struct StateSave {
     sim_time: f64,
     current_system_key: String,
     random_click_count: u32,
+    #[serde(default)]
     discovered_systems: Vec<DiscoveredSystemSaveEntry>,
+    #[serde(default)]
     ships: Vec<SavedShip>,
+    #[serde(default)]
     colonies: Vec<ColonyState>,
+    #[serde(default)]
     scientists: Vec<ScientistEntry>,
+    #[serde(default)]
     research_projects: Vec<ResearchProjectEntry>,
+    #[serde(default)]
     game_log: Vec<GameLogEntry>,
 }
 
@@ -718,7 +657,7 @@ pub fn save_state(state: &State) {
         .map(|(k, v)| DiscoveredSystemSaveEntry {
             key: k.clone(),
             name: v.name.clone(),
-            seed: v.seed.unwrap_or(0),
+            seed: v.seed,
         })
         .collect();
 
@@ -753,7 +692,7 @@ fn body_entry_to_saved_ship(b: &BodyEntry) -> SavedShip {
         name: b.data.name.clone(),
         host_planet_name: b.host_planet_name.clone().unwrap_or_default(),
         fuel_kg: b.fuel_kg,
-        engine_id: b.engine_id.clone().unwrap_or_default(),
+        engine_id: b.engine_id.clone(),
         design_id: b.design_id.clone(),
         ship_state: if is_transferring {
             b.ship_state.clone()
@@ -819,6 +758,7 @@ fn state_save_to_saved_state_data(snap: StateSave) -> SavedStateData {
         .discovered_systems
         .into_iter()
         .map(|d| DiscoveredSystemEntry {
+            key: d.key,
             name: d.name,
             seed: d.seed,
         })
@@ -855,7 +795,7 @@ fn migrate_v3(v: &Value) -> Option<SavedStateData> {
         name: "ISS Explorer".to_string(),
         host_planet_name: "Earth".to_string(),
         fuel_kg,
-        engine_id,
+        engine_id: Some(engine_id),
         ..Default::default()
     };
 
@@ -884,7 +824,7 @@ pub fn restore_ship_state(saved: &SavedStateData, state: &mut State) {
             .find(|b| b.is_ship && b.data.name == saved_ship.name)
         {
             body.fuel_kg = saved_ship.fuel_kg;
-            body.engine_id = Some(saved_ship.engine_id.clone());
+            body.engine_id = saved_ship.engine_id.clone();
             body.design_id = saved_ship.design_id.clone();
             body.host_planet_name = Some(saved_ship.host_planet_name.clone());
             body.ship_state = saved_ship.ship_state.clone();

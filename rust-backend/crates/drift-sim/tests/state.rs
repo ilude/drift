@@ -6,7 +6,7 @@ use drift_sim::state::{
     restore_ship_state, save_state, sim_time_to_date, speed_label, truncate_date, SimDateTime,
     State,
 };
-use drift_types::{ResearchProjectEntry, SavedStateData, ScientistEntry};
+use drift_sim::state::{ResearchProjectEntry, SavedStateData, ScientistEntry};
 
 // ─── simTimeToDate ────────────────────────────────────────────────────────────
 
@@ -236,9 +236,9 @@ mod ship_state_persistence {
     #[test]
     fn restore_ship_state_round_trips_fuel_kg_and_engine_id() {
         let mut state = State::default();
-        state.body_meshes = vec![drift_types::BodyEntry {
+        state.body_meshes = vec![drift_sim::state::BodyEntry {
             is_ship: true,
-            data: drift_types::BodyData {
+            data: drift_sim::state::BodyEntryData {
                 name: "ISS Explorer".to_string(),
                 ..Default::default()
             },
@@ -253,7 +253,7 @@ mod ship_state_persistence {
             current_system_key: "sol".to_string(),
             random_click_count: 0,
             discovered_systems: vec![],
-            ships: vec![drift_types::SavedShip {
+            ships: vec![drift_sim::state::SavedShip {
                 name: "ISS Explorer".to_string(),
                 host_planet_name: "Earth".to_string(),
                 fuel_kg: 75_000.0,
@@ -277,9 +277,9 @@ mod ship_state_persistence {
     #[test]
     fn restore_ship_state_applies_saved_ship_data() {
         let mut state = State::default();
-        state.body_meshes = vec![drift_types::BodyEntry {
+        state.body_meshes = vec![drift_sim::state::BodyEntry {
             is_ship: true,
-            data: drift_types::BodyData {
+            data: drift_sim::state::BodyEntryData {
                 name: "ISS Explorer".to_string(),
                 ..Default::default()
             },
@@ -294,7 +294,7 @@ mod ship_state_persistence {
             current_system_key: "sol".to_string(),
             random_click_count: 0,
             discovered_systems: vec![],
-            ships: vec![drift_types::SavedShip {
+            ships: vec![drift_sim::state::SavedShip {
                 name: "ISS Explorer".to_string(),
                 host_planet_name: "Earth".to_string(),
                 fuel_kg: 75_000.0,
@@ -318,9 +318,9 @@ mod ship_state_persistence {
     #[test]
     fn restore_ship_state_handles_missing_ship_data_gracefully() {
         let mut state = State::default();
-        state.body_meshes = vec![drift_types::BodyEntry {
+        state.body_meshes = vec![drift_sim::state::BodyEntry {
             is_ship: true,
-            data: drift_types::BodyData {
+            data: drift_sim::state::BodyEntryData {
                 name: "ISS Explorer".to_string(),
                 ..Default::default()
             },
@@ -356,9 +356,9 @@ mod ship_state_persistence {
     fn restore_ship_state_matches_ships_by_name() {
         let mut state = State::default();
         state.body_meshes = vec![
-            drift_types::BodyEntry {
+            drift_sim::state::BodyEntry {
                 is_ship: true,
-                data: drift_types::BodyData {
+                data: drift_sim::state::BodyEntryData {
                     name: "ISS Explorer".to_string(),
                     ..Default::default()
                 },
@@ -366,9 +366,9 @@ mod ship_state_persistence {
                 engine_id: Some("chemical".to_string()),
                 ..Default::default()
             },
-            drift_types::BodyEntry {
+            drift_sim::state::BodyEntry {
                 is_ship: true,
-                data: drift_types::BodyData {
+                data: drift_sim::state::BodyEntryData {
                     name: "ISS Magellan".to_string(),
                     ..Default::default()
                 },
@@ -380,7 +380,7 @@ mod ship_state_persistence {
 
         let saved = SavedStateData {
             version: 4,
-            ships: vec![drift_types::SavedShip {
+            ships: vec![drift_sim::state::SavedShip {
                 name: "ISS Magellan".to_string(),
                 host_planet_name: "Mars".to_string(),
                 fuel_kg: 30_000.0,
@@ -417,9 +417,9 @@ mod transfer_state_persistence {
     #[test]
     fn save_state_and_load_saved_state_round_trip_transfer_fields() {
         let mut state = State::default();
-        state.body_meshes = vec![drift_types::BodyEntry {
+        state.body_meshes = vec![drift_sim::state::BodyEntry {
             is_ship: true,
-            data: drift_types::BodyData {
+            data: drift_sim::state::BodyEntryData {
                 name: "Pathfinder".to_string(),
                 body_type: "Ship".to_string(),
                 ..Default::default()
@@ -476,9 +476,9 @@ mod transfer_state_persistence {
     #[test]
     fn restore_ship_state_restores_transfer_fields_onto_ship_entry() {
         let mut state = State::default();
-        state.body_meshes = vec![drift_types::BodyEntry {
+        state.body_meshes = vec![drift_sim::state::BodyEntry {
             is_ship: true,
-            data: drift_types::BodyData {
+            data: drift_sim::state::BodyEntryData {
                 name: "Pathfinder".to_string(),
                 ..Default::default()
             },
@@ -491,7 +491,7 @@ mod transfer_state_persistence {
 
         let saved = SavedStateData {
             version: 5,
-            ships: vec![drift_types::SavedShip {
+            ships: vec![drift_sim::state::SavedShip {
                 name: "Pathfinder".to_string(),
                 host_planet_name: "Earth".to_string(),
                 fuel_kg: 60_000.0,
@@ -563,9 +563,9 @@ mod transfer_state_persistence {
     #[test]
     fn orbiting_ship_save_does_not_include_transfer_fields() {
         let mut state = State::default();
-        state.body_meshes = vec![drift_types::BodyEntry {
+        state.body_meshes = vec![drift_sim::state::BodyEntry {
             is_ship: true,
-            data: drift_types::BodyData {
+            data: drift_sim::state::BodyEntryData {
                 name: "Wanderer".to_string(),
                 body_type: "Ship".to_string(),
                 ..Default::default()
@@ -596,9 +596,9 @@ mod transfer_state_persistence {
     #[test]
     fn save_state_includes_non_sol_discovered_systems() {
         let mut state = State::default();
-        state.body_meshes = vec![drift_types::BodyEntry {
+        state.body_meshes = vec![drift_sim::state::BodyEntry {
             is_ship: true,
-            data: drift_types::BodyData {
+            data: drift_sim::state::BodyEntryData {
                 name: "Scout".to_string(),
                 body_type: "Ship".to_string(),
                 ..Default::default()
@@ -645,7 +645,7 @@ mod transfer_state_persistence {
             drift_types::ColonyState {
                 body_name: "Earth".to_string(),
                 name: "Earth Colony".to_string(),
-                population: 5_000_000_000,
+                population: 5_000_000_000.0,
                 habitability: 1.0,
                 installations: drift_types::ColonyInstallations {
                     construction_factory: 4,
@@ -688,7 +688,7 @@ mod transfer_state_persistence {
 
         let earth = state.colonies.get("Earth").expect("Earth colony missing");
         assert_eq!(earth.body_name, "Earth");
-        assert_eq!(earth.population, 5_000_000_000);
+        assert_eq!(earth.population, 5_000_000_000.0);
         assert_eq!(earth.research_points, 42.0);
         assert_eq!(*earth.stockpile.resources.get("iron").unwrap(), 99.0);
     }

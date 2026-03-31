@@ -12,7 +12,7 @@ fn reset_state(state: &mut State) {
     state.notifications = vec![];
     state.sim_time = GameClock::from_days(100.0);
     state.time_speed = 1.0;
-    state.notification_pause_config = drift_types::NotificationPauseConfig {
+    state.notification_pause_config = drift_sim::state::NotificationPauseConfig {
         info: false,
         survey_complete: false,
         low_fuel: false,

@@ -4,8 +4,8 @@
 use drift_sim::intents::{
     clear_intent, get_claimed_targets, get_intent_for_ship, is_target_claimed, publish_intent,
 };
+use drift_sim::state::ShipIntent;
 use drift_sim::state::State;
-use drift_types::ShipIntent;
 
 // ─── publishIntent ────────────────────────────────────────────────────────────
 

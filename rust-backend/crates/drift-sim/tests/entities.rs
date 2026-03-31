@@ -6,7 +6,9 @@ use drift_sim::entities::{
     list_ships_at_body, rebuild_entity_maps, resolve_entity,
 };
 use drift_sim::state::State;
-use drift_types::{AsteroidBeltEntry, AsteroidEntry, BeltDef, BodyData, BodyEntry, SurveyState};
+use drift_sim::state::{
+    AsteroidBeltEntry, AsteroidEntry, BeltDef, BodyEntry, BodyEntryData, SurveyState,
+};
 
 fn mock_body(name: &str, body_type: &str) -> BodyEntry {
     mock_body_ext(name, body_type, false, false, false)
@@ -20,11 +22,12 @@ fn mock_body_ext(
     is_comet: bool,
 ) -> BodyEntry {
     BodyEntry {
-        data: BodyData {
+        data: BodyEntryData {
             name: name.to_string(),
             body_type: body_type.to_string(),
             distance: 1.0,
             mass: 1.0,
+            ..BodyEntryData::default()
         },
         position: [1.0, 0.0, 2.0],
         speed: 0.01,
@@ -34,6 +37,7 @@ fn mock_body_ext(
         survey: SurveyState {
             survey_level: 0,
             deposits: vec![],
+            ..SurveyState::default()
         },
         ..BodyEntry::default()
     }
@@ -72,7 +76,9 @@ fn mock_belt_entry(designations: &[&str]) -> AsteroidBeltEntry {
                 survey: SurveyState {
                     survey_level: 0,
                     deposits: vec![],
+                    ..SurveyState::default()
                 },
+                ..AsteroidEntry::default()
             })
             .collect(),
     }

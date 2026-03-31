@@ -2,6 +2,9 @@
 //
 // Three.js / DOM / frontend-only types are intentionally omitted.
 // Types already defined in drift-math are re-exported from there.
+//
+// This crate contains data/config types and colony/save types only.
+// Runtime mesh types (BodyEntry, ShipEntry, etc.) live in drift_sim::state.
 
 use std::collections::HashMap;
 
@@ -136,220 +139,13 @@ pub struct BodyDataConfig {
     pub is_detached: Option<bool>,
 }
 
-// ---------------------------------------------------------------------------
-// Runtime body / mesh types (used by sim engine at runtime)
-// ---------------------------------------------------------------------------
-
-/// Simplified runtime body descriptor stored inside a BodyEntry.
-/// Uses `body_type` as a plain string ("Planet", "Star", "Ship", "Comet", etc.)
-/// to match the runtime mesh representation from the TypeScript frontend.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RuntimeBodyData {
-    pub name: String,
-    pub body_type: String,
-    pub distance: f64,
-    pub mass: f64,
-    pub radius: f64,
-    pub color: String,
-}
-
 /// Full static body configuration — used when adding bodies to `State` (colonies, survey).
 /// Mirrors the TypeScript `BodyData` type from sol-data / system-generator.
 /// Type alias for `BodyDataConfig` so tests can use `BodyData` directly.
 pub type BodyData = BodyDataConfig;
 
-/// Cargo hold: maps item_id → quantity (resources in kg, flat-packed as count f64).
-pub type CargoHold = HashMap<String, f64>;
-
-/// Runtime mesh entry for a body or ship in the simulation.
-/// Mirrors the TypeScript BodyEntry / ShipEntry objects.
-/// Uses RuntimeBodyData for the inner `data` field (String-based body_type).
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct BodyEntry {
-    pub data: RuntimeBodyData,
-    pub position: [f32; 3],
-    pub speed: f32,
-    pub is_moon: bool,
-    pub is_ship: bool,
-    pub is_comet: bool,
-    pub survey: SurveyState,
-    pub moons: Vec<String>,
-    // Ship-specific fields (only populated when is_ship = true)
-    pub name: String,
-    pub fuel_kg: f64,
-    pub fuel_capacity_kg: f64,
-    pub dry_mass_kg: f64,
-    pub engine_id: Option<String>,
-    pub design_id: Option<String>,
-    pub ship_state: Option<String>,
-    pub host_planet_name: Option<String>,
-    pub commander: Commander,
-    pub survey_plan: Option<SurveyPlan>,
-    pub cargo_hold: CargoHold,
-    pub mission_orders: Vec<MissionStep>,
-    pub mission_order_index: usize,
-    // Transfer / Hermite spline state
-    pub transfer_target: Option<String>,
-    pub transfer_start_time: Option<f64>,
-    pub transfer_time_days: Option<f64>,
-    pub transfer_fuel_total: Option<f64>,
-    pub p0x: Option<f64>,
-    pub p0y: Option<f64>,
-    pub p0z: Option<f64>,
-    pub t0x: Option<f64>,
-    pub t0y: Option<f64>,
-    pub t0z: Option<f64>,
-    pub p1x: Option<f64>,
-    pub p1y: Option<f64>,
-    pub p1z: Option<f64>,
-    pub t1x: Option<f64>,
-    pub t1y: Option<f64>,
-    pub t1z: Option<f64>,
-}
-
-impl BodyEntry {
-    /// Convert a ShipEntry into a BodyEntry for use in body_meshes.
-    pub fn from_ship(ship: ShipEntry) -> Self {
-        BodyEntry {
-            data: RuntimeBodyData {
-                name: ship.name.clone(),
-                body_type: "Ship".to_string(),
-                distance: 0.0,
-                mass: ship.dry_mass_kg,
-                radius: 0.0,
-                color: "#fff".to_string(),
-            },
-            position: ship.position,
-            is_ship: true,
-            name: ship.name,
-            fuel_kg: ship.fuel_kg,
-            fuel_capacity_kg: ship.fuel_capacity_kg,
-            dry_mass_kg: ship.dry_mass_kg,
-            engine_id: ship.engine_id,
-            design_id: ship.design_id,
-            ship_state: Some(ship.ship_state),
-            host_planet_name: Some(ship.host_planet_name),
-            commander: ship.commander,
-            survey_plan: ship.survey_plan,
-            cargo_hold: ship.cargo_hold,
-            mission_orders: ship.mission_orders,
-            mission_order_index: ship.mission_order_index,
-            ..Default::default()
-        }
-    }
-}
-
-/// Ship entry as used by cargo / survey planner modules.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ShipEntry {
-    pub name: String,
-    pub position: [f32; 3],
-    pub is_ship: bool,
-    pub ship_state: String,
-    pub host_planet_name: String,
-    pub fuel_kg: f64,
-    pub fuel_capacity_kg: f64,
-    pub dry_mass_kg: f64,
-    pub engine_id: Option<String>,
-    pub design_id: Option<String>,
-    pub commander: Commander,
-    pub survey_plan: Option<SurveyPlan>,
-    pub cargo_hold: CargoHold,
-    pub mission_orders: Vec<MissionStep>,
-    pub mission_order_index: usize,
-}
-
-impl Default for ShipEntry {
-    fn default() -> Self {
-        ShipEntry {
-            name: String::new(),
-            position: [0.0, 0.0, 0.0],
-            is_ship: true,
-            ship_state: "orbiting".to_string(),
-            host_planet_name: String::new(),
-            fuel_kg: 0.0,
-            fuel_capacity_kg: 0.0,
-            dry_mass_kg: 0.0,
-            engine_id: None,
-            design_id: None,
-            commander: Commander::default(),
-            survey_plan: None,
-            cargo_hold: CargoHold::new(),
-            mission_orders: vec![],
-            mission_order_index: 0,
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Asteroid belt runtime types
-// ---------------------------------------------------------------------------
-
-/// Asteroid belt descriptor used in runtime state.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct BeltDef {
-    pub name: String,
-    pub min_au: f64,
-    pub max_au: f64,
-    pub count: usize,
-    pub color: String,
-    pub size: f64,
-    pub max_inc: f64,
-}
-
-/// A single asteroid within a belt.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AsteroidEntry {
-    pub designation: String,
-    pub au: f64,
-    pub period: f64,
-    pub diameter: f64,
-    pub mass: f64,
-    pub belt_index: usize,
-    pub survey: SurveyState,
-}
-
-/// Runtime belt entry: belt descriptor + flat position buffer + asteroid list.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AsteroidBeltEntry {
-    pub belt: BeltDef,
-    /// Flat [x, y, z, x, y, z, …] position buffer (f32).
-    pub positions: Vec<f32>,
-    pub count: usize,
-    pub asteroids: Vec<AsteroidEntry>,
-}
-
-// ---------------------------------------------------------------------------
-// Resolved entity (result of entity lookup)
-// ---------------------------------------------------------------------------
-
-/// Result of an asteroid belt lookup.
-#[derive(Debug, Clone)]
-pub struct AsteroidHit {
-    pub belt_index: usize,
-    pub asteroid_index: usize,
-    pub asteroid: AsteroidEntry,
-}
-
-/// Resolved entity returned by `resolve_entity`.
-#[derive(Debug, Clone)]
-pub struct ResolvedEntity {
-    pub name: String,
-    pub body_type: String,
-    pub position: [f32; 3],
-    pub is_moon: bool,
-    pub body_entry: Option<BodyEntry>,
-    pub asteroid_hit: Option<AsteroidHit>,
-}
-
 // ---------------------------------------------------------------------------
 // Static body config types (from system-generator / sol-data output)
-// These remain separate from the runtime BodyData / BodyEntry types above.
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -490,159 +286,17 @@ pub struct CommandResult {
 }
 
 // ---------------------------------------------------------------------------
-// Mission orders
-// ---------------------------------------------------------------------------
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum MissionStepType {
-    LoadCargo,
-    UnloadCargo,
-    TransferTo,
-    Repeat,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct MissionStep {
-    pub id: String,
-    #[serde(rename = "type")]
-    pub step_type: MissionStepType,
-    pub target: Option<String>,
-    pub item_id: Option<String>,
-    pub quantity: Option<f64>,
-}
-
-// ---------------------------------------------------------------------------
-// Ship intents
-// ---------------------------------------------------------------------------
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "kebab-case")]
-pub enum ShipIntent {
-    Surveying {
-        target: String,
-        #[serde(rename = "shipName")]
-        ship_name: String,
-    },
-    #[serde(rename = "survey-plan")]
-    SurveyPlan {
-        targets: Vec<String>,
-        #[serde(rename = "shipName")]
-        ship_name: String,
-    },
-    Transferring {
-        destination: String,
-        #[serde(rename = "shipName")]
-        ship_name: String,
-    },
-    Refueling {
-        location: String,
-        #[serde(rename = "shipName")]
-        ship_name: String,
-    },
-    Overhauling {
-        location: String,
-        #[serde(rename = "shipName")]
-        ship_name: String,
-    },
-    #[serde(rename = "shore-leave")]
-    ShoreLeave {
-        location: String,
-        #[serde(rename = "shipName")]
-        ship_name: String,
-    },
-    Idle {
-        location: String,
-        #[serde(rename = "shipName")]
-        ship_name: String,
-    },
-    Tanking {
-        target: String,
-        #[serde(rename = "shipName")]
-        ship_name: String,
-    },
-    Refitting {
-        location: String,
-        #[serde(rename = "shipName")]
-        ship_name: String,
-    },
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SurveyPlan {
-    pub targets: Vec<String>,
-    pub accel_g: f64,
-    pub return_fuel_kg: f64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SurveyCandidate {
-    pub name: String,
-    pub dist_sq: f64,
-    pub x: f64,
-    pub z: f64,
-}
-
-// ---------------------------------------------------------------------------
-// Ship sub-structs
-// ---------------------------------------------------------------------------
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ShipCrew {
-    pub count: u32,
-    pub morale: f64,
-    pub last_shore_leave: f64,
-    pub deployment_limit: f64,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Commander {
-    pub caution: f64,
-    pub initiative: f64,
-    pub experience: f64,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ShipMaintenance {
-    pub age: f64,
-    pub total_age: f64,
-    pub last_refit_age: f64,
-    pub supplies: f64,
-    pub max_supplies: f64,
-    pub hull_integrity: f64,
-    pub overhauls_since_refit: u32,
-    pub overhauls_until_refit: u32,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ShipAction {
-    #[serde(rename = "type")]
-    pub action_type: Option<CommandType>,
-    pub command_id: Option<String>,
-    pub target: Option<String>,
-    pub start_time: f64,
-    pub duration: f64,
-    pub progress: f64,
-}
-
-// ---------------------------------------------------------------------------
 // Colony types
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ColonyInstallationId {
+    #[default]
+    Mine,
     ConstructionFactory,
     RepairYard,
     FuelDepot,
-    Mine,
     Lab,
     Academy,
     Storage,
@@ -674,7 +328,7 @@ pub struct ColonyStockpile {
     pub fuel_kg: f64,
     pub supplies: f64,
     pub resources: HashMap<String, f64>,
-    pub flat_packed: HashMap<String, f64>,
+    pub flat_packed: HashMap<String, u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -711,6 +365,41 @@ pub struct ColonyConstructionProject {
     pub allocation_pct: f64,
     pub progress_bp: f64,
     pub paused: bool,
+}
+
+impl Default for ColonyConstructionProject {
+    fn default() -> Self {
+        ColonyConstructionProject {
+            id: String::new(),
+            installation_id: ColonyInstallationId::Mine,
+            quantity_remaining: 0.0,
+            total_quantity: 0.0,
+            allocation_pct: 0.0,
+            progress_bp: 0.0,
+            paused: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum TransferStatus {
+    Queued,
+    InTransit,
+    Complete,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScientistTransferRequest {
+    pub id: String,
+    pub scientist_id: String,
+    pub origin_body_name: String,
+    pub destination_body_name: String,
+    pub requested_at: f64,
+    pub status: TransferStatus,
+    pub estimated_arrival_day: Option<f64>,
+    pub assigned_ship_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -770,7 +459,23 @@ pub struct ColonyResearchProject {
     pub difficulty: f64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+impl Default for ColonyResearchProject {
+    fn default() -> Self {
+        ColonyResearchProject {
+            tech_id: String::new(),
+            colony_body_name: String::new(),
+            lead_scientist_id: None,
+            assigned_labs: 0,
+            progress_rp: 0.0,
+            paused: false,
+            queued_at: 0.0,
+            started_at: None,
+            difficulty: 1.0,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ScientistState {
     pub id: String,
@@ -820,67 +525,9 @@ pub struct ResearchProjectEntry {
     pub difficulty: f64,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum TransferStatus {
-    Queued,
-    InTransit,
-    Complete,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ScientistTransferRequest {
-    pub id: String,
-    pub scientist_id: String,
-    pub origin_body_name: String,
-    pub destination_body_name: String,
-    pub requested_at: f64,
-    pub status: TransferStatus,
-    pub estimated_arrival_day: Option<f64>,
-    pub assigned_ship_name: Option<String>,
-}
-
 // ---------------------------------------------------------------------------
-// Notification types
+// Notification types (enum variants only — runtime Notification lives in drift_sim)
 // ---------------------------------------------------------------------------
-
-/// Pause configuration: which notification types trigger sim pause.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct NotificationPauseConfig {
-    pub info: bool,
-    pub survey_complete: bool,
-    pub low_fuel: bool,
-    pub low_morale: bool,
-    pub maintenance_needed: bool,
-    pub mission_complete: bool,
-    pub malfunction: bool,
-    pub ship_destroyed: bool,
-    pub transfer_complete: bool,
-    pub action_complete: bool,
-    pub colony_understaffed: bool,
-    pub colony_idle: bool,
-    pub colony_blocked: bool,
-    pub colony_low_supplies: bool,
-    pub ship_built: bool,
-    pub scientist_graduated: bool,
-}
-
-/// Runtime notification stored in State.notifications.
-/// Uses String for notification_type to avoid enum dependency in hot paths.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Notification {
-    pub id: u64,
-    pub notification_type: String,
-    pub message: String,
-    pub sim_time: f64,
-    pub body_name: Option<String>,
-    pub read: bool,
-    /// Wall-clock ms at time of creation (for coalescing).
-    pub created_at_ms: u64,
-}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -1023,77 +670,126 @@ pub struct ShipDesign {
     pub armor_hp: u32,
 }
 
+impl Default for ShipDesign {
+    fn default() -> Self {
+        ShipDesign {
+            id: String::new(),
+            name: String::new(),
+            engine_design_id: String::new(),
+            engine_count: 1,
+            components: vec![],
+            dry_mass_kg: 0.0,
+            fuel_capacity_kg: 0.0,
+            cargo_capacity_kg: 0.0,
+            crew_capacity: 0,
+            max_supplies: 0,
+            sensor_multiplier: 1.0,
+            accel_g: 0.0,
+            isp_s: 0.0,
+            armor_hp: 0,
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Save data
 // ---------------------------------------------------------------------------
+// SavedShip, SavedStateData, and DiscoveredSystemEntry are defined in drift_sim::state
+// (they are runtime sim types, not data/config types). Use drift_sim for those.
 
-/// Per-ship save record used in SavedStateData.
+// ---------------------------------------------------------------------------
+// Ship sub-structs (used in SavedShip and drift-data)
+// ---------------------------------------------------------------------------
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct SavedShip {
+pub struct ShipCrew {
+    pub count: u32,
+    pub morale: f64,
+    pub last_shore_leave: f64,
+    pub deployment_limit: f64,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Commander {
+    pub caution: f64,
+    pub initiative: f64,
+    pub experience: f64,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShipMaintenance {
+    pub age: f64,
+    pub total_age: f64,
+    pub last_refit_age: f64,
+    pub supplies: f64,
+    pub max_supplies: f64,
+    pub hull_integrity: f64,
+    pub overhauls_since_refit: u32,
+    pub overhauls_until_refit: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShipAction {
+    #[serde(rename = "type")]
+    pub action_type: Option<CommandType>,
+    pub command_id: Option<String>,
+    pub target: Option<String>,
+    pub start_time: f64,
+    pub duration: f64,
+    pub progress: f64,
+}
+
+// ---------------------------------------------------------------------------
+// Mission orders (used in SavedShip)
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum MissionStepType {
+    LoadCargo,
+    UnloadCargo,
+    TransferTo,
+    Repeat,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MissionStep {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub step_type: MissionStepType,
+    pub target: Option<String>,
+    pub item_id: Option<String>,
+    pub quantity: Option<f64>,
+}
+
+// ---------------------------------------------------------------------------
+// Survey plan (used in SavedShip)
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SurveyPlan {
+    pub targets: Vec<String>,
+    pub accel_g: f64,
+    pub return_fuel_kg: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SurveyCandidate {
     pub name: String,
-    pub host_planet_name: String,
-    pub fuel_kg: f64,
-    pub engine_id: Option<String>,
-    pub design_id: Option<String>,
-    pub crew: Option<ShipCrew>,
-    pub commander: Option<Commander>,
-    pub maintenance: Option<ShipMaintenance>,
-    pub command_tree: Option<CommandTree>,
-    pub keel_date: Option<f64>,
-    // Transfer state — only present if ship was transferring
-    pub ship_state: Option<String>,
-    pub transfer_target: Option<String>,
-    pub transfer_start_time: Option<f64>,
-    pub transfer_time_days: Option<f64>,
-    pub transfer_fuel_total: Option<f64>,
-    // Cargo logistics
-    pub cargo_hold: Option<HashMap<String, f64>>,
-    pub mission_orders: Option<Vec<MissionStep>>,
-    pub mission_order_index: Option<u32>,
-    // Hermite spline knots
-    pub p0x: Option<f64>,
-    pub p0y: Option<f64>,
-    pub p0z: Option<f64>,
-    pub t0x: Option<f64>,
-    pub t0y: Option<f64>,
-    pub t0z: Option<f64>,
-    pub p1x: Option<f64>,
-    pub p1y: Option<f64>,
-    pub p1z: Option<f64>,
-    pub t1x: Option<f64>,
-    pub t1y: Option<f64>,
-    pub t1z: Option<f64>,
-    pub survey_plan: Option<SurveyPlan>,
+    pub dist_sq: f64,
+    pub x: f64,
+    pub z: f64,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DiscoveredSystemEntry {
-    pub key: String,
-    pub name: String,
-    pub seed: u64,
-}
+// ---------------------------------------------------------------------------
+// Scientist transfer (used in ColonyState)
+// ---------------------------------------------------------------------------
 
-/// Top-level save data structure.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SavedStateData {
-    pub version: u32,
-    pub sim_time: f64,
-    pub current_system_key: String,
-    pub random_click_count: u32,
-    pub discovered_systems: Vec<DiscoveredSystemEntry>,
-    pub ships: Vec<SavedShip>,
-    pub colonies: Vec<ColonyState>,
-    pub scientists: Vec<ScientistEntry>,
-    pub research_projects: Vec<ResearchProjectEntry>,
-    pub game_log: Vec<GameLogEntry>,
-    pub researched_techs: Vec<String>,
-    pub engine_designs: Vec<EngineDesign>,
-    pub ship_designs: Vec<ShipDesign>,
-    pub missile_designs: Vec<MissileDesign>,
-    pub turret_designs: Vec<TurretDesign>,
-    pub sensor_designs: Vec<SensorDesign>,
-    pub design_counter: u32,
-}
+// (ScientistTransferRequest is already defined above with TransferStatus)

@@ -6,10 +6,8 @@ use drift_sim::cargo::{
     get_mission_transfer_target, has_mission_orders, tick_mission_orders,
 };
 use drift_sim::state::State;
-use drift_types::{
-    CargoHold, ColonyInstallations, ColonyState, ColonyStockpile, MissionStep, ShipDesign,
-    ShipEntry,
-};
+use drift_sim::state::{CargoHold, MissionStep, ShipEntry};
+use drift_types::{ColonyInstallations, ColonyState, ColonyStockpile, ShipDesign};
 use std::collections::HashMap;
 
 fn mock_ship(overrides: ShipOverrides) -> ShipEntry {

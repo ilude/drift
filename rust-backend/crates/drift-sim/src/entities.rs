@@ -119,11 +119,11 @@ pub fn find_body<'a>(name: &str, state: &'a State) -> (Option<&'a BodyEntry>, bo
     (None, false)
 }
 
-/// Find a planet/moon/comet/dwarf entry — excludes ships.
+/// Find a planet/moon/dwarf entry — excludes ships and comets.
 pub fn find_planet<'a>(name: &str, state: &'a State) -> (Option<&'a BodyEntry>, bool) {
     if let Some(&idx) = state.entity_maps.bodies.get(name) {
         let entry = &state.body_meshes[idx];
-        if !entry.is_ship {
+        if !entry.is_ship && !entry.is_comet {
             return (Some(entry), true);
         }
     }
