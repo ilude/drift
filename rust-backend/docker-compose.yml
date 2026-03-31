@@ -1,0 +1,31 @@
+services:
+  rust-dev:
+    build:
+      context: .
+      target: builder
+    volumes:
+      - .:/app
+      - cargo-registry:/usr/local/cargo/registry
+      - cargo-git:/usr/local/cargo/git
+      - target-cache:/app/target
+    working_dir: /app
+
+  test:
+    extends: rust-dev
+    command: cargo test --workspace
+
+  build-release:
+    extends: rust-dev
+    command: cargo build --release -p drift-server
+
+  build-windows:
+    extends: rust-dev
+    command: >
+      bash -c "rustup target add x86_64-pc-windows-gnu &&
+               apt-get update && apt-get install -y gcc-mingw-w64-x86-64 &&
+               cargo build --release -p drift-server --target x86_64-pc-windows-gnu"
+
+volumes:
+  cargo-registry:
+  cargo-git:
+  target-cache:

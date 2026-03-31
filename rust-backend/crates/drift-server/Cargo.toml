@@ -1,0 +1,10 @@
+[package]
+name = "drift-server"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+drift-sim = { path = "../drift-sim" }
+drift-lua = { path = "../drift-lua" }
+serde = { workspace = true }
+serde_json = { workspace = true }

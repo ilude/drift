@@ -1,0 +1,8 @@
+[package]
+name = "drift-types"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+drift-math = { path = "../drift-math" }
+serde = { workspace = true }

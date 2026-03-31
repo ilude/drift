@@ -1,0 +1,15 @@
+[package]
+name = "drift-sim"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+drift-math = { path = "../drift-math" }
+drift-types = { path = "../drift-types" }
+drift-data = { path = "../drift-data" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+slotmap = { workspace = true }
+
+[dev-dependencies]
+approx = { workspace = true }

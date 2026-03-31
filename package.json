@@ -20,7 +20,17 @@
 		"clean": "node -e \"for (const p of ['dist','coverage']) require('node:fs').rmSync(p,{ recursive: true, force: true })\"",
 		"verify:fast": "bun run lint && bun run typecheck",
 		"verify": "bun run verify:fast && bun run test && bun run build",
-		"ci": "bun run verify"
+		"ci": "bun run verify",
+		"rust:test": "docker compose -f rust-backend/docker-compose.yml run --rm test",
+		"rust:test:math": "docker compose -f rust-backend/docker-compose.yml run --rm rust-dev cargo test -p drift-math",
+		"rust:test:data": "docker compose -f rust-backend/docker-compose.yml run --rm rust-dev cargo test -p drift-data",
+		"rust:test:sim": "docker compose -f rust-backend/docker-compose.yml run --rm rust-dev cargo test -p drift-sim",
+		"rust:build": "docker compose -f rust-backend/docker-compose.yml run --rm build-release",
+		"rust:build:windows": "docker compose -f rust-backend/docker-compose.yml run --rm build-windows",
+		"rust:clippy": "docker compose -f rust-backend/docker-compose.yml run --rm rust-dev cargo clippy --workspace",
+		"rust:fmt": "docker compose -f rust-backend/docker-compose.yml run --rm rust-dev cargo fmt --all",
+		"rust:fmt:check": "docker compose -f rust-backend/docker-compose.yml run --rm rust-dev cargo fmt --all -- --check",
+		"rust:shell": "docker compose -f rust-backend/docker-compose.yml run --rm rust-dev bash"
 	},
 	"keywords": [],
 	"author": "",
