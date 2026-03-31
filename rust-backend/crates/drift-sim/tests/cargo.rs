@@ -50,7 +50,7 @@ fn mock_colony(
     ColonyState {
         body_name: body_name.to_string(),
         name: body_name.to_string(),
-        population: 1000,
+        population: 1000.0,
         stockpile: ColonyStockpile {
             fuel_kg: 100_000.0,
             supplies: 1000.0,
