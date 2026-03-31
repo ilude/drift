@@ -259,7 +259,7 @@ pub enum ShipIntent {
 }
 
 /// Notification entry.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Notification {
     pub id: u64,
     pub notification_type: String,
@@ -267,6 +267,19 @@ pub struct Notification {
     pub sim_time: f64,
     pub body_name: Option<String>,
     pub read: bool,
+}
+
+impl Default for Notification {
+    fn default() -> Self {
+        Notification {
+            id: 0,
+            notification_type: "info".to_string(),
+            message: String::new(),
+            sim_time: 0.0,
+            body_name: None,
+            read: false,
+        }
+    }
 }
 
 /// Notification pause configuration.
@@ -361,15 +374,8 @@ pub struct SavedShip {
     pub t1z: Option<f64>,
 }
 
-/// Game log entry.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GameLogEntry {
-    pub id: u64,
-    pub category: String,
-    pub sim_time: f64,
-    pub message: String,
-}
+/// Game log entry — re-exported from drift_types so colony code can push typed entries.
+pub use drift_types::GameLogEntry;
 
 // ---------------------------------------------------------------------------
 // Type aliases for drift_types types used by State
@@ -463,6 +469,9 @@ pub struct State {
     pub ship_intents: HashMap<String, ShipIntent>,
 
     pub sim_time: GameClock,
+    /// Sim time in fractional days — kept in sync with `sim_time` and directly
+    /// writable so colony warning rate-limiting can advance it in tests.
+    pub sim_time_days: f64,
 
     pub time_speed: f64,
     pub survey_multiplier: f64,
@@ -480,8 +489,7 @@ pub struct State {
     pub notification_pause_config: NotificationPauseConfig,
     pub next_notification_id: u64,
 
-    #[allow(dead_code)]
-    pub(crate) warning_state: ColonyWarningState,
+    pub warning_state: ColonyWarningState,
 }
 
 pub type SimState = State;
@@ -499,6 +507,48 @@ impl State {
         self.body_meshes
             .iter_mut()
             .find(|e| e.is_ship && e.data.name == name)
+    }
+
+    /// Add a body (planet/star/moon/comet) to the simulation with an optional
+    /// survey state. The body is appended to `body_meshes`. Call
+    /// `rebuild_entity_maps()` after all bodies are added.
+    pub fn add_body(
+        &mut self,
+        data: drift_types::BodyData,
+        survey: Option<drift_types::SurveyState>,
+    ) {
+        use crate::state::{BodyEntry, BodyEntryData};
+        let survey = survey.unwrap_or_default();
+        let body_type = data.body_type.as_str().to_string();
+        let entry = BodyEntry {
+            data: BodyEntryData {
+                name: data.name.clone(),
+                body_type,
+                distance: data.distance,
+                mass: data.mass,
+                radius: data.radius,
+                color: data.color.clone(),
+            },
+            survey,
+            ..Default::default()
+        };
+        self.body_meshes.push(entry);
+    }
+
+    /// Return a mutable slice of deposits for the named body's survey state.
+    /// Returns an empty slice if the body is not found.
+    pub fn get_body_deposits(&self, body_name: &str) -> &[drift_types::ResourceDeposit] {
+        self.body_meshes
+            .iter()
+            .find(|b| b.data.name == body_name)
+            .map(|b| b.survey.deposits.as_slice())
+            .unwrap_or(&[])
+    }
+
+    /// Reset the colony warning rate-limiter so warnings can fire again
+    /// immediately.  Called by tests after advancing `sim_time_days`.
+    pub fn reset_colony_warning_state(&mut self) {
+        self.warning_state.last_warned.clear();
     }
 }
 
