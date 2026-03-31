@@ -2,8 +2,9 @@
 // RED phase — will not compile until drift_sim production code is implemented.
 
 use drift_sim::state::{
-    format_date_time, load_saved_state, restore_colony_state, restore_ship_state, save_state,
-    sim_time_to_date, speed_label, truncate_date, State,
+    format_date_time, load_saved_state, load_saved_state_from_json, restore_colony_state,
+    restore_ship_state, save_state, sim_time_to_date, speed_label, truncate_date, SimDateTime,
+    State,
 };
 use drift_types::{ResearchProjectEntry, SavedStateData, ScientistEntry};
 

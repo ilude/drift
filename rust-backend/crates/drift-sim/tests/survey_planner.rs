@@ -6,16 +6,26 @@ use drift_sim::entities::rebuild_entity_maps;
 use drift_sim::intents::publish_intent;
 use drift_sim::state::State;
 use drift_sim::survey_planner::{advance_survey_plan, clear_survey_plan, compute_survey_plan};
-use drift_types::{BodyData, BodyEntry, ShipEntry, ShipIntent, SurveyPlan, SurveyState};
+use drift_types::{BodyData, BodyEntry, BodyType, ShipEntry, ShipIntent, SurveyPlan, SurveyState};
 
 fn mock_body(name: &str, x: f32, z: f32, surveyed: bool) -> BodyEntry {
     BodyEntry {
         data: BodyData {
             name: name.to_string(),
-            body_type: "Planet".to_string(),
+            body_type: BodyType::Planet,
             distance: 1.0,
-            color: "#fff".to_string(),
+            e: 0.0,
+            period: 365.0,
             radius: 1000.0,
+            mass: 1e24,
+            color: "#fff".to_string(),
+            emissive: None,
+            moons: vec![],
+            rings: None,
+            radius_earths: None,
+            category: None,
+            is_dwarf: None,
+            is_detached: None,
         },
         position: [x, 0.0, z],
         survey: SurveyState {

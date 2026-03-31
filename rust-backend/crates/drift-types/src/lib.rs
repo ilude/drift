@@ -44,16 +44,51 @@ pub struct SystemResourceBudget {
     pub richness: f64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SurveyState {
     pub survey_level: u32,
     pub deposits: Vec<ResourceDeposit>,
+    #[serde(default)]
+    pub survey_duration: f64,
+    #[serde(default)]
+    pub survey_progress: f64,
 }
 
 // ---------------------------------------------------------------------------
-// Body data types (input data from sol-data / system-generator)
+// Static body config types (input data from sol-data / system-generator)
+// These use typed enums and full metadata fields.
 // ---------------------------------------------------------------------------
+
+/// Body type discriminant matching the TypeScript string literals.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum BodyType {
+    #[default]
+    Star,
+    Planet,
+    #[serde(rename = "Dwarf Planet")]
+    DwarfPlanet,
+    Centaur,
+    Asteroid,
+    Moon,
+    Comet,
+    Ship,
+}
+
+impl BodyType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            BodyType::Star => "Star",
+            BodyType::Planet => "Planet",
+            BodyType::DwarfPlanet => "Dwarf Planet",
+            BodyType::Centaur => "Centaur",
+            BodyType::Asteroid => "Asteroid",
+            BodyType::Moon => "Moon",
+            BodyType::Comet => "Comet",
+            BodyType::Ship => "Ship",
+        }
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MoonData {
@@ -75,21 +110,10 @@ pub struct RingData {
     pub tilt: Option<f64>,
 }
 
-/// Body type discriminant matching the TypeScript string literals.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum BodyType {
-    Star,
-    Planet,
-    #[serde(rename = "Dwarf Planet")]
-    DwarfPlanet,
-    Centaur,
-    Asteroid,
-    Moon,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct BodyData {
+/// Full static body configuration from sol-data / system-generator.
+/// Used when adding bodies to the simulation via `State::add_body`.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct BodyDataConfig {
     pub name: String,
     #[serde(rename = "type")]
     pub body_type: BodyType,
@@ -102,7 +126,6 @@ pub struct BodyData {
     pub emissive: Option<bool>,
     pub moons: Vec<MoonData>,
     pub rings: Option<RingData>,
-    // Internal fields from system-generator
     #[serde(rename = "_radiusEarths")]
     pub radius_earths: Option<f64>,
     #[serde(rename = "_category")]
@@ -112,6 +135,222 @@ pub struct BodyData {
     #[serde(rename = "_isDetached")]
     pub is_detached: Option<bool>,
 }
+
+// ---------------------------------------------------------------------------
+// Runtime body / mesh types (used by sim engine at runtime)
+// ---------------------------------------------------------------------------
+
+/// Simplified runtime body descriptor stored inside a BodyEntry.
+/// Uses `body_type` as a plain string ("Planet", "Star", "Ship", "Comet", etc.)
+/// to match the runtime mesh representation from the TypeScript frontend.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RuntimeBodyData {
+    pub name: String,
+    pub body_type: String,
+    pub distance: f64,
+    pub mass: f64,
+    pub radius: f64,
+    pub color: String,
+}
+
+/// Full static body configuration — used when adding bodies to `State` (colonies, survey).
+/// Mirrors the TypeScript `BodyData` type from sol-data / system-generator.
+/// Type alias for `BodyDataConfig` so tests can use `BodyData` directly.
+pub type BodyData = BodyDataConfig;
+
+/// Cargo hold: maps item_id → quantity (resources in kg, flat-packed as count f64).
+pub type CargoHold = HashMap<String, f64>;
+
+/// Runtime mesh entry for a body or ship in the simulation.
+/// Mirrors the TypeScript BodyEntry / ShipEntry objects.
+/// Uses RuntimeBodyData for the inner `data` field (String-based body_type).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BodyEntry {
+    pub data: RuntimeBodyData,
+    pub position: [f32; 3],
+    pub speed: f32,
+    pub is_moon: bool,
+    pub is_ship: bool,
+    pub is_comet: bool,
+    pub survey: SurveyState,
+    pub moons: Vec<String>,
+    // Ship-specific fields (only populated when is_ship = true)
+    pub name: String,
+    pub fuel_kg: f64,
+    pub fuel_capacity_kg: f64,
+    pub dry_mass_kg: f64,
+    pub engine_id: Option<String>,
+    pub design_id: Option<String>,
+    pub ship_state: Option<String>,
+    pub host_planet_name: Option<String>,
+    pub commander: Commander,
+    pub survey_plan: Option<SurveyPlan>,
+    pub cargo_hold: CargoHold,
+    pub mission_orders: Vec<MissionStep>,
+    pub mission_order_index: usize,
+    // Transfer / Hermite spline state
+    pub transfer_target: Option<String>,
+    pub transfer_start_time: Option<f64>,
+    pub transfer_time_days: Option<f64>,
+    pub transfer_fuel_total: Option<f64>,
+    pub p0x: Option<f64>,
+    pub p0y: Option<f64>,
+    pub p0z: Option<f64>,
+    pub t0x: Option<f64>,
+    pub t0y: Option<f64>,
+    pub t0z: Option<f64>,
+    pub p1x: Option<f64>,
+    pub p1y: Option<f64>,
+    pub p1z: Option<f64>,
+    pub t1x: Option<f64>,
+    pub t1y: Option<f64>,
+    pub t1z: Option<f64>,
+}
+
+impl BodyEntry {
+    /// Convert a ShipEntry into a BodyEntry for use in body_meshes.
+    pub fn from_ship(ship: ShipEntry) -> Self {
+        BodyEntry {
+            data: RuntimeBodyData {
+                name: ship.name.clone(),
+                body_type: "Ship".to_string(),
+                distance: 0.0,
+                mass: ship.dry_mass_kg,
+                radius: 0.0,
+                color: "#fff".to_string(),
+            },
+            position: ship.position,
+            is_ship: true,
+            name: ship.name,
+            fuel_kg: ship.fuel_kg,
+            fuel_capacity_kg: ship.fuel_capacity_kg,
+            dry_mass_kg: ship.dry_mass_kg,
+            engine_id: ship.engine_id,
+            design_id: ship.design_id,
+            ship_state: Some(ship.ship_state),
+            host_planet_name: Some(ship.host_planet_name),
+            commander: ship.commander,
+            survey_plan: ship.survey_plan,
+            cargo_hold: ship.cargo_hold,
+            mission_orders: ship.mission_orders,
+            mission_order_index: ship.mission_order_index,
+            ..Default::default()
+        }
+    }
+}
+
+/// Ship entry as used by cargo / survey planner modules.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ShipEntry {
+    pub name: String,
+    pub position: [f32; 3],
+    pub is_ship: bool,
+    pub ship_state: String,
+    pub host_planet_name: String,
+    pub fuel_kg: f64,
+    pub fuel_capacity_kg: f64,
+    pub dry_mass_kg: f64,
+    pub engine_id: Option<String>,
+    pub design_id: Option<String>,
+    pub commander: Commander,
+    pub survey_plan: Option<SurveyPlan>,
+    pub cargo_hold: CargoHold,
+    pub mission_orders: Vec<MissionStep>,
+    pub mission_order_index: usize,
+}
+
+impl Default for ShipEntry {
+    fn default() -> Self {
+        ShipEntry {
+            name: String::new(),
+            position: [0.0, 0.0, 0.0],
+            is_ship: true,
+            ship_state: "orbiting".to_string(),
+            host_planet_name: String::new(),
+            fuel_kg: 0.0,
+            fuel_capacity_kg: 0.0,
+            dry_mass_kg: 0.0,
+            engine_id: None,
+            design_id: None,
+            commander: Commander::default(),
+            survey_plan: None,
+            cargo_hold: CargoHold::new(),
+            mission_orders: vec![],
+            mission_order_index: 0,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Asteroid belt runtime types
+// ---------------------------------------------------------------------------
+
+/// Asteroid belt descriptor used in runtime state.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BeltDef {
+    pub name: String,
+    pub min_au: f64,
+    pub max_au: f64,
+    pub count: usize,
+    pub color: String,
+    pub size: f64,
+    pub max_inc: f64,
+}
+
+/// A single asteroid within a belt.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AsteroidEntry {
+    pub designation: String,
+    pub au: f64,
+    pub period: f64,
+    pub diameter: f64,
+    pub mass: f64,
+    pub belt_index: usize,
+    pub survey: SurveyState,
+}
+
+/// Runtime belt entry: belt descriptor + flat position buffer + asteroid list.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AsteroidBeltEntry {
+    pub belt: BeltDef,
+    /// Flat [x, y, z, x, y, z, …] position buffer (f32).
+    pub positions: Vec<f32>,
+    pub count: usize,
+    pub asteroids: Vec<AsteroidEntry>,
+}
+
+// ---------------------------------------------------------------------------
+// Resolved entity (result of entity lookup)
+// ---------------------------------------------------------------------------
+
+/// Result of an asteroid belt lookup.
+#[derive(Debug, Clone)]
+pub struct AsteroidHit {
+    pub belt_index: usize,
+    pub asteroid_index: usize,
+    pub asteroid: AsteroidEntry,
+}
+
+/// Resolved entity returned by `resolve_entity`.
+#[derive(Debug, Clone)]
+pub struct ResolvedEntity {
+    pub name: String,
+    pub body_type: String,
+    pub position: [f32; 3],
+    pub is_moon: bool,
+    pub body_entry: Option<BodyEntry>,
+    pub asteroid_hit: Option<AsteroidHit>,
+}
+
+// ---------------------------------------------------------------------------
+// Static body config types (from system-generator / sol-data output)
+// These remain separate from the runtime BodyData / BodyEntry types above.
+// ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CometData {
@@ -128,22 +367,40 @@ pub struct CometData {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct CometEntryData {
+pub struct AsteroidBeltData {
     pub name: String,
-    #[serde(rename = "type")]
-    pub entry_type: String, // always "Comet"
-    pub distance: f64,
-    pub period: f64,
-    pub radius: f64,
+    pub min_au: f64,
+    pub max_au: f64,
+    pub count: u32,
     pub color: String,
-    pub moons: Vec<MoonData>,
-    pub a: f64,
-    pub e: f64,
-    pub inc: f64,
-    pub inc_rad: f64,
-    pub node_rad: f64,
-    pub peri_rad: f64,
+    pub size: f64,
+    pub max_inc: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AsteroidInfo {
+    pub designation: String,
+    pub au: f64,
+    pub period: f64,
+    pub diameter: f64,
     pub mass: f64,
+    pub belt_index: Option<u32>,
+    pub survey: SurveyState,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SystemData {
+    pub name: String,
+    pub resource_budget: Option<SystemResourceBudget>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DiscoveredSystem {
+    pub name: String,
+    pub seed: u64,
+    pub system_data: Option<SystemData>,
 }
 
 // ---------------------------------------------------------------------------
@@ -333,7 +590,7 @@ pub struct SurveyCandidate {
 // Ship sub-structs
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ShipCrew {
     pub count: u32,
@@ -342,7 +599,7 @@ pub struct ShipCrew {
     pub deployment_limit: f64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Commander {
     pub caution: f64,
@@ -350,7 +607,7 @@ pub struct Commander {
     pub experience: f64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ShipMaintenance {
     pub age: f64,
@@ -395,7 +652,7 @@ pub enum ColonyInstallationId {
     FuelRefinery,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ColonyInstallations {
     pub construction_factory: u32,
@@ -411,7 +668,7 @@ pub struct ColonyInstallations {
     pub fuel_refinery: u32,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ColonyStockpile {
     pub fuel_kg: f64,
@@ -456,7 +713,7 @@ pub struct ColonyConstructionProject {
     pub paused: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ColonyState {
     pub body_name: String,
@@ -530,6 +787,39 @@ pub struct ScientistState {
     pub experience_by_category: HashMap<String, f64>,
 }
 
+/// Serializable scientist entry used in save data (secondary_category is optional).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScientistEntry {
+    pub id: String,
+    pub name: String,
+    pub colony_body_name: String,
+    pub primary_category: String,
+    pub secondary_category: Option<String>,
+    pub active_project_tech_id: Option<String>,
+    pub project_queue: Vec<String>,
+    pub assigned_labs: u32,
+    pub admin_cap: u32,
+    pub category_bonuses: HashMap<String, f64>,
+    pub completed_projects: Vec<String>,
+    pub experience_by_category: HashMap<String, f64>,
+}
+
+/// Serializable research project entry used in save data.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResearchProjectEntry {
+    pub tech_id: String,
+    pub colony_body_name: String,
+    pub lead_scientist_id: Option<String>,
+    pub assigned_labs: u32,
+    pub progress_rp: f64,
+    pub paused: bool,
+    pub queued_at: f64,
+    pub started_at: f64,
+    pub difficulty: f64,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum TransferStatus {
@@ -554,6 +844,43 @@ pub struct ScientistTransferRequest {
 // ---------------------------------------------------------------------------
 // Notification types
 // ---------------------------------------------------------------------------
+
+/// Pause configuration: which notification types trigger sim pause.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NotificationPauseConfig {
+    pub info: bool,
+    pub survey_complete: bool,
+    pub low_fuel: bool,
+    pub low_morale: bool,
+    pub maintenance_needed: bool,
+    pub mission_complete: bool,
+    pub malfunction: bool,
+    pub ship_destroyed: bool,
+    pub transfer_complete: bool,
+    pub action_complete: bool,
+    pub colony_understaffed: bool,
+    pub colony_idle: bool,
+    pub colony_blocked: bool,
+    pub colony_low_supplies: bool,
+    pub ship_built: bool,
+    pub scientist_graduated: bool,
+}
+
+/// Runtime notification stored in State.notifications.
+/// Uses String for notification_type to avoid enum dependency in hot paths.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Notification {
+    pub id: u64,
+    pub notification_type: String,
+    pub message: String,
+    pub sim_time: f64,
+    pub body_name: Option<String>,
+    pub read: bool,
+    /// Wall-clock ms at time of creation (for coalescing).
+    pub created_at_ms: u64,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -635,7 +962,6 @@ pub struct MissileDesign {
     pub agility: f64,
     pub fuel_capacity: f64,
     pub sensor_strength: f64,
-    // Derived
     pub speed: f64,
     pub range: f64,
     pub damage: f64,
@@ -649,7 +975,6 @@ pub struct TurretDesign {
     pub weapon_type: WeaponType,
     pub caliber: f64,
     pub tracking_speed: f64,
-    // Derived
     pub damage: f64,
     pub range: f64,
     pub rate_of_fire: f64,
@@ -674,7 +999,6 @@ pub struct SensorDesign {
     pub sensor_type: SensorType,
     pub resolution: f64,
     pub size_hs: f64,
-    // Derived
     pub range: f64,
     pub strength: f64,
 }
@@ -700,85 +1024,25 @@ pub struct ShipDesign {
 }
 
 // ---------------------------------------------------------------------------
-// System / asteroid data
-// ---------------------------------------------------------------------------
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AsteroidBeltData {
-    pub name: String,
-    pub min_au: f64,
-    pub max_au: f64,
-    pub count: u32,
-    pub color: String,
-    pub size: f64,
-    pub max_inc: f64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AsteroidInfo {
-    pub designation: String,
-    pub au: f64,
-    pub period: f64,
-    pub diameter: f64,
-    pub mass: f64,
-    pub belt_index: Option<u32>,
-    pub survey: SurveyState,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SpectralType {
-    #[serde(rename = "type")]
-    pub spectral_class: String,
-    pub weight: f64,
-    pub mass_min: f64,
-    pub mass_max: f64,
-    pub rad_min: f64,
-    pub rad_max: f64,
-    pub temp_min: f64,
-    pub temp_max: f64,
-    pub color: String,
-    pub lum_min: f64,
-    pub lum_max: f64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SystemData {
-    pub name: String,
-    pub bodies: Vec<BodyData>,
-    pub comets: Vec<CometData>,
-    pub asteroid_belts: Vec<AsteroidBeltData>,
-    pub resource_budget: Option<SystemResourceBudget>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DiscoveredSystem {
-    pub name: String,
-    pub seed: Option<u64>,
-    pub system_data: SystemData,
-}
-
-// ---------------------------------------------------------------------------
 // Save data
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Per-ship save record used in SavedStateData.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct SavedShipData {
+pub struct SavedShip {
     pub name: String,
     pub host_planet_name: String,
     pub fuel_kg: f64,
-    pub engine_id: String,
-    pub crew: ShipCrew,
+    pub engine_id: Option<String>,
+    pub design_id: Option<String>,
+    pub crew: Option<ShipCrew>,
     pub commander: Option<Commander>,
-    pub maintenance: ShipMaintenance,
-    pub command_tree: CommandTree,
+    pub maintenance: Option<ShipMaintenance>,
+    pub command_tree: Option<CommandTree>,
     pub keel_date: Option<f64>,
     // Transfer state — only present if ship was transferring
-    pub ship_state: Option<ShipState>,
+    pub ship_state: Option<String>,
     pub transfer_target: Option<String>,
     pub transfer_start_time: Option<f64>,
     pub transfer_time_days: Option<f64>,
@@ -803,7 +1067,7 @@ pub struct SavedShipData {
     pub survey_plan: Option<SurveyPlan>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DiscoveredSystemEntry {
     pub key: String,
@@ -811,7 +1075,8 @@ pub struct DiscoveredSystemEntry {
     pub seed: u64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Top-level save data structure.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SavedStateData {
     pub version: u32,
@@ -819,16 +1084,16 @@ pub struct SavedStateData {
     pub current_system_key: String,
     pub random_click_count: u32,
     pub discovered_systems: Vec<DiscoveredSystemEntry>,
-    pub ships: Vec<SavedShipData>,
-    pub colonies: Option<Vec<ColonyState>>,
-    pub scientists: Option<Vec<ScientistState>>,
-    pub research_projects: Option<Vec<ColonyResearchProject>>,
-    pub game_log: Option<Vec<GameLogEntry>>,
-    pub researched_techs: Option<Vec<String>>,
-    pub engine_designs: Option<Vec<EngineDesign>>,
-    pub ship_designs: Option<Vec<ShipDesign>>,
-    pub missile_designs: Option<Vec<MissileDesign>>,
-    pub turret_designs: Option<Vec<TurretDesign>>,
-    pub sensor_designs: Option<Vec<SensorDesign>>,
-    pub design_counter: Option<u32>,
+    pub ships: Vec<SavedShip>,
+    pub colonies: Vec<ColonyState>,
+    pub scientists: Vec<ScientistEntry>,
+    pub research_projects: Vec<ResearchProjectEntry>,
+    pub game_log: Vec<GameLogEntry>,
+    pub researched_techs: Vec<String>,
+    pub engine_designs: Vec<EngineDesign>,
+    pub ship_designs: Vec<ShipDesign>,
+    pub missile_designs: Vec<MissileDesign>,
+    pub turret_designs: Vec<TurretDesign>,
+    pub sensor_designs: Vec<SensorDesign>,
+    pub design_counter: u32,
 }
