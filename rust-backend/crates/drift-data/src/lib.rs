@@ -1,2 +1,6 @@
 // Static catalogs and procedural generation — ported from src/data/
-// Will be populated in Phase 2
+pub mod components;
+pub mod resources;
+pub mod ship_designs;
+pub mod sol_data;
+pub mod system_generator;

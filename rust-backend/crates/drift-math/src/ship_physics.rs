@@ -10,6 +10,7 @@ pub const OP_BURN_RATE: f64 = 0.001; // 0.1%/day
 // --- Types ---
 
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ShipPhysicsState {
     pub fuel_kg: f64,
     pub dry_mass_kg: f64,

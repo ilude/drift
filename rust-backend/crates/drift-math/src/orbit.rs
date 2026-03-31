@@ -113,6 +113,8 @@ pub fn inclined_position(x: f64, z: f64, cos_n: f64, sin_n: f64, cos_i: f64, sin
 
 /// Planet category based on radius in Earth radii.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
 pub enum PlanetCategory {
     Rocky,
     SubNeptune,

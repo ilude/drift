@@ -473,6 +473,7 @@ pub fn get_unlocked_components(researched: &HashSet<&str>) -> Vec<&'static Compo
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct EngineDesign {
     pub id: String,
     pub name: String,
@@ -491,6 +492,7 @@ pub struct EngineDesign {
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ShipDesignComponent {
     pub component_id: String,
     pub count: u32,
