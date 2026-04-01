@@ -1,5 +1,6 @@
 // Simulation engine — ported from src/core/
 pub mod cargo;
+pub mod tick;
 #[allow(
     dead_code,
     clippy::too_many_arguments,
