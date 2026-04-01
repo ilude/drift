@@ -492,12 +492,8 @@ pub fn compute_survey_plan(ship_name: &str, state: &mut State) -> Option<SurveyP
 
     // Resolve colony position.
     let colony_body_name: String = {
-        let (body, found) = find_body(ship_name, state);
-        if !found {
-            return None;
-        }
-        let colony = get_nearest_colony_for_ship(body?, state)?;
-        colony.data.name.clone()
+        let colony_name = get_nearest_colony_for_ship(state, ship_name)?;
+        colony_name.to_owned()
     };
 
     let (colony_x, colony_z): (f32, f32) = {

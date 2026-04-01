@@ -204,18 +204,24 @@ fn has_unsurveyed_work_at_host(host_name: &str, max_survey_level: u32, state: &S
 // ---------------------------------------------------------------------------
 
 fn estimate_return_fuel_kg(ship: &BodyEntry, state: &State) -> Option<f64> {
-    let colony = get_nearest_colony_for_ship(ship, state)?;
+    let host_name = ship.host_planet_name.as_deref().unwrap_or("");
+    let colony_name = get_nearest_colony_for_ship(state, host_name)?;
 
     // Build a minimal ShipEntry for resolve_ship_physics
     let ship_entry = body_entry_to_ship_entry(ship);
     let physics = resolve_ship_physics(&ship_entry, state);
 
-    let host_name = ship.host_planet_name.as_deref().unwrap_or("");
     let (host_opt, host_found) = find_body(host_name, state);
     if !host_found {
         return None;
     }
     let host = host_opt?;
+
+    let (colony_opt, colony_found) = find_body(colony_name, state);
+    if !colony_found {
+        return None;
+    }
+    let colony = colony_opt?;
 
     let host_pos = drift_math::transfer::Vec3 {
         x: host.position[0] as f64,

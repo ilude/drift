@@ -5,3 +5,7 @@ edition = "2021"
 
 [dependencies]
 drift-sim = { path = "../drift-sim" }
+drift-types = { path = "../drift-types" }
+mlua = { version = "0.10", features = ["lua54", "vendored"] }
+serde_json = { workspace = true }
+thiserror = "1"

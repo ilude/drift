@@ -1,0 +1,9 @@
+# Use the self-contained GNU linker tools bundled with the rustup GNU toolchain.
+# This avoids the need for a separate MinGW installation (dlltool, ld, gcc).
+[target.x86_64-pc-windows-gnu]
+linker = "x86_64-w64-mingw32-gcc.exe"
+ar = "C:/Users/mglenn/.rustup/toolchains/stable-x86_64-pc-windows-gnu/lib/rustlib/x86_64-pc-windows-gnu/bin/self-contained/x86_64-w64-mingw32-gcc.exe"
+
+[env]
+# Prepend the self-contained toolchain bin to PATH so rustc's dlltool invocation resolves.
+PATH = { value = "C:/Users/mglenn/.rustup/toolchains/stable-x86_64-pc-windows-gnu/lib/rustlib/x86_64-pc-windows-gnu/bin/self-contained", force = false, relative = false }

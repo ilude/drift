@@ -365,7 +365,7 @@ pub fn can_afford_construction(
     true
 }
 
-fn can_afford_production(colony: &ColonyState, item_id: &str) -> bool {
+pub fn can_afford_production(colony: &ColonyState, item_id: &str) -> bool {
     let def = match get_production_def(item_id) {
         Some(d) => d,
         None => return true,
@@ -440,8 +440,8 @@ pub fn get_refuel_quality_for_ship(ship: &crate::state::BodyEntry, state: &State
 // Nearest colony for a ship
 // ---------------------------------------------------------------------------
 
-/// Find the nearest colony body to a ship's current orbit position.
-pub fn get_nearest_colony_for_ship<'a>(
+/// Find the nearest colony body entry for a ship BodyEntry.
+pub fn get_nearest_colony_for_ship_entry<'a>(
     ship: &crate::state::BodyEntry,
     state: &'a State,
 ) -> Option<&'a BodyEntry> {
@@ -607,6 +607,276 @@ pub fn get_colony_resource_stock(body_name: &str, resource_id: &str, state: &Sta
 }
 
 // ---------------------------------------------------------------------------
+// Public helper API (used by tests and external callers)
+// ---------------------------------------------------------------------------
+
+/// Return all scientists stationed at a colony body.
+pub fn get_scientists_at_colony<'a>(
+    state: &'a State,
+    body_name: &str,
+) -> Vec<&'a crate::state::ScientistEntry> {
+    state
+        .scientists
+        .values()
+        .filter(|s| s.colony_body_name == body_name)
+        .collect()
+}
+
+/// Set the number of labs assigned to a scientist.
+/// Returns `true` on success, `false` if scientist not found or labs > admin_cap.
+pub fn set_scientist_labs(state: &mut State, scientist_id: &str, labs: u32) -> bool {
+    if let Some(scientist) = state.scientists.get_mut(scientist_id) {
+        if labs > scientist.admin_cap {
+            return false;
+        }
+        scientist.assigned_labs = labs;
+        return true;
+    }
+    false
+}
+
+/// Queue a research project for a scientist. Creates the project in
+/// `state.research_projects` if it does not already exist, assigns the
+/// scientist as lead, and activates it.
+/// Returns `true` on success.
+pub fn queue_research_project_for_scientist(
+    state: &mut State,
+    scientist_id: &str,
+    tech_id: &str,
+) -> bool {
+    let colony_name = match state.scientists.get(scientist_id) {
+        Some(s) => s.colony_body_name.clone(),
+        None => return false,
+    };
+
+    // Ensure a project entry exists
+    let project = state
+        .research_projects
+        .entry(tech_id.to_string())
+        .or_insert_with(|| crate::state::ResearchProjectEntry {
+            tech_id: tech_id.to_string(),
+            colony_body_name: colony_name.clone(),
+            lead_scientist_id: None,
+            assigned_labs: 0,
+            progress_rp: 0.0,
+            paused: false,
+            queued_at: state.sim_time_days,
+            started_at: state.sim_time_days,
+            difficulty: 1.0,
+        });
+
+    project.lead_scientist_id = Some(scientist_id.to_string());
+    project.colony_body_name = colony_name.clone();
+    project.paused = false;
+
+    if let Some(scientist) = state.scientists.get_mut(scientist_id) {
+        scientist.active_project_tech_id = Some(tech_id.to_string());
+    }
+
+    true
+}
+
+/// Add a construction project to a colony.
+pub fn add_construction_project(
+    state: &mut State,
+    body_name: &str,
+    installation_id: ColonyInstallationId,
+    quantity: u32,
+    allocation_pct: f64,
+) {
+    if let Some(colony) = state.colonies.get_mut(body_name) {
+        let id = format!(
+            "proj-{}-{}-{}",
+            body_name,
+            quantity,
+            colony.construction_projects.len()
+        );
+        colony
+            .construction_projects
+            .push(drift_types::ColonyConstructionProject {
+                id,
+                installation_id,
+                quantity_remaining: quantity as f64,
+                total_quantity: quantity as f64,
+                allocation_pct,
+                progress_bp: 0.0,
+                paused: false,
+            });
+    }
+}
+
+/// Add a production project to a colony.
+pub fn add_production_project(
+    colony: &mut ColonyState,
+    item_id: &str,
+    quantity: u32,
+    allocation_pct: f64,
+) {
+    let id = format!(
+        "prod-{}-{}-{}",
+        item_id,
+        quantity,
+        colony.production_projects.len()
+    );
+    colony
+        .production_projects
+        .push(drift_types::ColonyProductionProject {
+            id,
+            item_id: item_id.to_string(),
+            quantity_remaining: quantity as f64,
+            total_quantity: quantity as f64,
+            allocation_pct,
+            progress_bp: 0.0,
+            paused: false,
+        });
+}
+
+/// Compute the BP needed to build a ship from its dry mass (1 BP per 50 kg).
+fn ship_total_bp(dry_mass_kg: f64) -> f64 {
+    (dry_mass_kg / 50.0).ceil()
+}
+
+/// Compute the resource cost HashMap for building a ship design.
+pub fn compute_ship_resource_cost(design: &drift_types::ShipDesign) -> HashMap<String, f64> {
+    let mass = design.dry_mass_kg;
+    let mut cost = HashMap::new();
+    cost.insert("iron".to_string(), (mass / 5.0).ceil());
+    cost.insert("aluminum".to_string(), (mass / 20.0).ceil());
+    cost.insert("copper".to_string(), (mass / 50.0).ceil());
+    cost.insert("silicon".to_string(), (mass / 100.0).ceil());
+    cost
+}
+
+/// Return the shipbuilding BP per day for a colony.
+pub fn get_shipbuild_bp_per_day(colony: &ColonyState, state: &State) -> f64 {
+    if colony.installations.shipyard == 0 {
+        return 0.0;
+    }
+    let qualities = compute_colony_qualities(colony, state);
+    BASE_SHIPBUILD_BP_RATE * colony.installations.shipyard as f64 * qualities.shipbuilding
+}
+
+/// Add a shipbuild project to a colony.
+pub fn add_shipbuild_project(
+    colony: &mut ColonyState,
+    design_id: &str,
+    ship_name: &str,
+    designs: &HashMap<String, drift_types::ShipDesign>,
+) {
+    let design = match designs.get(design_id) {
+        Some(d) => d,
+        None => return,
+    };
+    let total_bp = ship_total_bp(design.dry_mass_kg);
+    let resource_cost = compute_ship_resource_cost(design);
+    let id = format!(
+        "shipbuild-{}-{}",
+        design_id,
+        colony.shipbuild_projects.len()
+    );
+    colony
+        .shipbuild_projects
+        .push(drift_types::ColonyShipbuildProject {
+            id,
+            design_id: design_id.to_string(),
+            ship_name: ship_name.to_string(),
+            total_bp,
+            progress_bp: 0.0,
+            paused: false,
+            resource_cost,
+        });
+}
+
+/// Pause a shipbuild project by id.
+pub fn pause_shipbuild_project(colony: &mut ColonyState, project_id: &str) {
+    if let Some(proj) = colony
+        .shipbuild_projects
+        .iter_mut()
+        .find(|p| p.id == project_id)
+    {
+        proj.paused = true;
+    }
+}
+
+/// Cancel (remove) a shipbuild project by id.
+pub fn cancel_shipbuild_project(colony: &mut ColonyState, project_id: &str) {
+    colony.shipbuild_projects.retain(|p| p.id != project_id);
+}
+
+/// Drain all completed shipbuilds from the warning state queue and return them.
+pub fn drain_completed_shipbuilds(state: &mut State) -> Vec<crate::state::CompletedShipbuild> {
+    std::mem::take(&mut state.warning_state.completed_shipbuilds)
+}
+
+/// Find the nearest colony to a given body name. Returns the colony body name.
+pub fn get_nearest_colony_for_ship<'a>(state: &'a State, body_name: &str) -> Option<&'a str> {
+    use crate::entities::find_body;
+
+    let host_au = {
+        let (body, found) = find_body(body_name, state);
+        if found {
+            body.map(|b| body_distance_au(b, state)).unwrap_or(-1.0)
+        } else {
+            -1.0
+        }
+    };
+
+    if host_au < 0.0 {
+        return None;
+    }
+
+    if state.colonies.is_empty() {
+        return None;
+    }
+
+    let mut best_name: Option<&str> = None;
+    let mut best_dist = f64::INFINITY;
+
+    for colony_body_name in state.colonies.keys() {
+        let (body, found) = find_body(colony_body_name, state);
+        if !found {
+            continue;
+        }
+        if let Some(b) = body {
+            let dist = (body_distance_au(b, state) - host_au).abs();
+            if dist < best_dist {
+                best_dist = dist;
+                best_name = Some(colony_body_name.as_str());
+            }
+        }
+    }
+
+    best_name
+}
+
+/// Assemble one flat-packed item into an installation at the colony.
+/// Returns `true` if successful, `false` if no flat-pack available.
+pub fn assemble_flat_pack(colony: &mut ColonyState, item_id: &str) -> bool {
+    let count = colony
+        .stockpile
+        .flat_packed
+        .get(item_id)
+        .copied()
+        .unwrap_or(0);
+    if count == 0 {
+        return false;
+    }
+    *colony
+        .stockpile
+        .flat_packed
+        .entry(item_id.to_string())
+        .or_insert(0) -= 1;
+    // Map flat-pack item id to installation
+    match item_id {
+        "flat-mine" => colony.installations.automated_mine += 1,
+        "flat-mass-driver" => colony.installations.mass_driver += 1,
+        "flat-fuel-depot" => colony.installations.fuel_depot += 1,
+        _ => {}
+    }
+    true
+}
+
+// ---------------------------------------------------------------------------
 // Starting colony seeding
 // ---------------------------------------------------------------------------
 
@@ -759,16 +1029,14 @@ fn tick_construction(colony: &mut ColonyState, sim_dt_days: f64, qualities: &Col
             if project.quantity_remaining <= 0.0 {
                 break;
             }
-            let def = match get_construction_def(&project.installation_id.clone()) {
+            let def = match get_construction_def(&project.installation_id) {
                 Some(d) => d,
                 None => break,
             };
             if colony.construction_projects[proj_idx].progress_bp < def.bp_cost {
                 break;
             }
-            let inst_id = colony.construction_projects[proj_idx]
-                .installation_id
-                .clone();
+            let inst_id = colony.construction_projects[proj_idx].installation_id;
             if !can_afford_construction(colony, &inst_id) {
                 break;
             }
@@ -1602,7 +1870,7 @@ pub fn check_colony_warnings(state: &mut State) {
                 if p.progress_bp >= def.bp_cost
                     && !can_afford_construction(colony, &p.installation_id)
                 {
-                    Some(p.installation_id.clone())
+                    Some(p.installation_id)
                 } else {
                     None
                 }
