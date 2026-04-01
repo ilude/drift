@@ -8,8 +8,8 @@ use drift_math::ship_physics::{compute_total_fuel_cost, AU_TO_KM};
 use crate::colonies::get_nearest_colony_for_ship;
 use crate::entities::find_body;
 use crate::intents::{clear_intent, get_claimed_targets, publish_intent};
-use crate::ship_utils::{resolve_ship_physics, resolve_ship_sensor_level};
 use crate::state::{ShipEntry, ShipIntent, State, SurveyPlan};
+use drift_math::ship_physics::ENGINE_TYPES;
 
 const AVG_SURVEY_DAYS: f64 = 10.0;
 const THROTTLE_LEVELS: &[f64] = &[1.0, 0.5, 0.25];
@@ -31,6 +31,65 @@ struct TourResult {
     total_days: f64,
 }
 
+struct ShipPhysics {
+    accel_g: f64,
+    isp_s: f64,
+    dry_mass_kg: f64,
+    fuel_capacity_kg: f64,
+    fuel_mod: f64,
+}
+
+// ---------------------------------------------------------------------------
+// Ship physics resolution (inline, operating on ShipEntry snapshot)
+// ---------------------------------------------------------------------------
+
+fn resolve_physics_for_snapshot(ship: &ShipEntry, state: &State) -> ShipPhysics {
+    if let Some(ref design_id) = ship.design_id {
+        if let Some(design) = state.ship_designs.get(design_id) {
+            let fuel_mod = state
+                .engine_designs
+                .get(&design.engine_design_id)
+                .map(|e| e.fuel_mod)
+                .unwrap_or(1.0);
+            return ShipPhysics {
+                accel_g: design.accel_g,
+                isp_s: design.isp_s,
+                dry_mass_kg: ship.dry_mass_kg,
+                fuel_capacity_kg: ship.fuel_capacity_kg,
+                fuel_mod,
+            };
+        }
+    }
+    let engine = ship
+        .engine_id
+        .as_deref()
+        .and_then(|id| ENGINE_TYPES.iter().find(|e| e.id == id))
+        .unwrap_or(&ENGINE_TYPES[0]);
+    ShipPhysics {
+        accel_g: engine.accel_g,
+        isp_s: engine.isp_s,
+        dry_mass_kg: ship.dry_mass_kg,
+        fuel_capacity_kg: ship.fuel_capacity_kg,
+        fuel_mod: 1.0,
+    }
+}
+
+fn sensor_level_for_snapshot(ship: &ShipEntry, state: &State) -> u32 {
+    if let Some(ref design_id) = ship.design_id {
+        if let Some(design) = state.ship_designs.get(design_id) {
+            let bonus = design.sensor_multiplier;
+            return if bonus >= 2.0 {
+                3
+            } else if bonus >= 1.5 {
+                2
+            } else {
+                1
+            };
+        }
+    }
+    1
+}
+
 // ---------------------------------------------------------------------------
 // Coordinate helpers
 // ---------------------------------------------------------------------------
@@ -42,7 +101,7 @@ fn world_to_au(x: f32, z: f32) -> f64 {
     ratio * ratio
 }
 
-/// Estimate km distance between two world-space points using AU chord distance.
+/// Estimate km distance between two world-space points via AU chord distance.
 fn candidate_dist_km(ax: f32, az: f32, bx: f32, bz: f32) -> f64 {
     let au_a = world_to_au(ax, az);
     let au_b = world_to_au(bx, bz);
@@ -60,8 +119,6 @@ fn candidate_dist_km(ax: f32, az: f32, bx: f32, bz: f32) -> f64 {
 // ---------------------------------------------------------------------------
 
 fn collect_body_candidates(
-    sx: f32,
-    sz: f32,
     claimed: &HashSet<String>,
     max_level: u32,
     state: &State,
@@ -71,34 +128,25 @@ fn collect_body_candidates(
         if body.is_ship {
             continue;
         }
-        // Only bodies that are surveyable (have a non-trivial body type)
         if body.data.body_type == "Star" {
             continue;
         }
-        // Skip fully surveyed bodies
         if body.survey.survey_level >= max_level {
             continue;
         }
         if claimed.contains(&body.data.name) {
             continue;
         }
-        let bx = body.position[0];
-        let bz = body.position[2];
-        let dx = bx - sx;
-        let dz = bz - sz;
-        let _ = dx * dx + dz * dz; // distSq unused beyond ordering; keep for parity
         out.push(SurveyCandidate {
             name: body.data.name.clone(),
-            x: bx,
-            z: bz,
+            x: body.position[0],
+            z: body.position[2],
         });
     }
     out
 }
 
 fn collect_asteroid_candidates(
-    _sx: f32,
-    _sz: f32,
     claimed: &HashSet<String>,
     max_level: u32,
     state: &State,
@@ -129,15 +177,14 @@ fn collect_asteroid_candidates(
     out
 }
 
-fn collect_plan_candidates(ship: &ShipEntry, state: &State) -> Vec<SurveyCandidate> {
-    let sx = ship.position[0];
-    let sz = ship.position[2];
+fn collect_plan_candidates_from_ship_entry(
+    ship: &ShipEntry,
+    state: &State,
+) -> Vec<SurveyCandidate> {
     let claimed = get_claimed_targets(&ship.name, state);
-    let max_level = resolve_ship_sensor_level(ship, state);
-    let mut candidates = collect_body_candidates(sx, sz, &claimed, max_level, state);
-    candidates.extend(collect_asteroid_candidates(
-        sx, sz, &claimed, max_level, state,
-    ));
+    let max_level = sensor_level_for_snapshot(ship, state);
+    let mut candidates = collect_body_candidates(&claimed, max_level, state);
+    candidates.extend(collect_asteroid_candidates(&claimed, max_level, state));
     candidates
 }
 
@@ -162,15 +209,8 @@ fn publish_plan_claims(ship_name: &str, targets: &[String], state: &mut State) {
 }
 
 // ---------------------------------------------------------------------------
-// Tour simulation helpers
+// Tour simulation
 // ---------------------------------------------------------------------------
-
-struct PhysicsParams {
-    isp_s: f64,
-    dry_mass_kg: f64,
-    fuel_capacity_kg: f64,
-    fuel_mod: f64,
-}
 
 #[allow(clippy::too_many_arguments)]
 fn simulate_tour(
@@ -182,7 +222,7 @@ fn simulate_tour(
     accel_g: f64,
     fuel_budget_kg: f64,
     days_budget: f64,
-    physics: &PhysicsParams,
+    physics: &ShipPhysics,
     op_mult: f64,
 ) -> TourResult {
     let mut remaining: Vec<usize> = (0..candidates.len()).collect();
@@ -193,8 +233,8 @@ fn simulate_tour(
     let mut days_used = 0.0f64;
 
     while !remaining.is_empty() {
-        // Find nearest candidate to current position
-        let mut best_idx_in_remaining = 0usize;
+        // Nearest-neighbour: find closest candidate from current position.
+        let mut best_idx = 0usize;
         let mut best_dist_sq = f64::INFINITY;
         for (i, &ci) in remaining.iter().enumerate() {
             let dx = candidates[ci].x - cur_x;
@@ -202,11 +242,11 @@ fn simulate_tour(
             let d2 = (dx as f64) * (dx as f64) + (dz as f64) * (dz as f64);
             if d2 < best_dist_sq {
                 best_dist_sq = d2;
-                best_idx_in_remaining = i;
+                best_idx = i;
             }
         }
 
-        let next_ci = remaining[best_idx_in_remaining];
+        let next_ci = remaining[best_idx];
         let next = &candidates[next_ci];
 
         let hop_dist_km = candidate_dist_km(cur_x, cur_z, next.x, next.z);
@@ -234,10 +274,7 @@ fn simulate_tour(
         let projected_fuel = fuel_used + hop_cost.total_fuel_kg + return_cost.total_fuel_kg;
         let projected_days = days_used + hop_cost.transfer_days + AVG_SURVEY_DAYS;
 
-        if projected_fuel > fuel_budget_kg {
-            break;
-        }
-        if projected_days > days_budget {
+        if projected_fuel > fuel_budget_kg || projected_days > days_budget {
             break;
         }
 
@@ -246,7 +283,7 @@ fn simulate_tour(
         days_used += hop_cost.transfer_days + AVG_SURVEY_DAYS;
         cur_x = next.x;
         cur_z = next.z;
-        remaining.remove(best_idx_in_remaining);
+        remaining.remove(best_idx);
     }
 
     TourResult {
@@ -275,15 +312,20 @@ fn two_opt_improve(targets: Vec<String>, candidates: &[SurveyCandidate]) -> Vec<
     while improved {
         improved = false;
         let n = best.len();
-        'outer: for i in 1..n.saturating_sub(1) {
+        let mut did_swap = false;
+        for i in 1..n.saturating_sub(1) {
+            if did_swap {
+                break;
+            }
             for j in (i + 1)..n {
-                let mut candidate = best[..i].to_vec();
-                candidate.extend(best[i..=j].iter().cloned().rev());
-                candidate.extend_from_slice(&best[j + 1..]);
-                if tour_distance(&candidate, candidates) < tour_distance(&best, candidates) {
-                    best = candidate;
+                let mut candidate_route = best[..i].to_vec();
+                candidate_route.extend(best[i..=j].iter().cloned().rev());
+                candidate_route.extend_from_slice(&best[j + 1..]);
+                if tour_distance(&candidate_route, candidates) < tour_distance(&best, candidates) {
+                    best = candidate_route;
                     improved = true;
-                    break 'outer;
+                    did_swap = true;
+                    break;
                 }
             }
         }
@@ -291,7 +333,7 @@ fn two_opt_improve(targets: Vec<String>, candidates: &[SurveyCandidate]) -> Vec<
     best
 }
 
-/// Pick the best tour (most targets; tie-break by fewest days).
+/// Pick the best tour: most targets, tie-break by fewest days.
 fn select_best_tour(tours: Vec<(TourResult, f64)>) -> Option<(Vec<String>, f64)> {
     let mut best_targets: Vec<String> = Vec::new();
     let mut best_days = 0.0f64;
@@ -323,17 +365,19 @@ fn compute_return_fuel_kg(
     colony_x: f32,
     colony_z: f32,
     accel_g: f64,
-    physics: &PhysicsParams,
+    physics: &ShipPhysics,
     op_mult: f64,
 ) -> f64 {
-    if targets.is_empty() {
-        return 0.0;
-    }
-    let last_name = targets.last().unwrap();
-    let last = candidates.iter().find(|c| &c.name == last_name);
-    let Some(last) = last else { return 0.0 };
+    let last_name = match targets.last() {
+        Some(n) => n,
+        None => return 0.0,
+    };
+    let last = match candidates.iter().find(|c| &c.name == last_name) {
+        Some(c) => c,
+        None => return 0.0,
+    };
     let return_dist = candidate_dist_km(last.x, last.z, colony_x, colony_z);
-    let return_cost = compute_total_fuel_cost(
+    let cost = compute_total_fuel_cost(
         return_dist,
         accel_g,
         physics.isp_s,
@@ -342,14 +386,17 @@ fn compute_return_fuel_kg(
         op_mult,
         physics.fuel_mod,
     );
-    return_cost.total_fuel_kg
+    cost.total_fuel_kg
 }
+
+// ---------------------------------------------------------------------------
+// Budget helpers
+// ---------------------------------------------------------------------------
 
 /// Estimate days until morale drops to a threshold given current deployment.
 ///
-/// morale = 100 * (limit / daysSinceLeave)^1.5  when > limit
-/// Solve for days where morale = threshold:
-///   days = limit / (threshold/100)^(2/3)
+/// morale = 100 * (limit / daysSinceLeave)^1.5 when past deployment limit.
+/// Solve for days where morale = threshold: days = limit / (threshold/100)^(2/3)
 fn estimate_days_budget(
     days_since_leave: f64,
     deployment_limit: f64,
@@ -362,82 +409,119 @@ fn estimate_days_budget(
     (days_at_threshold - days_since_leave).max(0.0)
 }
 
-/// Safety margin for fuel planning: caution interpolates from 1.3 (fearless) to 2.0 (cautious).
+/// Safety margin for fuel planning: caution in [0,1] maps to margin in [1.3, 2.0].
 fn compute_safety_margin(caution: f64) -> f64 {
     2.0 - caution * 0.7
 }
 
 // ---------------------------------------------------------------------------
 // Public API
+//
+// Functions take `ship_name: &str` + `state: &mut State` to avoid double-borrow
+// conflicts at call sites. Callers do not need to hold a `&mut BodyEntry` borrow
+// while also passing `&mut State`.
 // ---------------------------------------------------------------------------
 
-/// Compute a survey mission plan for a ship departing a colony.
-/// Returns None if fewer than MIN_PLAN_TARGETS candidates or initiative too low.
-pub fn compute_survey_plan(ship: &ShipEntry, state: &mut State) -> Option<SurveyPlan> {
-    if ship.commander.initiative < 0.15 {
+/// Compute a survey mission plan for the named ship.
+/// Returns None if the ship is not found, has fewer than MIN_PLAN_TARGETS
+/// candidates, or has insufficient initiative.
+/// On success, publishes a `SurveyPlan` intent into `state.ship_intents`.
+pub fn compute_survey_plan(ship_name: &str, state: &mut State) -> Option<SurveyPlan> {
+    // Snapshot all data we need from the ship entry before any further borrows.
+    let (
+        initiative,
+        caution,
+        position,
+        fuel_kg,
+        fuel_capacity_kg,
+        dry_mass_kg,
+        engine_id,
+        design_id,
+        commander_snapshot,
+    ) = {
+        let (body, found) = find_body(ship_name, state);
+        if !found {
+            return None;
+        }
+        let b = body?;
+        (
+            b.commander.initiative,
+            b.commander.caution,
+            b.position,
+            b.fuel_kg,
+            b.fuel_capacity_kg,
+            b.dry_mass_kg,
+            b.engine_id.clone(),
+            b.design_id.clone(),
+            b.commander.clone(),
+        )
+    };
+
+    if initiative < 0.15 {
         return None;
     }
 
-    let candidates = collect_plan_candidates(ship, state);
+    // Build a temporary ShipEntry to reuse existing candidate collection helpers.
+    let ship_snapshot = crate::state::ShipEntry {
+        name: ship_name.to_string(),
+        position,
+        is_ship: true,
+        ship_state: "orbiting".to_string(),
+        host_planet_name: {
+            let (body, _) = find_body(ship_name, state);
+            body.and_then(|b| b.host_planet_name.clone())
+                .unwrap_or_default()
+        },
+        fuel_kg,
+        fuel_capacity_kg,
+        dry_mass_kg,
+        engine_id,
+        design_id,
+        commander: crate::state::Commander {
+            caution: commander_snapshot.caution,
+            initiative: commander_snapshot.initiative,
+            experience: commander_snapshot.experience,
+        },
+        ..crate::state::ShipEntry::default()
+    };
+
+    let candidates = collect_plan_candidates_from_ship_entry(&ship_snapshot, state);
     if candidates.len() < MIN_PLAN_TARGETS {
         return None;
     }
 
-    // Find the nearest colony body and get its world-space position.
-    // get_nearest_colony_for_ship takes a BodyEntry, so look up the ship first.
-    let (ship_body, ship_found) = find_body(&ship.name, state);
-    if !ship_found {
-        return None;
-    }
-    let ship_body = ship_body?;
-    // Shadow to avoid lifetime issues — copy what we need.
-    let _ship_body_host = ship_body.host_planet_name.clone();
-
-    // Build a temporary BodyEntry-like value to find the nearest colony.
-    // We pass the ship BodyEntry directly.
-    let colony_body_name = {
-        // We need to use get_nearest_colony_for_ship but it borrows state.
-        // Look up the ship entry immutably first.
-        let (ship_body_ref, _) = find_body(&ship.name, state);
-        let colony_body = get_nearest_colony_for_ship(ship_body_ref?, state)?;
-        colony_body.data.name.clone()
+    // Resolve colony position.
+    let colony_body_name: String = {
+        let (body, found) = find_body(ship_name, state);
+        if !found {
+            return None;
+        }
+        let colony = get_nearest_colony_for_ship(body?, state)?;
+        colony.data.name.clone()
     };
 
-    let (colony_body_ref, found) = find_body(&colony_body_name, state);
-    if !found {
-        return None;
-    }
-    let colony_body_ref = colony_body_ref?;
-    let colony_x = colony_body_ref.position[0];
-    let colony_z = colony_body_ref.position[2];
+    let (colony_x, colony_z): (f32, f32) = {
+        let (colony_ref, found) = find_body(&colony_body_name, state);
+        if !found {
+            return None;
+        }
+        let b = colony_ref?;
+        (b.position[0], b.position[2])
+    };
 
-    let ship_x = ship.position[0];
-    let ship_z = ship.position[2];
+    let ship_x = position[0];
+    let ship_z = position[2];
 
-    let physics_state = resolve_ship_physics(ship, state);
+    let physics = resolve_physics_for_snapshot(&ship_snapshot, state);
     let op_mult = state.fuel_burn_multiplier;
-    let margin = compute_safety_margin(ship.commander.caution);
-
-    // Morale-based days budget.
-    // ShipEntry in Rust doesn't carry crew; use conservative defaults.
-    let days_since_leave = 0.0_f64;
-    let deployment_limit = 180.0_f64;
-    let morale_threshold = 30.0_f64;
-    let days_budget = estimate_days_budget(days_since_leave, deployment_limit, morale_threshold);
-
-    let physics = PhysicsParams {
-        isp_s: physics_state.isp_s,
-        dry_mass_kg: physics_state.dry_mass_kg,
-        fuel_capacity_kg: ship.fuel_capacity_kg,
-        fuel_mod: physics_state.fuel_mod,
-    };
-
-    let fuel_budget_kg = ship.fuel_kg / margin;
+    let margin = compute_safety_margin(caution);
+    let days_budget = estimate_days_budget(0.0, 180.0, 30.0);
+    let fuel_budget_kg = fuel_kg / margin;
 
     let tours: Vec<(TourResult, f64)> = THROTTLE_LEVELS
         .iter()
         .map(|&fraction| {
-            let accel_g = physics_state.accel_g * fraction;
+            let accel_g = physics.accel_g * fraction;
             let tour = simulate_tour(
                 &candidates,
                 ship_x,
@@ -479,83 +563,64 @@ pub fn compute_survey_plan(ship: &ShipEntry, state: &mut State) -> Option<Survey
         return_fuel_kg,
     };
 
-    publish_plan_claims(&ship.name, &plan.targets, state);
+    publish_plan_claims(ship_name, &plan.targets, state);
 
     Some(plan)
 }
 
-/// Pop the next valid target from the ship's survey plan.
-/// Skips targets that are already surveyed or claimed by other ships.
-/// Returns None (and clears the plan) when all targets are consumed.
+/// Pop the next valid target from the named ship's survey plan.
+/// Skips targets already surveyed or claimed by another ship.
+/// When the plan is exhausted, attempts to recompute it from the current position.
+/// Returns None when no targets remain.
 pub fn advance_survey_plan(ship_name: &str, state: &mut State) -> Option<String> {
-    // Check if ship has a plan
-    let has_plan = {
+    {
         let (body, found) = find_body(ship_name, state);
-        found && body.map(|b| b.survey_plan.is_some()).unwrap_or(false)
-    };
-    if !has_plan {
-        return None;
+        if !found || body.map(|b| b.survey_plan.is_none()).unwrap_or(true) {
+            return None;
+        }
     }
 
     let claimed = get_claimed_targets(ship_name, state);
 
     loop {
-        // Check remaining targets
-        let next_target = {
-            let (body, found) = find_body(ship_name, state);
-            if !found {
-                return None;
-            }
-            let body = body?;
-            if body
-                .survey_plan
-                .as_ref()
-                .map(|p| p.targets.is_empty())
-                .unwrap_or(true)
-            {
-                None
-            } else {
-                body.survey_plan
-                    .as_ref()
-                    .and_then(|p| p.targets.first().cloned())
-            }
+        let next_target: Option<String> = {
+            let (body, _) = find_body(ship_name, state);
+            body.and_then(|b| b.survey_plan.as_ref())
+                .and_then(|p| p.targets.first().cloned())
         };
 
         let Some(target) = next_target else {
             break;
         };
 
-        // Remove from front of plan
+        // Remove from the front of the plan.
+        if let Some(ship_body) = state.find_ship_mut(ship_name) {
+            if let Some(plan) = ship_body.survey_plan.as_mut() {
+                if !plan.targets.is_empty() {
+                    plan.targets.remove(0);
+                }
+            }
+        }
+
+        // Skip if already surveyed.
         {
-            let found = find_body(ship_name, state).1;
-            if found {
-                if let Some(ship_body) = state.find_ship_mut(ship_name) {
-                    if let Some(plan) = ship_body.survey_plan.as_mut() {
-                        if !plan.targets.is_empty() {
-                            plan.targets.remove(0);
-                        }
+            let (body_ref, body_found) = find_body(&target, state);
+            if body_found {
+                if let Some(b) = body_ref {
+                    if b.data.body_type != "Ship" && b.survey.survey_level > 0 {
+                        continue;
                     }
                 }
             }
         }
 
-        // Skip if already surveyed
-        let (body_ref, body_found) = find_body(&target, state);
-        if body_found {
-            if let Some(b) = body_ref {
-                if b.data.body_type != "Ship" && b.survey.survey_level > 0 {
-                    continue;
-                }
-            }
-        }
-
-        // Skip if claimed by another ship
+        // Skip if claimed by another ship.
         if claimed.contains(&target) {
             continue;
         }
 
-        // Valid target — update intent with remaining targets and return it
-        let remaining = {
+        // Valid target — refresh the intent with the remaining lookahead window.
+        let remaining: Vec<String> = {
             let (body, _) = find_body(ship_name, state);
             body.and_then(|b| b.survey_plan.as_ref())
                 .map(|p| p.targets.clone())
@@ -565,44 +630,17 @@ pub fn advance_survey_plan(ship_name: &str, state: &mut State) -> Option<String>
         return Some(target);
     }
 
-    // Plan exhausted — try recomputing from current position
+    // Plan exhausted — clear it and try to recompute.
     if let Some(ship_body) = state.find_ship_mut(ship_name) {
         ship_body.survey_plan = None;
     }
 
-    // Build a temporary ShipEntry to call compute_survey_plan
-    let ship_entry = {
-        let (body, found) = find_body(ship_name, state);
-        if !found {
-            return None;
-        }
-        let body = body?;
-        ShipEntry {
-            name: body.data.name.clone(),
-            position: body.position,
-            is_ship: true,
-            ship_state: body.ship_state.clone().unwrap_or_default(),
-            host_planet_name: body.host_planet_name.clone().unwrap_or_default(),
-            fuel_kg: body.fuel_kg,
-            fuel_capacity_kg: body.fuel_capacity_kg,
-            dry_mass_kg: body.dry_mass_kg,
-            engine_id: body.engine_id.clone(),
-            design_id: body.design_id.clone(),
-            commander: body.commander.clone(),
-            survey_plan: body.survey_plan.clone(),
-            cargo_hold: body.cargo_hold.clone(),
-            mission_orders: body.mission_orders.clone(),
-            mission_order_index: body.mission_order_index,
-        }
-    };
-
-    let new_plan = compute_survey_plan(&ship_entry, state)?;
+    let new_plan = compute_survey_plan(ship_name, state)?;
     if new_plan.targets.is_empty() {
         return None;
     }
 
     let first = new_plan.targets.first().cloned()?;
-    // Store plan without first target (already being returned)
     let remaining_targets = new_plan.targets[1..].to_vec();
     let stored_plan = SurveyPlan {
         targets: remaining_targets.clone(),
@@ -616,7 +654,7 @@ pub fn advance_survey_plan(ship_name: &str, state: &mut State) -> Option<String>
     Some(first)
 }
 
-/// Clear a ship's survey plan and release claimed targets.
+/// Clear a ship's survey plan and release any claimed intent targets.
 pub fn clear_survey_plan(ship_name: &str, state: &mut State) {
     let has_plan = {
         let (body, found) = find_body(ship_name, state);

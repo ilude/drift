@@ -6,26 +6,18 @@ use drift_sim::entities::rebuild_entity_maps;
 use drift_sim::intents::publish_intent;
 use drift_sim::state::State;
 use drift_sim::survey_planner::{advance_survey_plan, clear_survey_plan, compute_survey_plan};
-use drift_types::{BodyData, BodyEntry, BodyType, ShipEntry, ShipIntent, SurveyPlan, SurveyState};
+use drift_sim::{BodyEntry, BodyEntryData, Commander, ShipEntry, ShipIntent, SurveyPlan};
+use drift_types::SurveyState;
 
 fn mock_body(name: &str, x: f32, z: f32, surveyed: bool) -> BodyEntry {
     BodyEntry {
-        data: BodyData {
+        data: BodyEntryData {
             name: name.to_string(),
-            body_type: BodyType::Planet,
+            body_type: "Planet".to_string(),
             distance: 1.0,
-            e: 0.0,
-            period: 365.0,
-            radius: 1000.0,
             mass: 1e24,
+            radius: 1000.0,
             color: "#fff".to_string(),
-            emissive: None,
-            moons: vec![],
-            rings: None,
-            radius_earths: None,
-            category: None,
-            is_dwarf: None,
-            is_detached: None,
         },
         position: [x, 0.0, z],
         survey: SurveyState {
@@ -37,8 +29,6 @@ fn mock_body(name: &str, x: f32, z: f32, surveyed: bool) -> BodyEntry {
         is_moon: false,
         is_ship: false,
         is_comet: false,
-        speed: 0.0,
-        moons: vec![],
         ..BodyEntry::default()
     }
 }
@@ -67,10 +57,10 @@ fn mock_ship_ext(name: &str, x: f32, z: f32, overrides: ShipOverrides) -> ShipEn
         dry_mass_kg: 5_000.0,
         engine_id: Some("conventional".to_string()),
         design_id: None,
-        commander: drift_types::Commander {
+        commander: Commander {
             caution: overrides.commander_caution.unwrap_or(0.5),
             initiative: overrides.commander_initiative.unwrap_or(0.5),
-            experience: 0,
+            experience: 0.0,
         },
         survey_plan: overrides.survey_plan.flatten(),
         ..ShipEntry::default()
@@ -129,8 +119,7 @@ mod compute_survey_plan {
         );
         setup_system(&mut state, vec![earth, target1, target2], vec![ship]);
 
-        let ship_ref = state.find_ship_mut("Explorer").unwrap();
-        let plan = compute_survey_plan(ship_ref, &state);
+        let plan = compute_survey_plan("Explorer", &mut state);
         assert!(plan.is_none());
     }
 
@@ -143,8 +132,7 @@ mod compute_survey_plan {
         let ship = mock_ship("Explorer", 200.0, 0.0);
         setup_system(&mut state, vec![earth, target1], vec![ship]);
 
-        let ship_ref = state.find_ship_mut("Explorer").unwrap();
-        let plan = compute_survey_plan(ship_ref, &state);
+        let plan = compute_survey_plan("Explorer", &mut state);
         assert!(plan.is_none());
     }
 
@@ -167,8 +155,7 @@ mod compute_survey_plan {
         );
         setup_system(&mut state, vec![earth, t1, t2, t3], vec![ship]);
 
-        let ship_ref = state.find_ship_mut("Explorer").unwrap();
-        let plan = compute_survey_plan(ship_ref, &state);
+        let plan = compute_survey_plan("Explorer", &mut state);
         assert!(plan.is_some());
         let p = plan.unwrap();
         assert!(p.targets.len() >= 2);
@@ -194,8 +181,7 @@ mod compute_survey_plan {
         );
         setup_system(&mut state, vec![earth, far, near, mid], vec![ship]);
 
-        let ship_ref = state.find_ship_mut("Explorer").unwrap();
-        let plan = compute_survey_plan(ship_ref, &state).expect("expected plan");
+        let plan = compute_survey_plan("Explorer", &mut state).expect("expected plan");
         let near_idx = plan.targets.iter().position(|t| t == "Near");
         let mid_idx = plan.targets.iter().position(|t| t == "Mid");
         if let (Some(ni), Some(mi)) = (near_idx, mid_idx) {
@@ -222,10 +208,7 @@ mod compute_survey_plan {
         );
         setup_system(&mut state, vec![earth, t1, t2, t3], vec![ship]);
 
-        {
-            let ship_ref = state.find_ship_mut("Explorer").unwrap();
-            compute_survey_plan(ship_ref, &state);
-        }
+        compute_survey_plan("Explorer", &mut state);
 
         let intent = state.ship_intents.get("Explorer");
         assert!(intent.is_some());
@@ -247,8 +230,7 @@ mod advance_survey_plan {
         let ship = mock_ship("Explorer", 200.0, 0.0);
         setup_system(&mut state, vec![], vec![ship]);
 
-        let ship_ref = state.find_ship_mut("Explorer").unwrap();
-        assert!(advance_survey_plan(ship_ref, &state).is_none());
+        assert!(advance_survey_plan("Explorer", &mut state).is_none());
     }
 
     #[test]
@@ -269,17 +251,22 @@ mod advance_survey_plan {
             &mut state,
         );
 
-        let ship_ref = state.find_ship_mut("Explorer").unwrap();
-        ship_ref.survey_plan = Some(SurveyPlan {
+        state.find_ship_mut("Explorer").unwrap().survey_plan = Some(SurveyPlan {
             targets: vec!["Alpha".to_string(), "Beta".to_string()],
             accel_g: 0.1,
             return_fuel_kg: 0.0,
         });
 
-        let target = advance_survey_plan(ship_ref, &state);
+        let target = advance_survey_plan("Explorer", &mut state);
         assert_eq!(target, Some("Alpha".to_string()));
         assert_eq!(
-            ship_ref.survey_plan.as_ref().unwrap().targets,
+            state
+                .find_ship_mut("Explorer")
+                .unwrap()
+                .survey_plan
+                .as_ref()
+                .unwrap()
+                .targets,
             vec!["Beta".to_string()]
         );
     }
@@ -293,14 +280,13 @@ mod advance_survey_plan {
         let ship = mock_ship("Explorer", 200.0, 0.0);
         setup_system(&mut state, vec![earth, surveyed, unsurveyed], vec![ship]);
 
-        let ship_ref = state.find_ship_mut("Explorer").unwrap();
-        ship_ref.survey_plan = Some(SurveyPlan {
+        state.find_ship_mut("Explorer").unwrap().survey_plan = Some(SurveyPlan {
             targets: vec!["Done".to_string(), "Todo".to_string()],
             accel_g: 0.1,
             return_fuel_kg: 0.0,
         });
 
-        let target = advance_survey_plan(ship_ref, &state);
+        let target = advance_survey_plan("Explorer", &mut state);
         assert_eq!(target, Some("Todo".to_string()));
     }
 
@@ -312,16 +298,19 @@ mod advance_survey_plan {
         let ship = mock_ship("Explorer", 200.0, 0.0);
         setup_system(&mut state, vec![earth, surveyed], vec![ship]);
 
-        let ship_ref = state.find_ship_mut("Explorer").unwrap();
-        ship_ref.survey_plan = Some(SurveyPlan {
+        state.find_ship_mut("Explorer").unwrap().survey_plan = Some(SurveyPlan {
             targets: vec!["Done".to_string()],
             accel_g: 0.1,
             return_fuel_kg: 0.0,
         });
 
-        let target = advance_survey_plan(ship_ref, &state);
+        let target = advance_survey_plan("Explorer", &mut state);
         assert!(target.is_none());
-        assert!(ship_ref.survey_plan.is_none());
+        assert!(state
+            .find_ship_mut("Explorer")
+            .unwrap()
+            .survey_plan
+            .is_none());
     }
 
     #[test]
@@ -343,14 +332,13 @@ mod advance_survey_plan {
             &mut state,
         );
 
-        let ship_ref = state.find_ship_mut("Explorer").unwrap();
-        ship_ref.survey_plan = Some(SurveyPlan {
+        state.find_ship_mut("Explorer").unwrap().survey_plan = Some(SurveyPlan {
             targets: vec!["Taken".to_string(), "Free".to_string()],
             accel_g: 0.1,
             return_fuel_kg: 0.0,
         });
 
-        let target = advance_survey_plan(ship_ref, &state);
+        let target = advance_survey_plan("Explorer", &mut state);
         assert_eq!(target, Some("Free".to_string()));
     }
 }
@@ -396,11 +384,8 @@ mod progressive_intent_claiming {
         );
         setup_system(&mut state, bodies, vec![ship]);
 
-        {
-            let ship_ref = state.find_ship_mut("Explorer").unwrap();
-            let plan = compute_survey_plan(ship_ref, &state).expect("expected plan");
-            assert!(plan.targets.len() > 3);
-        }
+        let plan = compute_survey_plan("Explorer", &mut state).expect("expected plan");
+        assert!(plan.targets.len() > 3);
 
         let intent = state.ship_intents.get("Explorer");
         assert!(intent.is_some());
@@ -429,8 +414,7 @@ mod progressive_intent_claiming {
             &mut state,
         );
 
-        let ship_ref = state.find_ship_mut("Explorer").unwrap();
-        ship_ref.survey_plan = Some(SurveyPlan {
+        state.find_ship_mut("Explorer").unwrap().survey_plan = Some(SurveyPlan {
             targets: vec![
                 "A".to_string(),
                 "B".to_string(),
@@ -441,7 +425,7 @@ mod progressive_intent_claiming {
             return_fuel_kg: 0.0,
         });
 
-        advance_survey_plan(ship_ref, &state);
+        advance_survey_plan("Explorer", &mut state);
 
         let intent = state.ship_intents.get("Explorer");
         if let Some(ShipIntent::SurveyPlan { targets, .. }) = intent {
@@ -494,19 +478,22 @@ mod survey_plan_replanning {
             vec![ship],
         );
 
-        let ship_ref = state.find_ship_mut("Explorer").unwrap();
-        ship_ref.survey_plan = Some(SurveyPlan {
+        state.find_ship_mut("Explorer").unwrap().survey_plan = Some(SurveyPlan {
             targets: vec!["Done1".to_string(), "Done2".to_string()],
             accel_g: 0.1,
             return_fuel_kg: 0.0,
         });
 
-        let target = advance_survey_plan(ship_ref, &state);
+        let target = advance_survey_plan("Explorer", &mut state);
         // Old plan's targets are all surveyed, but new targets exist
         // Should recompute and return a fresh target
         assert!(target.is_some());
-        assert!(ship_ref.survey_plan.is_some());
-        if let Some(ref plan) = ship_ref.survey_plan {
+        assert!(state
+            .find_ship_mut("Explorer")
+            .unwrap()
+            .survey_plan
+            .is_some());
+        if let Some(ref plan) = state.find_ship_mut("Explorer").unwrap().survey_plan {
             assert!(!plan.targets.is_empty());
         }
     }
@@ -523,14 +510,17 @@ mod clear_survey_plan {
         let ship = mock_ship("Explorer", 200.0, 0.0);
         setup_system(&mut state, vec![], vec![ship]);
 
-        let ship_ref = state.find_ship_mut("Explorer").unwrap();
-        ship_ref.survey_plan = Some(SurveyPlan {
+        state.find_ship_mut("Explorer").unwrap().survey_plan = Some(SurveyPlan {
             targets: vec!["A".to_string(), "B".to_string()],
             accel_g: 0.1,
             return_fuel_kg: 0.0,
         });
-        clear_survey_plan(ship_ref, &mut state);
-        assert!(ship_ref.survey_plan.is_none());
+        clear_survey_plan("Explorer", &mut state);
+        assert!(state
+            .find_ship_mut("Explorer")
+            .unwrap()
+            .survey_plan
+            .is_none());
     }
 
     #[test]
@@ -539,10 +529,13 @@ mod clear_survey_plan {
         let ship = mock_ship("Explorer", 200.0, 0.0);
         setup_system(&mut state, vec![], vec![ship]);
 
-        let ship_ref = state.find_ship_mut("Explorer").unwrap();
-        ship_ref.survey_plan = None;
-        clear_survey_plan(ship_ref, &mut state);
-        assert!(ship_ref.survey_plan.is_none());
+        state.find_ship_mut("Explorer").unwrap().survey_plan = None;
+        clear_survey_plan("Explorer", &mut state);
+        assert!(state
+            .find_ship_mut("Explorer")
+            .unwrap()
+            .survey_plan
+            .is_none());
     }
 
     #[test]
@@ -563,16 +556,19 @@ mod clear_survey_plan {
             &mut state,
         );
 
-        let ship_ref = state.find_ship_mut("Explorer").unwrap();
-        ship_ref.survey_plan = Some(SurveyPlan {
+        state.find_ship_mut("Explorer").unwrap().survey_plan = Some(SurveyPlan {
             targets: vec!["X".to_string(), "Y".to_string()],
             accel_g: 0.1,
             return_fuel_kg: 0.0,
         });
 
-        clear_survey_plan(ship_ref, &mut state);
+        clear_survey_plan("Explorer", &mut state);
 
-        assert!(ship_ref.survey_plan.is_none());
+        assert!(state
+            .find_ship_mut("Explorer")
+            .unwrap()
+            .survey_plan
+            .is_none());
         assert!(state.ship_intents.get("Explorer").is_none());
     }
 }
