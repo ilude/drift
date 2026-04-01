@@ -39,9 +39,8 @@ fn spawn_server(listener: TcpListener) -> tokio::task::JoinHandle<()> {
 // types.  This keeps the test self-contained.
 
 use drift_sim::state::State;
-use futures_util::stream::SplitSink;
 use tokio::net::TcpStream;
-use tokio_tungstenite::{accept_async, WebSocketStream};
+use tokio_tungstenite::accept_async;
 
 async fn drift_server_handle_connection(stream: TcpStream) {
     let ws_stream = match accept_async(stream).await {

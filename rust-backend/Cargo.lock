@@ -186,7 +186,6 @@ dependencies = [
 name = "drift-server"
 version = "0.1.0"
 dependencies = [
- "drift-lua",
  "drift-sim",
  "futures-util",
  "serde",
