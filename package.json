@@ -30,7 +30,9 @@
 		"rust:clippy": "docker compose -f rust-backend/docker-compose.yml run --rm rust-dev cargo clippy --workspace",
 		"rust:fmt": "docker compose -f rust-backend/docker-compose.yml run --rm rust-dev cargo fmt --all",
 		"rust:fmt:check": "docker compose -f rust-backend/docker-compose.yml run --rm rust-dev cargo fmt --all -- --check",
-		"rust:shell": "docker compose -f rust-backend/docker-compose.yml run --rm rust-dev bash"
+		"rust:shell": "docker compose -f rust-backend/docker-compose.yml run --rm rust-dev bash",
+		"electron:dev": "cd electron && npx electron .",
+		"electron:build": "cd electron && npx electron-builder"
 	},
 	"keywords": [],
 	"author": "",

@@ -1,5 +1,4 @@
-# dlltool.exe is required by the GNU rustc toolchain when linking Windows import
-# libraries. It is bundled in the rustup self-contained directory; ensure it is
-# on PATH by copying it to ~/.cargo/bin (done once during workspace setup).
-# No linker override needed — the default GNU ld handles everything once dlltool
-# is resolvable.
+[target.x86_64-pc-windows-gnu]
+linker = "C:/msys64/mingw64/bin/gcc.exe"
+ar = "C:/msys64/mingw64/bin/ar.exe"
+rustflags = ["-C", "dlltool=C:/msys64/mingw64/bin/dlltool.exe"]

@@ -139,7 +139,6 @@ mod compute_survey_plan {
     #[test]
     fn produces_a_plan_with_multiple_targets_when_candidates_exist() {
         let mut state = State::default();
-        setup_with_earth_colony(&mut state);
         let earth = mock_body("Earth", 200.0, 0.0, true);
         let t1 = mock_body("Target-A", 210.0, 0.0, false);
         let t2 = mock_body("Target-B", 220.0, 0.0, false);
@@ -154,6 +153,7 @@ mod compute_survey_plan {
             },
         );
         setup_system(&mut state, vec![earth, t1, t2, t3], vec![ship]);
+        setup_with_earth_colony(&mut state);
 
         let plan = compute_survey_plan("Explorer", &mut state);
         assert!(plan.is_some());
@@ -165,7 +165,6 @@ mod compute_survey_plan {
     #[test]
     fn orders_targets_by_nearest_neighbor_from_ship_position() {
         let mut state = State::default();
-        setup_with_earth_colony(&mut state);
         let earth = mock_body("Earth", 200.0, 0.0, true);
         let far = mock_body("Far", 400.0, 0.0, false);
         let near = mock_body("Near", 210.0, 0.0, false);
@@ -180,6 +179,7 @@ mod compute_survey_plan {
             },
         );
         setup_system(&mut state, vec![earth, far, near, mid], vec![ship]);
+        setup_with_earth_colony(&mut state);
 
         let plan = compute_survey_plan("Explorer", &mut state).expect("expected plan");
         let near_idx = plan.targets.iter().position(|t| t == "Near");
@@ -192,7 +192,6 @@ mod compute_survey_plan {
     #[test]
     fn publishes_survey_plan_intent_claiming_all_targets() {
         let mut state = State::default();
-        setup_with_earth_colony(&mut state);
         let earth = mock_body("Earth", 200.0, 0.0, true);
         let t1 = mock_body("A", 210.0, 0.0, false);
         let t2 = mock_body("B", 220.0, 0.0, false);
@@ -207,6 +206,7 @@ mod compute_survey_plan {
             },
         );
         setup_system(&mut state, vec![earth, t1, t2, t3], vec![ship]);
+        setup_with_earth_colony(&mut state);
 
         compute_survey_plan("Explorer", &mut state);
 
@@ -362,7 +362,6 @@ mod progressive_intent_claiming {
     #[test]
     fn compute_survey_plan_claims_at_most_3_targets_in_intent() {
         let mut state = State::default();
-        setup_with_earth_colony(&mut state);
         let earth = mock_body("Earth", 200.0, 0.0, true);
         let mut bodies = vec![earth];
         for i in 0..8 {
@@ -383,6 +382,7 @@ mod progressive_intent_claiming {
             },
         );
         setup_system(&mut state, bodies, vec![ship]);
+        setup_with_earth_colony(&mut state);
 
         let plan = compute_survey_plan("Explorer", &mut state).expect("expected plan");
         assert!(plan.targets.len() > 3);
@@ -456,7 +456,6 @@ mod survey_plan_replanning {
     #[test]
     fn recomputes_plan_when_all_targets_consumed_but_unsurveyed_bodies_remain() {
         let mut state = State::default();
-        setup_with_earth_colony(&mut state);
         let earth = mock_body("Earth", 200.0, 0.0, true);
         let done1 = mock_body("Done1", 210.0, 0.0, true);
         let done2 = mock_body("Done2", 215.0, 0.0, true);
@@ -477,6 +476,7 @@ mod survey_plan_replanning {
             vec![earth, done1, done2, fresh1, fresh2, fresh3],
             vec![ship],
         );
+        setup_with_earth_colony(&mut state);
 
         state.find_ship_mut("Explorer").unwrap().survey_plan = Some(SurveyPlan {
             targets: vec!["Done1".to_string(), "Done2".to_string()],

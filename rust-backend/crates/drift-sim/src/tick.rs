@@ -111,8 +111,14 @@ fn collect_ship_decisions_parallel(state: &State) -> Vec<(String, CommandResult)
     let map: BTreeMap<String, CommandResult> = snapshots
         .par_iter()
         .filter_map(|snap| {
-            let result =
-                evaluate_command_tree(&snap.ship_entry, &snap.command_tree, None, None, None, state);
+            let result = evaluate_command_tree(
+                &snap.ship_entry,
+                &snap.command_tree,
+                None,
+                None,
+                None,
+                state,
+            );
             result.map(|r| (snap.name.clone(), r))
         })
         .collect();
@@ -195,7 +201,9 @@ mod tests {
         state.fuel_burn_multiplier = 1.0;
         state.sim_time_days = 0.0;
         for name in names {
-            state.body_meshes.push(make_orbiting_ship(name, 5000.0, 10_000.0));
+            state
+                .body_meshes
+                .push(make_orbiting_ship(name, 5000.0, 10_000.0));
         }
         state
     }
@@ -295,6 +303,9 @@ mod tests {
             .unwrap_or(0.0);
 
         // Earth gets EARTH_FUEL_RESTOCK_PER_DAY = 1000 kg/day added.
-        assert!(fuel_after > fuel_before, "Earth colony should gain fuel after a tick");
+        assert!(
+            fuel_after > fuel_before,
+            "Earth colony should gain fuel after a tick"
+        );
     }
 }

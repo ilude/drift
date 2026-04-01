@@ -1,6 +1,5 @@
 // Simulation engine — ported from src/core/
 pub mod cargo;
-pub mod tick;
 #[allow(
     dead_code,
     clippy::too_many_arguments,
@@ -17,6 +16,7 @@ pub mod notifications;
 pub mod ship_utils;
 pub mod state;
 pub mod survey_planner;
+pub mod tick;
 pub mod transfers;
 
 // Re-export runtime types so tests can import them from drift_sim directly.
