@@ -1,5 +1,12 @@
 // Simulation engine — ported from src/core/
 pub mod cargo;
+#[allow(
+    dead_code,
+    clippy::too_many_arguments,
+    clippy::collapsible_if,
+    dropping_copy_types,
+    clippy::let_unit_value
+)]
 pub mod colonies;
 pub mod commander;
 pub mod commands;
